@@ -1,0 +1,30 @@
+name: McParty
+version: '${version}'
+main: dev.epicc.McPartyPlugin
+description: Mario Party-style multiplayer minigame system
+api-version: '26.1.2'
+load: POSTWORLD
+authors: [McParty]
+depend: [WorldEdit]
+
+commands:
+  party:
+    description: Party room commands
+    usage: /party <create|join|leave|start|list|end|roll>
+    permission: mcparty.party
+  partyadmin:
+    description: Board slot and setup admin commands
+    usage: /partyadmin <slot|path|walls>
+    permission: mcparty.admin
+    aliases: [padmin]
+
+permissions:
+  mcparty.party:
+    description: Create and join party rooms
+    default: true
+  mcparty.admin:
+    description: Admin board setup and force end
+    default: op
+  mcparty.admin.bypass:
+    description: Bypass slot boundary
+    default: op

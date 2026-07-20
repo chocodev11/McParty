@@ -1,0 +1,34 @@
+party:
+  min-players: 4
+  max-players: 8
+  max-instances: 12
+  start-countdown-seconds: 5
+  max-turns: 10
+  starting-coins: 10
+
+board:
+  dice-min: 1
+  dice-max: 6
+
+containment:
+  wall-material: BARRIER
+  wall-height: 5
+
+minigame:
+  dummy-duration-seconds: 5
+  dummy-coin-rewards:
+    - 10
+    - 7
+    - 5
+    - 3
+
+# AdvancedSlimePaper — per-party world load/unload
+# Place template as: plugins/McParty/<worlds-directory>/<template-world>.slime
+slime:
+  enabled: true
+  worlds-directory: slime_worlds
+  template-world: party_board
+  world-prefix: party-
+  allow-monsters: false
+  allow-animals: false
+  pvp: true
