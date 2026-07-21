@@ -11,6 +11,7 @@ import dev.epicc.board.dice.DicePresenter;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.player.PlayerSessionService;
+import dev.epicc.resourcepack.ResourcePackService;
 import dev.epicc.seamless.SeamlessWorldChangeService;
 import dev.epicc.slime.SlimeWorldService;
 import dev.epicc.store.InstanceStore;
@@ -44,6 +45,7 @@ public final class PartyManager {
     private final DicePresenter dicePresenter;
     private final DiceHatService diceHats;
     private final PathHopMover pathHopMover;
+    private final ResourcePackService resourcePacks;
     private final Map<UUID, BoardTurnController> controllers = new ConcurrentHashMap<>();
     private final Map<UUID, BukkitTask> countdowns = new ConcurrentHashMap<>();
 
@@ -58,7 +60,8 @@ public final class PartyManager {
             SeamlessWorldChangeService seamless,
             DicePresenter dicePresenter,
             DiceHatService diceHats,
-            PathHopMover pathHopMover
+            PathHopMover pathHopMover,
+            ResourcePackService resourcePacks
     ) {
         this.plugin = plugin;
         this.config = config;
@@ -71,6 +74,7 @@ public final class PartyManager {
         this.dicePresenter = dicePresenter;
         this.diceHats = diceHats;
         this.pathHopMover = pathHopMover;
+        this.resourcePacks = resourcePacks;
     }
 
     public JavaPlugin plugin() {
@@ -110,6 +114,7 @@ public final class PartyManager {
                 "[McParty] Created party " + instance.shortId() + " — others: /party join " + instance.shortId(),
                 NamedTextColor.GREEN
         ));
+        offerResourcePack(host);
         return Optional.empty();
     }
 
@@ -140,7 +145,14 @@ public final class PartyManager {
                 "[McParty] " + player.getName() + " joined (" + instance.playerCount() + "/" + instance.settings().maxPlayers() + ")",
                 NamedTextColor.YELLOW
         ));
+        offerResourcePack(player);
         return Optional.empty();
+    }
+
+    private void offerResourcePack(Player player) {
+        if (resourcePacks != null && resourcePacks.isReady() && resourcePacks.sendOnParty()) {
+            resourcePacks.offerLater(player);
+        }
     }
 
     public Optional<String> leave(Player player, boolean silent) {

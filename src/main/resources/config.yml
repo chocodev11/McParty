@@ -36,6 +36,37 @@ minigame:
 seamless-world-change:
   enabled: true
 
+# Dice models (mcparty:dice_1..6). Modes: local (plugin HTTP) or external (CDN URL).
+resource-pack:
+  enabled: true
+  # local | external
+  mode: local
+  # join = every login; party = /party create or join only
+  send-on: party
+  required: false
+  prompt: "McParty needs this pack for custom dice models."
+  kick-on-decline: false
+  kick-message: "You must accept the McParty resource pack."
+  # Ticks after join/party action before sending (client ready)
+  send-delay-ticks: 20
+
+  # mode: external — direct HTTPS zip URL (client must reach it)
+  external:
+    url: ""
+    # 40-char lowercase SHA-1 of the zip (required for external)
+    sha1: ""
+
+  # mode: local — zip plugins/McParty/<source-folder>, serve HTTP
+  local:
+    # Relative to plugin data folder; bundled pack is extracted here if missing
+    source-folder: resourcepack
+    zip-name: mcparty.zip
+    bind: "0.0.0.0"
+    port: 8163
+    # Full URL clients use. Required for remote players (not 127.0.0.1).
+    # Example: http://play.example.com:8163/mcparty.zip
+    public-url: ""
+
 # AdvancedSlimePaper — per-party world load/unload
 # Place template as: plugins/McParty/<worlds-directory>/<template-world>.slime
 slime:

@@ -31,6 +31,22 @@ public final class PluginConfig {
 
     private final boolean seamlessWorldChangeEnabled;
 
+    private final boolean resourcePackEnabled;
+    private final String resourcePackMode;
+    private final String resourcePackSendOn;
+    private final boolean resourcePackRequired;
+    private final String resourcePackPrompt;
+    private final boolean resourcePackKickOnDecline;
+    private final String resourcePackKickMessage;
+    private final int resourcePackSendDelayTicks;
+    private final String resourcePackExternalUrl;
+    private final String resourcePackExternalSha1;
+    private final String resourcePackLocalSourceFolder;
+    private final String resourcePackLocalZipName;
+    private final String resourcePackLocalBind;
+    private final int resourcePackLocalPort;
+    private final String resourcePackLocalPublicUrl;
+
     private final boolean slimeEnabled;
     private final String slimeWorldsDirectory;
     private final String slimeTemplateWorld;
@@ -69,6 +85,28 @@ public final class PluginConfig {
 
         seamlessWorldChangeEnabled = c.getBoolean("seamless-world-change.enabled", true);
 
+        resourcePackEnabled = c.getBoolean("resource-pack.enabled", true);
+        resourcePackMode = c.getString("resource-pack.mode", "local");
+        resourcePackSendOn = c.getString("resource-pack.send-on", "party");
+        resourcePackRequired = c.getBoolean("resource-pack.required", false);
+        resourcePackPrompt = c.getString(
+                "resource-pack.prompt",
+                "McParty needs this pack for custom dice models."
+        );
+        resourcePackKickOnDecline = c.getBoolean("resource-pack.kick-on-decline", false);
+        resourcePackKickMessage = c.getString(
+                "resource-pack.kick-message",
+                "You must accept the McParty resource pack."
+        );
+        resourcePackSendDelayTicks = Math.max(0, c.getInt("resource-pack.send-delay-ticks", 20));
+        resourcePackExternalUrl = nullToEmpty(c.getString("resource-pack.external.url"));
+        resourcePackExternalSha1 = nullToEmpty(c.getString("resource-pack.external.sha1")).toLowerCase();
+        resourcePackLocalSourceFolder = c.getString("resource-pack.local.source-folder", "resourcepack");
+        resourcePackLocalZipName = c.getString("resource-pack.local.zip-name", "mcparty.zip");
+        resourcePackLocalBind = c.getString("resource-pack.local.bind", "0.0.0.0");
+        resourcePackLocalPort = c.getInt("resource-pack.local.port", 8163);
+        resourcePackLocalPublicUrl = nullToEmpty(c.getString("resource-pack.local.public-url"));
+
         slimeEnabled = c.getBoolean("slime.enabled", true);
         slimeWorldsDirectory = c.getString("slime.worlds-directory", "slime_worlds");
         slimeTemplateWorld = c.getString("slime.template-world", "party_board");
@@ -76,6 +114,10 @@ public final class PluginConfig {
         slimeAllowMonsters = c.getBoolean("slime.allow-monsters", false);
         slimeAllowAnimals = c.getBoolean("slime.allow-animals", false);
         slimePvp = c.getBoolean("slime.pvp", true);
+    }
+
+    private static String nullToEmpty(String s) {
+        return s == null ? "" : s.trim();
     }
 
     public int minPlayers() { return minPlayers; }
@@ -100,6 +142,22 @@ public final class PluginConfig {
     public int minigameRevealIntervalTicks() { return minigameRevealIntervalTicks; }
 
     public boolean seamlessWorldChangeEnabled() { return seamlessWorldChangeEnabled; }
+
+    public boolean resourcePackEnabled() { return resourcePackEnabled; }
+    public String resourcePackMode() { return resourcePackMode; }
+    public String resourcePackSendOn() { return resourcePackSendOn; }
+    public boolean resourcePackRequired() { return resourcePackRequired; }
+    public String resourcePackPrompt() { return resourcePackPrompt; }
+    public boolean resourcePackKickOnDecline() { return resourcePackKickOnDecline; }
+    public String resourcePackKickMessage() { return resourcePackKickMessage; }
+    public int resourcePackSendDelayTicks() { return resourcePackSendDelayTicks; }
+    public String resourcePackExternalUrl() { return resourcePackExternalUrl; }
+    public String resourcePackExternalSha1() { return resourcePackExternalSha1; }
+    public String resourcePackLocalSourceFolder() { return resourcePackLocalSourceFolder; }
+    public String resourcePackLocalZipName() { return resourcePackLocalZipName; }
+    public String resourcePackLocalBind() { return resourcePackLocalBind; }
+    public int resourcePackLocalPort() { return resourcePackLocalPort; }
+    public String resourcePackLocalPublicUrl() { return resourcePackLocalPublicUrl; }
 
     public boolean slimeEnabled() { return slimeEnabled; }
     public String slimeWorldsDirectory() { return slimeWorldsDirectory; }

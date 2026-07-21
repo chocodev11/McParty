@@ -95,11 +95,14 @@ src/main/java/dev/epicc/
   player/PlayerSessionService.java  # player UUID → party UUID
   slime/SlimeWorldService.java      # ASP load / clone / unload
   seamless/                   # Optional PacketEvents RESPAWN cancel (no dirt screen)
+  resourcepack/               # Local/external pack host + player prompt
   store/                      # InstanceStore + in-memory impl
 
 src/main/resources/
   plugin.yml
   config.yml
+
+resourcepack/                 # Dice models (bundled into jar; extracted for local mode)
 ```
 
 Persistent data at runtime:
@@ -123,11 +126,12 @@ Persistent data at runtime:
 3. `BoardSlotRegistry` → `load()`
 4. `SlimeWorldService` (ASP + FileLoader)
 5. `SeamlessWorldChangeService` (PacketEvents hook if present)
-6. `MinigameManager` (+ `DummyMinigame`)
-7. `PartyManager`
-8. `BoundaryListener`, commands
+6. `ResourcePackService` (local HTTP or external URL; optional)
+7. `MinigameManager` (+ `DummyMinigame`)
+8. `PartyManager`
+9. `BoundaryListener`, resource-pack listener, commands
 
-`onDisable`: `partyManager.shutdown()` → unload slime worlds → save slots.
+`onDisable`: `partyManager.shutdown()` → unload slime worlds → stop resource-pack HTTP → save slots.
 
 ### Domain model
 
@@ -191,7 +195,15 @@ WAITING → STARTING → PLAYING → ENDING → CLEANUP
 4. `PathHopMover`: rise in place → teleport high above target path point → fall down (fall damage cancelled). Turn continues only after land.
 5. After all players acted once in a round → `MinigameManager.runRandom` (reveal titles → start, no teleport) → apply coin rewards → next round.
 6. After `maxTurns` rounds → `instance.requestEnd` → podium → cleanup.
-7. Custom look: resource pack `resourcepack/` models `mcparty:dice_1`…`dice_6` (`DiceItems`).
+7. Custom look: resource pack `resourcepack/` models `mcparty:dice_1`…`dice_6` (`DiceItems`), prompted by `ResourcePackService`.
+
+**Resource pack** (`resourcepack/ResourcePackService`)
+
+- Config: `resource-pack.*` — `mode: local` (zip data-folder pack + JDK `HttpServer`) or `mode: external` (URL + SHA-1).
+- Bundled pack ships in the jar under `resourcepack/`; extracted to `plugins/McParty/resourcepack/` if missing.
+- Local: SHA-1 of zip; serve `GET /mcparty.zip`; set `local.public-url` to a client-reachable URL (open firewall port).
+- Prompt via `Player#setResourcePack(UUID, url, sha1, prompt, required)`; status via `PlayerResourcePackStatusEvent`.
+- `send-on: party` (create/join) or `join` (login). Fail-open if disabled or setup fails.
 
 **Cleanup**
 
@@ -290,6 +302,7 @@ Important groups:
 - `board.dice-min/max`  
 - `minigame.dummy-*`, `minigame.reveal-duration-ticks`, `minigame.reveal-interval-ticks`  
 - `seamless-world-change.enabled` — cancel RESPAWN on McParty same-env world teleports (needs PacketEvents)  
+- `resource-pack.*` — local HTTP or external URL, send-on join/party, prompt/required/kick  
 - `slime.*` — ASP template and world naming  
 
 Add new config only through `PluginConfig` + default `config.yml` together.
@@ -402,6 +415,7 @@ Prefer incremental features that fit the current single-process, in-memory desig
 | `PlayerSessionService` | Membership index |
 | `Minigame` / `MinigameManager` | Minigame SPI |
 | `PluginConfig` | Typed settings |
+| `ResourcePackService` | Dice pack host + prompt |
 | `WorldEditHook` | Selection → boundary |
 
 When in doubt: **put orchestration in `PartyManager`, world IO in `SlimeWorldService`, board rules in `board/`, minigame rules in `minigame/`.**
