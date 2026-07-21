@@ -1,8 +1,11 @@
 package dev.epicc.board.dice;
 
 import dev.epicc.board.Dice;
+import org.bukkit.Color;
 import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
+import org.bukkit.Particle;
+import org.bukkit.World;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Interaction;
@@ -158,14 +161,22 @@ public final class DicePresenter {
         session.settled = true;
         cancelSpinAndTimeout(session);
 
+        Location particleAt = null;
         if (session.display != null && session.display.isValid()) {
             session.display.setItemStack(DiceItems.face(session.result));
             session.display.setTransformation(identityScale(displayScale));
+            particleAt = session.display.getLocation().clone().add(0, 0.15, 0);
         }
 
         Player player = plugin.getServer().getPlayer(session.playerId);
         if (player != null && player.isOnline()) {
             hats.setHat(player, session.result);
+            if (particleAt == null) {
+                particleAt = player.getEyeLocation();
+            }
+        }
+        if (particleAt != null) {
+            spawnPastelSmoke(particleAt);
         }
 
         // brief hold so the final face is visible, then remove prop and apply move
@@ -181,6 +192,40 @@ public final class DicePresenter {
                 cb.accept(session.result);
             }
         }, 6L);
+    }
+
+    /**
+     * Soft burst when the roll locks.
+     * Vanilla {@link Particle#LARGE_SMOKE} cannot be tinted (always gray/white), so we use
+     * large-size pastel {@link Particle#DUST} for color and a few LARGE_SMOKE for volume
+     * is skipped — only pastel dust so nothing reads pure white.
+     */
+    private static void spawnPastelSmoke(Location at) {
+        World world = at.getWorld();
+        if (world == null) {
+            return;
+        }
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        // pastel only — no pure white / harsh purple
+        Color[] pastels = {
+                Color.fromRGB(255, 182, 193), // pink
+                Color.fromRGB(255, 218, 185), // peach
+                Color.fromRGB(255, 250, 205), // lemon cream
+                Color.fromRGB(189, 236, 182), // mint
+                Color.fromRGB(174, 214, 241), // baby blue
+                Color.fromRGB(230, 204, 232), // soft lilac
+                Color.fromRGB(255, 209, 220), // rose
+        };
+
+        for (int i = 0; i < 22; i++) {
+            Color c = pastels[rng.nextInt(pastels.length)];
+            // size ~2.2 reads as soft smoke puffs
+            Particle.DustOptions dust = new Particle.DustOptions(c, 2.2f);
+            double ox = rng.nextDouble(-0.45, 0.45);
+            double oy = rng.nextDouble(-0.15, 0.5);
+            double oz = rng.nextDouble(-0.45, 0.45);
+            world.spawnParticle(Particle.DUST, at.clone().add(ox, oy, oz), 1, 0.02, 0.02, 0.02, 0, dust);
+        }
     }
 
     private void cleanupEntities(Session session) {
