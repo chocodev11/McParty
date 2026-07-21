@@ -5,6 +5,8 @@ import dev.epicc.board.PathHopMover;
 import dev.epicc.board.dice.DiceClickListener;
 import dev.epicc.board.dice.DiceHatService;
 import dev.epicc.board.dice.DicePresenter;
+import dev.epicc.board.setup.PathSetupListener;
+import dev.epicc.board.setup.PathSetupService;
 import dev.epicc.board.setup.WorldEditHook;
 import dev.epicc.command.PartyAdminCommand;
 import dev.epicc.command.PartyCommand;
@@ -27,6 +29,7 @@ public final class McPartyPlugin extends JavaPlugin {
 
     private PartyManager partyManager;
     private BoardSlotRegistry slotRegistry;
+    private PathSetupService pathSetupService;
     private SlimeWorldService slimeWorldService;
     private ResourcePackService resourcePackService;
 
@@ -101,7 +104,11 @@ public final class McPartyPlugin extends JavaPlugin {
             party.setTabCompleter(partyCommand);
         }
 
-        PartyAdminCommand adminCommand = new PartyAdminCommand(slotRegistry, new WorldEditHook());
+        WorldEditHook worldEditHook = new WorldEditHook();
+        pathSetupService = new PathSetupService(this, slotRegistry, worldEditHook);
+        getServer().getPluginManager().registerEvents(new PathSetupListener(this, pathSetupService), this);
+
+        PartyAdminCommand adminCommand = new PartyAdminCommand(slotRegistry, pathSetupService);
         PluginCommand partyAdmin = getCommand("partyadmin");
         if (partyAdmin != null) {
             partyAdmin.setExecutor(adminCommand);
@@ -119,6 +126,9 @@ public final class McPartyPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (pathSetupService != null) {
+            pathSetupService.cancelAll();
+        }
         if (partyManager != null) {
             partyManager.shutdown();
         }

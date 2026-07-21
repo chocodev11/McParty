@@ -2,8 +2,7 @@ package dev.epicc.command;
 
 import dev.epicc.board.BoardSlot;
 import dev.epicc.board.BoardSlotRegistry;
-import dev.epicc.board.setup.WorldEditHook;
-import dev.epicc.containment.SlotBoundary;
+import dev.epicc.board.setup.PathSetupService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.Command;
@@ -23,11 +22,11 @@ import java.util.stream.Collectors;
 public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
 
     private final BoardSlotRegistry slots;
-    private final WorldEditHook worldEdit;
+    private final PathSetupService pathSetup;
 
-    public PartyAdminCommand(BoardSlotRegistry slots, WorldEditHook worldEdit) {
+    public PartyAdminCommand(BoardSlotRegistry slots, PathSetupService pathSetup) {
         this.slots = slots;
-        this.worldEdit = worldEdit;
+        this.pathSetup = pathSetup;
     }
 
     @Override
@@ -52,27 +51,11 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
 
     private void handleSlot(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage(Component.text("/partyadmin slot <create|delete|list|spawn> [id]", NamedTextColor.AQUA));
+            player.sendMessage(Component.text("/partyadmin slot <list|delete> [id]", NamedTextColor.AQUA));
             return;
         }
         String sub = args[1].toLowerCase(Locale.ROOT);
         switch (sub) {
-            case "create" -> {
-                if (args.length < 3) {
-                    msg(player, "Usage: /partyadmin slot create <id>", true);
-                    return;
-                }
-                Optional<SlotBoundary> boundary = worldEdit.selectionAsBoundary(player);
-                if (boundary.isEmpty()) {
-                    msg(player, "Make a complete WorldEdit cuboid selection first.", true);
-                    return;
-                }
-                if (slots.create(args[2], boundary.get())) {
-                    msg(player, "Created slot '" + args[2].toLowerCase(Locale.ROOT) + "'. Add path + spawn.", false);
-                } else {
-                    msg(player, "Slot already exists.", true);
-                }
-            }
             case "delete" -> {
                 if (args.length < 3) {
                     msg(player, "Usage: /partyadmin slot delete <id>", true);
@@ -96,66 +79,36 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
                             + " path=" + slot.path().size(), false);
                 }
             }
-            case "spawn" -> {
-                if (args.length < 3) {
-                    msg(player, "Usage: /partyadmin slot spawn <id>", true);
-                    return;
-                }
-                BoardSlot slot = slots.get(args[2]).orElse(null);
-                if (slot == null) {
-                    msg(player, "Slot not found.", true);
-                    return;
-                }
-                if (!slot.boundary().isInside(player.getLocation())) {
-                    msg(player, "Stand inside the slot cuboid.", true);
-                    return;
-                }
-                slot.setSpawn(player.getLocation());
-                slots.save();
-                msg(player, "Spawn set for " + slot.id(), false);
-            }
-            default -> player.sendMessage(Component.text("/partyadmin slot <create|delete|list|spawn>", NamedTextColor.AQUA));
+            default -> player.sendMessage(Component.text("/partyadmin slot <list|delete>", NamedTextColor.AQUA));
         }
     }
 
     private void handlePath(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage(Component.text("/partyadmin path <add|clear|list> <id>", NamedTextColor.AQUA));
+            player.sendMessage(Component.text("/partyadmin path <create|undo|end> [name]", NamedTextColor.AQUA));
             return;
         }
         String sub = args[1].toLowerCase(Locale.ROOT);
-        if (args.length < 3) {
-            msg(player, "Slot id required.", true);
-            return;
-        }
-        BoardSlot slot = slots.get(args[2]).orElse(null);
-        if (slot == null) {
-            msg(player, "Slot not found.", true);
-            return;
-        }
-        switch (sub) {
-            case "add" -> {
-                if (!slot.boundary().isInside(player.getLocation())) {
-                    msg(player, "Stand inside the slot cuboid.", true);
-                    return;
+        Optional<String> err = switch (sub) {
+            case "create" -> {
+                if (args.length < 3) {
+                    yield Optional.of("Usage: /partyadmin path create <name>");
                 }
-                slot.path().add(player.getLocation());
-                slots.save();
-                msg(player, "Path point #" + (slot.path().size() - 1) + " added.", false);
+                yield pathSetup.start(player, args[2]);
             }
-            case "clear" -> {
-                slot.path().clear();
-                slots.save();
-                msg(player, "Path cleared.", false);
+            case "undo" -> pathSetup.undo(player);
+            case "end" -> pathSetup.end(player);
+            default -> {
+                player.sendMessage(Component.text("/partyadmin path <create|undo|end> [name]", NamedTextColor.AQUA));
+                yield Optional.empty();
             }
-            case "list" -> msg(player, "Path size: " + slot.path().size(), false);
-            default -> player.sendMessage(Component.text("/partyadmin path <add|clear|list> <id>", NamedTextColor.AQUA));
-        }
+        };
+        err.ifPresent(msg -> msg(player, msg, true));
     }
 
     private void help(Player player) {
-        player.sendMessage(Component.text("/partyadmin slot create|delete|list|spawn", NamedTextColor.AQUA));
-        player.sendMessage(Component.text("/partyadmin path add|clear|list <id>", NamedTextColor.AQUA));
+        player.sendMessage(Component.text("/partyadmin path create|undo|end", NamedTextColor.AQUA));
+        player.sendMessage(Component.text("/partyadmin slot list|delete", NamedTextColor.AQUA));
     }
 
     private void msg(Player player, String text, boolean error) {
@@ -169,16 +122,15 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         }
         if (args.length == 2) {
             return switch (args[0].toLowerCase(Locale.ROOT)) {
-                case "slot" -> filter(List.of("create", "delete", "list", "spawn"), args[1]);
-                case "path" -> filter(List.of("add", "clear", "list"), args[1]);
+                case "slot" -> filter(List.of("list", "delete"), args[1]);
+                case "path" -> filter(List.of("create", "undo", "end"), args[1]);
                 default -> List.of();
             };
         }
         if (args.length == 3) {
             String g = args[0].toLowerCase(Locale.ROOT);
             String s = args[1].toLowerCase(Locale.ROOT);
-            if (g.equals("slot") && (s.equals("delete") || s.equals("spawn"))
-                    || g.equals("path")) {
+            if (g.equals("slot") && s.equals("delete")) {
                 List<String> ids = slots.all().stream().map(BoardSlot::id).collect(Collectors.toCollection(ArrayList::new));
                 return filter(ids, args[2]);
             }

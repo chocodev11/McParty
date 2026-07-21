@@ -128,12 +128,12 @@ public final class BoardSlotRegistry {
         }
     }
 
-    public boolean create(String id, SlotBoundary boundary) {
+    public boolean createReady(String id, World world, SlotBoundary boundary, BoardPath path, Location spawn) {
         String key = id.toLowerCase();
         if (slots.containsKey(key)) {
             return false;
         }
-        slots.put(key, new BoardSlot(key, boundary.world(), boundary, new BoardPath(), null));
+        slots.put(key, new BoardSlot(key, world, boundary, path, spawn));
         save();
         return true;
     }

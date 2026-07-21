@@ -86,7 +86,7 @@ Output: `build/libs/McParty-1.0.0-SNAPSHOT.jar` (version may change).
 src/main/java/dev/epicc/
   McPartyPlugin.java          # Bootstrap: wire services, register commands/listeners
   board/                      # Board slots, path, turns, dice
-    setup/WorldEditHook.java  # WE selection → SlotBoundary
+    setup/                    # WE pos1 path builder (gold/yellow 3x3 pads)
   command/                    # /party, /partyadmin
   config/PluginConfig.java    # Typed config from config.yml
   containment/                # Slot boundary clamp (move/teleport)
@@ -211,7 +211,7 @@ WAITING → STARTING → PLAYING → ENDING → CLEANUP
 
 ### Board slots vs slime worlds
 
-- **Template slot** (in `slots.yml`): setup on any loaded world (often a permanent build world). Stores integer bounds + path/spawn coords + world name for admin setup.
+- **Template slot** (in `slots.yml`): setup on any loaded world via path builder (WE pos1 pads). Stores integer bounds + path/spawn coords + world name.
 - **Runtime slot**: `BoardSlot.forWorld(World)` / `BoardPath.forWorld` / `SlotBoundary.forWorld` rebind the **same coordinates** onto the loaded slime clone.
 - Claiming uses the **registry** slot; cleanup releases via `slots.get(id)`.
 
@@ -243,17 +243,19 @@ public interface Minigame {
 |---------|------------|------|
 | `/party create\|join\|leave\|start\|list\|roll` | `mcparty.party` (default true) | Players |
 | `/party end [id]` | `mcparty.admin` | Force end |
-| `/partyadmin slot\|path` (alias `padmin`) | `mcparty.admin` | Board setup |
+| `/partyadmin path\|slot` (alias `padmin`) | `mcparty.admin` | Board setup |
 | Bypass boundary | `mcparty.admin.bypass` | Ops |
 
-Admin slot setup:
+Admin board setup (path builder):
 
-- `slot create <id>` — WorldEdit cuboid → boundary  
-- `slot spawn <id>` — set spawn at feet  
-- `path add/clear <id>` — board path points  
-- Slot is **ready** only with spawn + non-empty path + boundary  
+- `path create <name>` — start setup session for one board  
+- WorldEdit **pos1** (wand left-click or `//pos1`) — place flat 3×3 pad (center `GOLD_BLOCK`, ring `YELLOW_WOOL`) and append path space  
+- `path undo` — restore last pad blocks + drop last path space  
+- `path end` — spawn = first space; boundary = AABB of all pads + Y padding; save ready `BoardSlot`  
+- `slot list` / `slot delete <id>` — manage saved boards  
+- Quit / disable mid-setup cancels session and restores pads  
 
-Commands return `Optional<String>` errors from `PartyManager` → red chat prefix `[McParty]`.
+Commands return `Optional<String>` errors from `PartyManager` / setup → red chat prefix `[McParty]`.
 
 ---
 
@@ -410,12 +412,13 @@ Prefer incremental features that fit the current single-process, in-memory desig
 | `PartyInstance` / `PartyPlayer` / `PartyState` | Match state |
 | `BoardSlotRegistry` / `BoardSlot` / `BoardPath` | Board geometry |
 | `BoardTurnController` / `Dice` | Turn loop |
+| `PathSetupService` / `PathSetupListener` | WE pos1 path builder |
+| `WorldEditHook` | WE pos1 primary position |
 | `SlimeWorldService` | ASP worlds |
 | `InstanceStore` | Party persistence (memory) |
 | `PlayerSessionService` | Membership index |
 | `Minigame` / `MinigameManager` | Minigame SPI |
 | `PluginConfig` | Typed settings |
 | `ResourcePackService` | Dice pack host + prompt |
-| `WorldEditHook` | Selection → boundary |
 
 When in doubt: **put orchestration in `PartyManager`, world IO in `SlimeWorldService`, board rules in `board/`, minigame rules in `minigame/`.**

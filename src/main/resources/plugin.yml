@@ -15,7 +15,7 @@ commands:
     permission: mcparty.party
   partyadmin:
     description: Board slot and setup admin commands
-    usage: /partyadmin <slot|path>
+    usage: /partyadmin <path|slot>
     permission: mcparty.admin
     aliases: [padmin]
 
