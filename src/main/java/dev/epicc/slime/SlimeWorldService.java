@@ -10,6 +10,7 @@ import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 import com.infernalsuite.asp.api.world.properties.SlimeProperties;
 import com.infernalsuite.asp.api.world.properties.SlimePropertyMap;
 import com.infernalsuite.asp.loaders.file.FileLoader;
+import dev.epicc.seamless.SeamlessWorldChangeService;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -37,6 +38,7 @@ public final class SlimeWorldService {
     private final boolean allowMonsters;
     private final boolean allowAnimals;
     private final boolean pvp;
+    private final SeamlessWorldChangeService seamless;
 
     private AdvancedSlimePaperAPI asp;
     private SlimeLoader loader;
@@ -50,7 +52,8 @@ public final class SlimeWorldService {
             String worldPrefix,
             boolean allowMonsters,
             boolean allowAnimals,
-            boolean pvp
+            boolean pvp,
+            SeamlessWorldChangeService seamless
     ) {
         this.plugin = plugin;
         this.enabled = enabled;
@@ -59,6 +62,7 @@ public final class SlimeWorldService {
         this.allowMonsters = allowMonsters;
         this.allowAnimals = allowAnimals;
         this.pvp = pvp;
+        this.seamless = seamless;
 
         if (!enabled) {
             plugin.getLogger().info("Slime world management disabled in config.");
@@ -208,7 +212,7 @@ public final class SlimeWorldService {
 
         Location fallback = fallbackLocation(world);
         for (Player player : world.getPlayers()) {
-            player.teleport(fallback);
+            seamless.teleport(player, fallback);
         }
 
         boolean ok = Bukkit.unloadWorld(world, false);

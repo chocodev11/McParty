@@ -2,11 +2,9 @@ package dev.epicc.minigame;
 
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
-import net.kyori.adventure.title.Title;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -30,15 +28,14 @@ public final class DummyMinigame implements Minigame {
     }
 
     @Override
+    public String displayName() {
+        return "Dummy Round";
+    }
+
+    @Override
     public void start(MinigameContext context, Consumer<MinigameResult> done) {
         cancel();
-        Title title = Title.title(
-                Component.text("Minigame!", NamedTextColor.GOLD),
-                Component.text("Dummy round…", NamedTextColor.YELLOW),
-                Title.Times.times(Duration.ofMillis(250), Duration.ofSeconds(2), Duration.ofMillis(250))
-        );
         for (Player player : context.onlinePlayers()) {
-            player.showTitle(title);
             player.sendMessage(Component.text("[McParty] Dummy minigame started!", NamedTextColor.AQUA));
         }
 

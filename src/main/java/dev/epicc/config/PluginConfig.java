@@ -1,6 +1,5 @@
 package dev.epicc.config;
 
-import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -17,10 +16,20 @@ public final class PluginConfig {
     private final int startingCoins;
     private final int diceMin;
     private final int diceMax;
-    private final Material wallMaterial;
-    private final int wallHeight;
+    private final int diceInteractSeconds;
+    private final int diceSpinIntervalTicks;
+    private final double diceSpawnDistance;
+    private final float diceDisplayScale;
+    private final float diceHatScale;
+    private final double hopHeight;
+    private final double hopRiseSeconds;
+    private final double hopFallMaxSeconds;
     private final int dummyDurationSeconds;
     private final List<Integer> dummyCoinRewards;
+    private final int minigameRevealDurationTicks;
+    private final int minigameRevealIntervalTicks;
+
+    private final boolean seamlessWorldChangeEnabled;
 
     private final boolean slimeEnabled;
     private final String slimeWorldsDirectory;
@@ -43,14 +52,22 @@ public final class PluginConfig {
         startingCoins = c.getInt("party.starting-coins", 10);
         diceMin = c.getInt("board.dice-min", 1);
         diceMax = c.getInt("board.dice-max", 6);
-
-        Material mat = Material.matchMaterial(c.getString("containment.wall-material", "BARRIER"));
-        wallMaterial = mat != null ? mat : Material.BARRIER;
-        wallHeight = c.getInt("containment.wall-height", 5);
+        diceInteractSeconds = c.getInt("board.dice-interact-seconds", 5);
+        diceSpinIntervalTicks = c.getInt("board.dice-spin-interval-ticks", 2);
+        diceSpawnDistance = c.getDouble("board.dice-spawn-distance", 2.0);
+        diceDisplayScale = (float) c.getDouble("board.dice-display-scale", 0.6);
+        diceHatScale = (float) c.getDouble("board.dice-hat-scale", 0.35);
+        hopHeight = c.getDouble("board.hop-height", 5.0);
+        hopRiseSeconds = c.getDouble("board.hop-rise-seconds", 0.4);
+        hopFallMaxSeconds = c.getDouble("board.hop-fall-max-seconds", 4.0);
 
         dummyDurationSeconds = c.getInt("minigame.dummy-duration-seconds", 5);
         List<Integer> rewards = c.getIntegerList("minigame.dummy-coin-rewards");
         dummyCoinRewards = rewards.isEmpty() ? List.of(10, 7, 5, 3) : new ArrayList<>(rewards);
+        minigameRevealDurationTicks = c.getInt("minigame.reveal-duration-ticks", 60);
+        minigameRevealIntervalTicks = c.getInt("minigame.reveal-interval-ticks", 4);
+
+        seamlessWorldChangeEnabled = c.getBoolean("seamless-world-change.enabled", true);
 
         slimeEnabled = c.getBoolean("slime.enabled", true);
         slimeWorldsDirectory = c.getString("slime.worlds-directory", "slime_worlds");
@@ -69,10 +86,20 @@ public final class PluginConfig {
     public int startingCoins() { return startingCoins; }
     public int diceMin() { return diceMin; }
     public int diceMax() { return diceMax; }
-    public Material wallMaterial() { return wallMaterial; }
-    public int wallHeight() { return wallHeight; }
+    public int diceInteractSeconds() { return diceInteractSeconds; }
+    public int diceSpinIntervalTicks() { return diceSpinIntervalTicks; }
+    public double diceSpawnDistance() { return diceSpawnDistance; }
+    public float diceDisplayScale() { return diceDisplayScale; }
+    public float diceHatScale() { return diceHatScale; }
+    public double hopHeight() { return hopHeight; }
+    public double hopRiseSeconds() { return hopRiseSeconds; }
+    public double hopFallMaxSeconds() { return hopFallMaxSeconds; }
     public int dummyDurationSeconds() { return dummyDurationSeconds; }
     public List<Integer> dummyCoinRewards() { return dummyCoinRewards; }
+    public int minigameRevealDurationTicks() { return minigameRevealDurationTicks; }
+    public int minigameRevealIntervalTicks() { return minigameRevealIntervalTicks; }
+
+    public boolean seamlessWorldChangeEnabled() { return seamlessWorldChangeEnabled; }
 
     public boolean slimeEnabled() { return slimeEnabled; }
     public String slimeWorldsDirectory() { return slimeWorldsDirectory; }

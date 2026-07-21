@@ -9,10 +9,16 @@ party:
 board:
   dice-min: 1
   dice-max: 6
-
-containment:
-  wall-material: BARRIER
-  wall-height: 5
+  # Visual dice (ItemDisplay + Interaction). Needs resource pack mcparty:dice_1..6
+  dice-interact-seconds: 5
+  dice-spin-interval-ticks: 2
+  dice-spawn-distance: 2.0
+  dice-display-scale: 0.6
+  dice-hat-scale: 0.35
+  # Path move: rise in place → TP same height above target → fall (no fall damage)
+  hop-height: 5.0
+  hop-rise-seconds: 0.4
+  hop-fall-max-seconds: 4.0
 
 minigame:
   dummy-duration-seconds: 5
@@ -21,6 +27,14 @@ minigame:
     - 7
     - 5
     - 3
+  # Title roulette before minigame starts (players stay in place — no teleport)
+  reveal-duration-ticks: 60
+  reveal-interval-ticks: 4
+
+# Suppress dirt "Loading terrain…" on party world teleports (same env + height).
+# Requires PacketEvents plugin on the server. Fail-open if missing.
+seamless-world-change:
+  enabled: true
 
 # AdvancedSlimePaper — per-party world load/unload
 # Place template as: plugins/McParty/<worlds-directory>/<template-world>.slime

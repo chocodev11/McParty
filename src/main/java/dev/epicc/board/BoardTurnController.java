@@ -1,5 +1,6 @@
 package dev.epicc.board;
 
+import dev.epicc.board.dice.DicePresenter;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.party.PartyInstance;
 import dev.epicc.party.PartyPlayer;
@@ -9,30 +10,39 @@ import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.function.Consumer;
 
 public final class BoardTurnController {
 
     private final JavaPlugin plugin;
     private final MinigameManager minigameManager;
     private final Dice dice;
+    private final DicePresenter dicePresenter;
+    private final PathHopMover pathHopMover;
 
     private PartyInstance instance;
     private int turnIndex;
     private int turnsTakenThisRound;
     private boolean waitingForRoll;
     private boolean inMinigame;
-    private BukkitTask autoRollTask;
+    private boolean moving;
+    private UUID activeRoller;
 
-    public BoardTurnController(JavaPlugin plugin, MinigameManager minigameManager, Dice dice) {
+    public BoardTurnController(
+            JavaPlugin plugin,
+            MinigameManager minigameManager,
+            Dice dice,
+            DicePresenter dicePresenter,
+            PathHopMover pathHopMover
+    ) {
         this.plugin = plugin;
         this.minigameManager = minigameManager;
         this.dice = dice;
+        this.dicePresenter = dicePresenter;
+        this.pathHopMover = pathHopMover;
     }
 
     public void attach(PartyInstance instance) {
@@ -41,7 +51,8 @@ public final class BoardTurnController {
         this.turnsTakenThisRound = 0;
         this.waitingForRoll = false;
         this.inMinigame = false;
-        cancelAuto();
+        this.moving = false;
+        this.activeRoller = null;
     }
 
     public void startTurns() {
@@ -56,53 +67,31 @@ public final class BoardTurnController {
         if (!waitingForRoll || inMinigame || instance == null) {
             return false;
         }
-        PartyPlayer current = currentPlayer();
-        return current != null && current.uuid().equals(playerId);
+        return activeRoller != null && activeRoller.equals(playerId);
     }
 
+    /** Force-settle visual dice (/party roll) or no-op if not your turn. */
     public boolean roll(Player player) {
         if (!isWaitingForRoll(player.getUniqueId())) {
             return false;
         }
-        cancelAuto();
-        waitingForRoll = false;
-
-        PartyPlayer partyPlayer = currentPlayer();
-        if (partyPlayer == null || instance.slot() == null) {
-            return false;
-        }
-
-        int roll = dice.roll();
-        int maxIndex = Math.max(0, instance.slot().path().size() - 1);
-        int next = Math.min(partyPlayer.boardIndex() + roll, maxIndex);
-        partyPlayer.setBoardIndex(next);
-
-        Location dest = instance.slot().path().get(next);
-        if (dest != null) {
-            player.teleport(dest);
-        }
-
-        instance.broadcast(Component.text(
-                "[McParty] " + partyPlayer.name() + " rolled " + roll + " → space " + next,
-                NamedTextColor.GOLD
-        ));
-
-        turnsTakenThisRound++;
-        if (turnsTakenThisRound >= instance.playerCount()) {
-            turnsTakenThisRound = 0;
-            startMinigameThenContinue();
-        } else {
-            turnIndex = (turnIndex + 1) % instance.playerCount();
-            beginTurn();
-        }
-        return true;
+        return dicePresenter.trySettle(player);
     }
 
     public void stop() {
-        cancelAuto();
+        if (activeRoller != null) {
+            dicePresenter.cancel(activeRoller);
+            activeRoller = null;
+        }
+        if (instance != null) {
+            for (PartyPlayer pp : instance.players()) {
+                pathHopMover.cancel(pp.uuid());
+            }
+        }
         minigameManager.cancelActive();
         waitingForRoll = false;
         inMinigame = false;
+        moving = false;
         instance = null;
     }
 
@@ -121,32 +110,81 @@ public final class BoardTurnController {
             return;
         }
 
+        Player player = plugin.getServer().getPlayer(current.uuid());
+        if (player == null || !player.isOnline()) {
+            skipAbsentTurn();
+            return;
+        }
+
         waitingForRoll = true;
+        activeRoller = current.uuid();
         instance.broadcast(Component.text(
-                "[McParty] " + current.name() + "'s turn — /party roll",
+                "[McParty] " + current.name() + "'s turn — click the dice (or /party roll)",
                 NamedTextColor.AQUA
         ));
 
-        // auto-roll after 15s so games do not stall
-        autoRollTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            if (!waitingForRoll || instance == null) {
+        boolean started = dicePresenter.start(player, dice, result -> {
+            if (instance == null || instance.state() != PartyState.PLAYING) {
                 return;
             }
-            Player p = plugin.getServer().getPlayer(current.uuid());
-            if (p != null && p.isOnline()) {
-                roll(p);
-            } else {
-                waitingForRoll = false;
-                turnsTakenThisRound++;
-                turnIndex = (turnIndex + 1) % Math.max(1, instance.playerCount());
-                if (turnsTakenThisRound >= instance.playerCount()) {
-                    turnsTakenThisRound = 0;
-                    startMinigameThenContinue();
-                } else {
-                    beginTurn();
-                }
-            }
-        }, 15 * 20L);
+            applyRoll(player, current, result);
+        });
+        if (!started) {
+            // Should not happen; fall back to instant roll
+            applyRoll(player, current, dice.roll());
+        }
+    }
+
+    private void applyRoll(Player player, PartyPlayer partyPlayer, int roll) {
+        waitingForRoll = false;
+        activeRoller = null;
+
+        if (partyPlayer == null || instance == null || instance.slot() == null) {
+            return;
+        }
+
+        int maxIndex = Math.max(0, instance.slot().path().size() - 1);
+        int next = Math.min(partyPlayer.boardIndex() + roll, maxIndex);
+        partyPlayer.setBoardIndex(next);
+
+        Location dest = instance.slot().path().get(next);
+
+        instance.broadcast(Component.text(
+                "[McParty] " + partyPlayer.name() + " rolled " + roll + " → space " + next,
+                NamedTextColor.GOLD
+        ));
+
+        moving = true;
+        pathHopMover.hop(player, dest, this::afterMove);
+    }
+
+    private void afterMove() {
+        if (instance == null || instance.state() != PartyState.PLAYING) {
+            moving = false;
+            return;
+        }
+        moving = false;
+        turnsTakenThisRound++;
+        if (turnsTakenThisRound >= instance.playerCount()) {
+            turnsTakenThisRound = 0;
+            startMinigameThenContinue();
+        } else {
+            turnIndex = (turnIndex + 1) % instance.playerCount();
+            beginTurn();
+        }
+    }
+
+    private void skipAbsentTurn() {
+        waitingForRoll = false;
+        activeRoller = null;
+        turnsTakenThisRound++;
+        turnIndex = (turnIndex + 1) % Math.max(1, instance.playerCount());
+        if (turnsTakenThisRound >= instance.playerCount()) {
+            turnsTakenThisRound = 0;
+            startMinigameThenContinue();
+        } else {
+            beginTurn();
+        }
     }
 
     private void startMinigameThenContinue() {
@@ -155,6 +193,10 @@ public final class BoardTurnController {
         }
         inMinigame = true;
         waitingForRoll = false;
+        if (activeRoller != null) {
+            dicePresenter.cancel(activeRoller);
+            activeRoller = null;
+        }
         List<Player> online = new ArrayList<>();
         for (PartyPlayer pp : instance.players()) {
             Player p = plugin.getServer().getPlayer(pp.uuid());
@@ -168,8 +210,8 @@ public final class BoardTurnController {
             return;
         }
 
-        instance.broadcast(Component.text("[McParty] Round complete — minigame!", NamedTextColor.LIGHT_PURPLE));
-        minigameManager.runDummy(instance, online, result -> {
+        instance.broadcast(Component.text("[McParty] Round complete — picking minigame…", NamedTextColor.LIGHT_PURPLE));
+        minigameManager.runRandom(instance, online, result -> {
             if (instance == null) {
                 return;
             }
@@ -197,12 +239,5 @@ public final class BoardTurnController {
             turnIndex = 0;
         }
         return list.get(turnIndex);
-    }
-
-    private void cancelAuto() {
-        if (autoRollTask != null) {
-            autoRollTask.cancel();
-            autoRollTask = null;
-        }
     }
 }

@@ -1,16 +1,21 @@
 package dev.epicc;
 
 import dev.epicc.board.BoardSlotRegistry;
+import dev.epicc.board.PathHopMover;
+import dev.epicc.board.dice.DiceClickListener;
+import dev.epicc.board.dice.DiceHatService;
+import dev.epicc.board.dice.DicePresenter;
 import dev.epicc.board.setup.WorldEditHook;
 import dev.epicc.command.PartyAdminCommand;
 import dev.epicc.command.PartyCommand;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.containment.BoundaryListener;
-import dev.epicc.containment.FakeWallService;
 import dev.epicc.minigame.DummyMinigame;
 import dev.epicc.minigame.MinigameManager;
+import dev.epicc.minigame.MinigameRegistry;
 import dev.epicc.party.PartyManager;
 import dev.epicc.player.PlayerSessionService;
+import dev.epicc.seamless.SeamlessWorldChangeService;
 import dev.epicc.slime.SlimeWorldService;
 import dev.epicc.store.InMemoryInstanceStore;
 import org.bukkit.command.PluginCommand;
@@ -30,6 +35,10 @@ public final class McPartyPlugin extends JavaPlugin {
         slotRegistry = new BoardSlotRegistry(this);
         slotRegistry.load();
 
+        SeamlessWorldChangeService seamless = new SeamlessWorldChangeService(
+                this, config.seamlessWorldChangeEnabled()
+        );
+
         slimeWorldService = new SlimeWorldService(
                 this,
                 config.slimeEnabled(),
@@ -38,19 +47,45 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.slimeWorldPrefix(),
                 config.slimeAllowMonsters(),
                 config.slimeAllowAnimals(),
-                config.slimePvp()
+                config.slimePvp(),
+                seamless
         );
 
-        FakeWallService walls = new FakeWallService(config.wallMaterial(), config.wallHeight());
-        MinigameManager minigames = new MinigameManager(
-                this,
+        MinigameRegistry minigameRegistry = new MinigameRegistry(
                 new DummyMinigame(config.dummyDurationSeconds(), config.dummyCoinRewards())
         );
-        partyManager = new PartyManager(
-                this, config, store, sessions, slotRegistry, walls, minigames, slimeWorldService
+        // Register more Minigame impls here later: minigameRegistry.register(...)
+        MinigameManager minigames = new MinigameManager(
+                this,
+                minigameRegistry,
+                config.minigameRevealDurationTicks(),
+                config.minigameRevealIntervalTicks()
         );
 
-        getServer().getPluginManager().registerEvents(new BoundaryListener(partyManager, walls), this);
+        DiceHatService diceHats = new DiceHatService(config.diceHatScale());
+        DicePresenter dicePresenter = new DicePresenter(
+                this,
+                diceHats,
+                config.diceSpawnDistance(),
+                config.diceInteractSeconds(),
+                config.diceSpinIntervalTicks(),
+                config.diceDisplayScale()
+        );
+        PathHopMover pathHopMover = new PathHopMover(
+                this,
+                config.hopHeight(),
+                config.hopRiseSeconds(),
+                config.hopFallMaxSeconds()
+        );
+
+        partyManager = new PartyManager(
+                this, config, store, sessions, slotRegistry, minigames, slimeWorldService, seamless,
+                dicePresenter, diceHats, pathHopMover
+        );
+
+        getServer().getPluginManager().registerEvents(new BoundaryListener(partyManager, pathHopMover), this);
+        getServer().getPluginManager().registerEvents(new DiceClickListener(dicePresenter), this);
+        getServer().getPluginManager().registerEvents(pathHopMover, this);
 
         PartyCommand partyCommand = new PartyCommand(partyManager);
         PluginCommand party = getCommand("party");
@@ -59,7 +94,7 @@ public final class McPartyPlugin extends JavaPlugin {
             party.setTabCompleter(partyCommand);
         }
 
-        PartyAdminCommand adminCommand = new PartyAdminCommand(slotRegistry, new WorldEditHook(), walls);
+        PartyAdminCommand adminCommand = new PartyAdminCommand(slotRegistry, new WorldEditHook());
         PluginCommand partyAdmin = getCommand("partyadmin");
         if (partyAdmin != null) {
             partyAdmin.setExecutor(adminCommand);

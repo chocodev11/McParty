@@ -5,10 +5,13 @@ import dev.epicc.board.BoardSlot;
 import dev.epicc.board.BoardSlotRegistry;
 import dev.epicc.board.BoardTurnController;
 import dev.epicc.board.Dice;
+import dev.epicc.board.PathHopMover;
+import dev.epicc.board.dice.DiceHatService;
+import dev.epicc.board.dice.DicePresenter;
 import dev.epicc.config.PluginConfig;
-import dev.epicc.containment.FakeWallService;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.player.PlayerSessionService;
+import dev.epicc.seamless.SeamlessWorldChangeService;
 import dev.epicc.slime.SlimeWorldService;
 import dev.epicc.store.InstanceStore;
 import net.kyori.adventure.text.Component;
@@ -35,9 +38,12 @@ public final class PartyManager {
     private final InstanceStore store;
     private final PlayerSessionService sessions;
     private final BoardSlotRegistry slots;
-    private final FakeWallService walls;
     private final MinigameManager minigames;
     private final SlimeWorldService slime;
+    private final SeamlessWorldChangeService seamless;
+    private final DicePresenter dicePresenter;
+    private final DiceHatService diceHats;
+    private final PathHopMover pathHopMover;
     private final Map<UUID, BoardTurnController> controllers = new ConcurrentHashMap<>();
     private final Map<UUID, BukkitTask> countdowns = new ConcurrentHashMap<>();
 
@@ -47,18 +53,24 @@ public final class PartyManager {
             InstanceStore store,
             PlayerSessionService sessions,
             BoardSlotRegistry slots,
-            FakeWallService walls,
             MinigameManager minigames,
-            SlimeWorldService slime
+            SlimeWorldService slime,
+            SeamlessWorldChangeService seamless,
+            DicePresenter dicePresenter,
+            DiceHatService diceHats,
+            PathHopMover pathHopMover
     ) {
         this.plugin = plugin;
         this.config = config;
         this.store = store;
         this.sessions = sessions;
         this.slots = slots;
-        this.walls = walls;
         this.minigames = minigames;
         this.slime = slime;
+        this.seamless = seamless;
+        this.dicePresenter = dicePresenter;
+        this.diceHats = diceHats;
+        this.pathHopMover = pathHopMover;
     }
 
     public JavaPlugin plugin() {
@@ -137,7 +149,6 @@ public final class PartyManager {
             return silent ? Optional.empty() : Optional.of("You are not in a party.");
         }
         PartyInstance instance = opt.get();
-        walls.clear(player);
         sessions.unbind(player.getUniqueId());
         instance.removePlayer(player.getUniqueId());
 
@@ -293,6 +304,9 @@ public final class PartyManager {
             store.get(id).ifPresent(this::cleanup);
         }
         controllers.clear();
+        dicePresenter.cancelAll();
+        diceHats.clearAll();
+        pathHopMover.cancelAll();
         sessions.clearAll();
         slots.releaseAll();
         slime.unloadAll();
@@ -310,15 +324,16 @@ public final class PartyManager {
         for (PartyPlayer pp : instance.players()) {
             Player p = plugin.getServer().getPlayer(pp.uuid());
             if (p != null && p.isOnline()) {
-                p.teleport(spawn);
-                walls.apply(p, slot.boundary());
+                seamless.teleport(p, spawn);
             }
         }
 
         BoardTurnController controller = new BoardTurnController(
                 plugin,
                 minigames,
-                new Dice(instance.settings().diceMin(), instance.settings().diceMax())
+                new Dice(instance.settings().diceMin(), instance.settings().diceMax()),
+                dicePresenter,
+                pathHopMover
         );
         controller.attach(instance);
         controllers.put(instance.id(), controller);
@@ -365,11 +380,11 @@ public final class PartyManager {
         }
 
         for (PartyPlayer pp : instance.players()) {
-            Player p = plugin.getServer().getPlayer(pp.uuid());
-            if (p != null) {
-                walls.clear(p);
-            }
+            dicePresenter.cancel(pp.uuid());
+            diceHats.clear(pp.uuid());
+            pathHopMover.cancel(pp.uuid());
         }
+
         sessions.clearInstance(instance.id());
 
         // Unload slime clone (teleports remaining players out)

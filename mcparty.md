@@ -1,205 +1,382 @@
-# TÀI LIỆU THIẾT KẾ HỆ THỐNG - MC PARTY (Mario Party trong Minecraft)
+# McParty — System Design Document
 
-**Phiên bản:** 1.0  
-**Ngày cập nhật:** 14/07/2026  
-**Mục tiêu ban đầu:** Hỗ trợ 400+ người chơi đồng thời  
-**Phong cách:** Kết hợp giữa Mario Party Superstars + Cytooxien Minecraft Party + Mr_Kheese map
-
----
-
-## 1. Mục tiêu dự án
-
-- Xây dựng một hệ thống **Mario Party** quy mô lớn trong Minecraft.
-- Giữ được cảm giác vui vẻ, tương tác cao như bản gốc (ưu tiên instance nhỏ: **4–8 người**, tối đa 10–12 người).
-- Hỗ trợ **10–12 minigame** ở giai đoạn đầu.
-- Dễ mở rộng sau này (thêm minigame, board, rotation như Cytooxien).
-- Sử dụng **AdvancedSlimePaper** để quản lý nhiều world/instance hiệu quả.
+**Version:** 1.1  
+**Updated:** 2026-07-21  
+**Initial target capacity:** 400+ concurrent players  
+**Style:** Mario Party Superstars + Cytooxien Minecraft Party + classic Minecraft party maps
 
 ---
 
-## 2. Tech Stack
+## 1. Project goals
 
-| Thành phần              | Công nghệ                          | Ghi chú |
-|-------------------------|------------------------------------|--------|
-| Server Software         | **AdvancedSlimePaper**             | Load/unload world nhanh, tiết kiệm RAM |
-| Proxy                   | **Velocity**                       | Tốt hơn BungeeCord |
-| Plugin chính            | Java (Bukkit/Paper API)            | Tự viết |
-| Database (Lâu dài)      | **MySQL**                          | Lưu stats, coin, star tổng |
-| Cache / Runtime         | **Redis**                          | Trạng thái instance, queue, sync multi-server |
-| World Management        | AdvancedSlimePaper (Slime format)  | Dynamic load/unload |
-| Matchmaking             | Tự viết (Room-based + Dynamic countdown) | 60s (>10p), 30s (>20p), 10s (40p) |
+- Build a large-scale **Mario Party** experience in Minecraft.
+- Keep the fun, high-interaction feel of the original (prefer small instances: **4–8 players**, hard cap around 10–12).
+- Ship **8 launch minigames** first, expand toward **10–12** soon after.
+- Stay easy to extend later (new minigames, boards, Cytooxien-style rotation).
+- Use **AdvancedSlimePaper (ASP)** for efficient world/instance load and unload.
 
 ---
 
-## 3. Kiến trúc Tổng thể (cho 400 người)
+## 2. Tech stack
+
+| Component | Technology | Notes |
+|-----------|------------|--------|
+| Server software | **AdvancedSlimePaper** | Fast world load/unload, lower RAM per instance |
+| Proxy | **Velocity** | Preferred over BungeeCord when multi-server |
+| Core plugin | Java (Paper API) | Custom plugin (`dev.epicc`) |
+| Long-term database | **MySQL** | Stats, career coins/stars |
+| Cache / runtime | **Redis** | Instance state, queue, multi-server sync |
+| World management | ASP Slime format | Dynamic clone load/unload |
+| Matchmaking | Custom (room-based + dynamic countdown) | 60s (>10 in queue), 30s (>20), 10s (full/40) |
+
+**Current implementation phase:** single-process in-memory party rooms, board dice, dummy/minigame SPI, ASP board clones. Redis/MySQL/Velocity are design targets, not all implemented yet.
+
+---
+
+## 3. High-level architecture (400 players)
 
 ```
 Velocity Proxy
      │
      ├── Lobby Server (1 Paper server)
      │
-     ├── Game Server 1 (64GB) → 12–18 instance MC Party
-     ├── Game Server 2 (64GB) → 12–18 instance MC Party
-     └── Game Server 3 (64GB) → 12–18 instance MC Party   ← (khi scale)
+     ├── Game Server 1 (64GB) → 12–18 MC Party instances
+     ├── Game Server 2 (64GB) → 12–18 MC Party instances
+     └── Game Server 3 (64GB) → 12–18 MC Party instances   ← when scaling
 ```
 
-**Phân công:**
-- **Lobby Server**: Sảnh chờ, tạo phòng, matchmaking, GUI.
-- **Game Server**: Chạy các `PartyInstance` thực tế (board + minigame).
-- Mỗi **Game Server** chạy nhiều instance cùng lúc nhờ AdvancedSlimePaper.
+**Responsibilities:**
+
+- **Lobby server:** waiting halls, create/join UI, matchmaking, cosmetics hub.
+- **Game servers:** real `PartyInstance` sessions (board + minigames).
+- Each game server hosts many instances at once via AdvancedSlimePaper.
 
 ---
 
-## 4. Thiết kế Plugin (Core Classes)
+## 4. Plugin design (core types)
 
-### Các class chính:
+### Main classes
 
-| Class                  | Vai trò | Ghi chú |
-|------------------------|--------|--------|
-| `PartyManager`         | Quản lý tất cả instance, matchmaking, tạo/hủy instance | Trung tâm |
-| `PartyInstance`        | Đại diện cho 1 ván chơi (1 board) | Chứa players, state, coins, stars, board logic |
-| `Board`                | Logic bảng chơi (di chuyển, ô, item, shop) | Lấy cảm hứng Cytooxien (coin shop) |
-| `MinigameManager`      | Quản lý và chọn minigame | Hỗ trợ random + specific |
-| `Minigame` (Interface) | Interface cho tất cả minigame | Dễ mở rộng |
-| `DatabaseManager`      | Kết nối MySQL | Lưu stats lâu dài |
-| `RedisManager`         | Kết nối Redis | Lưu trạng thái runtime nhanh |
+| Class | Role | Notes |
+|-------|------|--------|
+| `PartyManager` | All instances, create/join/start/end, orchestration | Center of the system |
+| `PartyInstance` | One match (one board) | Players, state, coins, stars, board logic |
+| `Board` / board package | Movement, spaces, items, shop | Coin shop inspired by Cytooxien |
+| `MinigameManager` | Select and run minigames | Random + specific id; cancel active safely |
+| `Minigame` (interface) | SPI for every minigame | `start` / `cancel` → `MinigameResult` |
+| `DatabaseManager` | MySQL | Long-term stats (planned) |
+| `RedisManager` | Redis | Fast runtime state (planned) |
 
-### Trạng thái của `PartyInstance`:
-`WAITING` → `STARTING` → `PLAYING` → `ENDING` → `CLEANUP`
+### `PartyInstance` state machine
 
----
+```
+WAITING → STARTING → PLAYING → ENDING → CLEANUP
+```
 
-## 5. Luồng Hoạt động Chính
-
-### 5.1. Tạo & Join Instance
-1. Người chơi ở Lobby → bấm tạo phòng hoặc join.
-2. `PartyManager` kiểm tra Redis → tìm instance đang chờ phù hợp.
-3. Nếu không có → tạo `PartyInstance` mới → load world bằng AdvancedSlimePaper.
-4. Người chơi được đưa vào instance.
-
-### 5.2. Trong ván chơi (Board)
-- Người chơi lần lượt ném xúc xắc → di chuyển trên board.
-- Sau khi tất cả đã di chuyển → `MinigameManager` chọn minigame → chạy.
-- Minigame kết thúc → trả coin/star về instance.
-- Lặp lại cho đến khi hết vòng hoặc ai đó về đích.
-
-### 5.3. Kết thúc ván
-- Tính điểm cuối cùng.
-- Lưu kết quả vào MySQL.
-- Hủy instance → unload world.
+| State | Meaning |
+|-------|---------|
+| `WAITING` | Lobby in memory; world optional |
+| `STARTING` | Slot claimed; world load + countdown |
+| `PLAYING` | Board turns + minigames |
+| `ENDING` | Podium / final scores |
+| `CLEANUP` | Sessions cleared, world unloaded, instance removed |
 
 ---
 
-## 6. Minigame System
+## 5. Main gameplay flow
 
-**Giai đoạn đầu:** 10–12 minigame
+### 5.1. Create & join
 
-**Loại minigame nên có:**
-- 4–5 Free-for-all
-- 2–3 2v2
-- 1–2 1v3
-- 1–2 Duel (1v1)
+1. Player is in lobby → create room or join.
+2. `PartyManager` finds a suitable waiting instance (later: Redis-backed).
+3. If none → create `PartyInstance` → load/claim board world (ASP when enabled).
+4. Player is bound to the instance session.
 
-**Thiết kế:**
-- Dùng **Interface `Minigame`**
-- `MinigameManager` chịu trách nhiệm chọn và chạy minigame
-- Mỗi minigame có thể nhận danh sách người chơi + `PartyInstance` để trả kết quả
+### 5.2. During a match (board)
 
-**Mục tiêu sau này:** Có thể làm rotation minigame như Cytooxien.
+1. Players take turns rolling dice and moving on the board path.
+2. After everyone has acted for the round → `MinigameManager` picks a minigame and runs it.
+3. Minigame ends → placements and coin rewards apply back on the instance.
+4. Repeat until max turns are done or someone finishes the board (product rules may evolve).
 
----
+### 5.3. Match end
 
-## 7. Database & Storage Strategy
-
-### MySQL (Persistent)
-- Bảng `players`
-- Bảng `player_stats`
-- Bảng `minigame_history`
-
-### Redis (Runtime - Rất quan trọng)
-- `party:instance:{id}` → trạng thái instance
-- `party:player:{uuid}:current` → instance hiện tại của người chơi
-- `party:queue` → danh sách chờ
-
-**Lý do dùng Redis:**
-- Nhanh khi có nhiều instance.
-- Dễ sync khi sau này scale sang nhiều Game Server.
+1. Compute final ranking (stars/coins/board position — exact formula TBD).
+2. Persist results to MySQL (when online).
+3. Destroy instance → unload slime world → release board slot.
 
 ---
 
-## 8. World & Instance Management
+## 6. Minigame system
 
-- Mỗi `PartyInstance` = 1 world riêng (dùng AdvancedSlimePaper).
-- **Chỉ load world** khi instance được tạo.
-- **Unload ngay** khi instance kết thúc.
-- Giới hạn số instance active trên 1 Game Server (tùy RAM).
+### Design rules
 
-**Khuyến nghị ban đầu (64GB RAM):**
-- Tối đa **15–18 instance** chạy cùng lúc trên 1 Game Server.
+- Implement every game as `Minigame` (`id()`, `start(context, done)`, `cancel()`).
+- `MinigameManager` owns selection, active instance, and force-cancel on party end.
+- Average length: **45–90 seconds** (board interludes should stay snappy; Cytooxien averages ~2 minutes — we aim slightly shorter early on).
+- Always return **placement 1…n** and **coins** via `MinigameResult` on the main thread.
+- `cancel()` must restore blocks, inventory, gamemode, and listeners safely.
+- Prefer shared engines (elimination, race finish, score, block restore) over one-off logic.
+- Later: Cytooxien-style **rotation** and optional **player vote** for the next game.
 
----
+### Format mix (launch)
 
-## 9. Matchmaking (Dynamic Countdown)
+| Format | Count (of 8) | Purpose |
+|--------|--------------|---------|
+| Free-for-all | 8 | Validate SPI and feel first |
+| 2v2 / 1v3 / duel | 0 at launch | Add after FFA pool is solid |
 
-- >10 người → đếm ngược **60 giây**
-- >20 người → đếm ngược **30 giây**
-- Đủ 40 người (hoặc max) → đếm ngược **10 giây** rồi vào ngay
+Long-term target still matches the original plan: ~4–5 FFA, 2–3 2v2, 1–2 1v3, 1–2 duels once team assignment exists.
 
-**Mục tiêu:** Giảm thời gian chờ nhưng vẫn giữ instance nhỏ (4–10 người).
+### Shared building blocks
 
----
-
-## 10. Scaling Roadmap
-
-| Giai đoạn     | Số người     | Số Game Server | Instance / Server | Ghi chú |
-|---------------|--------------|----------------|-------------------|--------|
-| Phase 1       | 100–150      | 1              | 10–12             | Test & ổn định |
-| Phase 2       | 300–400      | 2–3            | 12–18             | Mục tiêu ban đầu |
-| Phase 3       | 500+         | 4+             | 15–20             | Scale ngang + Redis sync |
-
----
-
-## 11. Các Quyết định Quan trọng
-
-- **Ưu tiên instance nhỏ** (4–8 người) để giữ cảm giác Mario Party.
-- Dùng **AdvancedSlimePaper** để quản lý nhiều world.
-- Kết hợp **Board + Coin Shop** (lấy cảm hứng Cytooxien) thay vì chỉ thu thập sao.
-- Bắt đầu với **10–12 minigame chất lượng** thay vì làm nhiều.
-- Dùng **Redis** cho trạng thái runtime ngay từ đầu.
-- Kiến trúc **Lobby + nhiều Game Server** khi scale.
+| Utility | Used by |
+|---------|---------|
+| Elimination / death order ranking | Hot Potato, Spleef, Musical Chairs, Color Chaos, Floor is Lava |
+| Block snapshot + restore | Spleef, Floor is Lava, Color Chaos |
+| Finish-line / checkpoint race | Red Light Green Light, Race |
+| Score accumulator | Laser Tag |
+| Arena spawns + inventory reset | All eight |
 
 ---
 
-## 12. Roadmap Phát triển (Gợi ý)
+### 6.1. Launch minigames (8)
 
-**Phase 1 (Cơ bản)**
-- `PartyInstance` + `PartyManager`
-- 1 board đơn giản
-- 4–5 minigame
-- Redis cho trạng thái
+Inspired by Cytooxien Minecraft Party and classic Mario Party–style Minecraft maps. All are free-for-all unless noted.
 
-**Phase 2**
-- Đầy đủ 10–12 minigame
-- Coin + Shop trên board
-- GUI tạo/join phòng
+#### 1. Hot Potato — `hot_potato`
 
-**Phase 3**
-- Tách Lobby + Game Server
-- Velocity Proxy
-- Hỗ trợ nhiều Game Server
+| Field | Detail |
+|-------|--------|
+| **Feel** | Pure Mario Party chaos |
+| **Goal** | Do not hold the potato when the timer ends |
+| **Rules** | One or more players start with a hot potato item. Hitting another player passes it. When the round timer expires, holders explode and are eliminated (or place last). Multiple pass cycles until ranking is complete, or a single timed round with order-out scoring. |
+| **Win / rank** | Survival order or fewest potato explosions |
+| **Complexity** | Low |
+| **Needs** | Item pass on hit, explosion VFX, short timer |
 
-**Phase 4 (Nâng cao)**
-- Rotation minigame & map (như Cytooxien)
-- Thêm nhiều board
-- Hệ thống party, rank, stats chi tiết
+#### 2. Spleef — `spleef`
+
+| Field | Detail |
+|-------|--------|
+| **Feel** | Classic Minecraft party staple |
+| **Goal** | Be the last player standing on the platform |
+| **Rules** | Players get shovels (or similar). Breaking floor blocks drops others into the void/water. Optional simple power-ups later (TNT arrow, knockback). |
+| **Win / rank** | Last alive = 1st; others by elimination order |
+| **Complexity** | Low–medium |
+| **Needs** | Flat arena, **block restore** on end/cancel |
+
+#### 3. Musical Chairs — `musical_chairs`
+
+| Field | Detail |
+|-------|--------|
+| **Feel** | Reaction / elimination rounds |
+| **Goal** | Claim a seat when the music stops |
+| **Rules** | While “music” plays, players move freely (optional coin rain). When it stops, everyone must stand on / sit in a free chair. Always **one fewer chair than living players**. Failures are eliminated each round until a winner remains. |
+| **Win / rank** | Last seated / elimination order |
+| **Complexity** | Low–medium |
+| **Needs** | Chair entities or marked blocks, round loop, music cue (sound/title) |
+
+#### 4. Color Chaos — `color_chaos`
+
+| Field | Detail |
+|-------|--------|
+| **Feel** | Fast reaction floor game (Cytooxien Color Chaos) |
+| **Goal** | Stand on the announced color before other blocks vanish |
+| **Rules** | Arena floor is multi-colored. Title/boss bar shows a color; after a short delay, non-matching blocks disappear. Intervals get shorter. Optional power-ups later (paint bomb, glider). |
+| **Win / rank** | Last standing, or farthest round survived |
+| **Complexity** | Medium |
+| **Needs** | Color grid, timed vanish, restore floor |
+
+#### 5. Red Light, Green Light — `red_light`
+
+| Field | Detail |
+|-------|--------|
+| **Feel** | Race + freeze discipline |
+| **Goal** | Reach the finish line first |
+| **Rules** | Green = may move. Red = must stop. Movement (or position delta) on red sends the player backward a fixed penalty. First to the far line wins. |
+| **Win / rank** | Finish order; unfinished players ranked by distance |
+| **Complexity** | Low–medium |
+| **Needs** | Straight lane arena, move detection while red, finish region |
+
+#### 6. Floor is Lava — `floor_is_lava`
+
+| Field | Detail |
+|-------|--------|
+| **Feel** | Path-cutting survival (Cytooxien Floor is Lava) |
+| **Goal** | Stay up as long as possible |
+| **Rules** | Blocks under a player vanish shortly after being stepped on. Players can try to cut others off. Falling eliminates. |
+| **Win / rank** | Last standing / survival time |
+| **Complexity** | Medium |
+| **Needs** | Same **block restore** engine as Spleef; trail vanish scheduler |
+
+#### 7. Race — `race`
+
+| Field | Detail |
+|-------|--------|
+| **Feel** | Sprint course between board rounds |
+| **Goal** | First to the finish |
+| **Rules** | Short foot-race track with optional coin pickups (speed boost or bonus coins), trampolines/fans as map props later. No horses/elytra in v1. |
+| **Win / rank** | Finish order |
+| **Complexity** | Medium (map-dependent) |
+| **Needs** | Track + start gates + finish line; optional checkpoint coins |
+
+#### 8. Laser Tag — `laser_tag`
+
+| Field | Detail |
+|-------|--------|
+| **Feel** | Score FFA shooter (Cytooxien Laser Tag) |
+| **Goal** | Highest hit score when time ends |
+| **Rules** | Players get a “blaster” (snowball, crossbow, or custom projectile). Hits award points; killstreaks can grant bonus coins. Short reload after miss, faster after hit (optional). Melee punch as close-range fallback. |
+| **Win / rank** | Score descending; ties by last hit time |
+| **Complexity** | Medium |
+| **Needs** | Small arena with cover, projectile hit tracking, scoreboard |
 
 ---
 
-**Tài liệu này đã đủ chi tiết** để bạn copy và đưa cho AI khác (hoặc dùng lại với mình) mà không cần giải thích lại từ đầu.
+### 6.2. Implementation order
 
-Bạn muốn mình bổ sung thêm phần nào không? Ví dụ:
-- Chi tiết code mẫu cho `PartyInstance` và `MinigameManager`
-- Sơ đồ luồng chi tiết hơn
-- Cách thiết kế bảng (Board) và Coin Shop
+```text
+1. Minigame registry + random pick (Dummy remains fallback)
+2. hot_potato
+3. spleef (+ block snapshot/restore util)
+4. musical_chairs
+5. red_light
+6. color_chaos
+7. floor_is_lava (reuses spleef restore)
+8. race
+9. laser_tag
+```
 
-Cứ nói, mình sẽ cập nhật tài liệu này ngay.
+### 6.3. Deferred (not in the first 8)
+
+| Idea | Why later |
+|------|-----------|
+| Parkour (dedicated long course) | Map content cost; Race covers “first to finish” first |
+| One in the Chamber / Lucky Towers | Combat balance + random items |
+| Shooting Range | Mob targets; good Wave 2 score game |
+| Horse Race / Elytra Race | Entity and map polish |
+| Skywars / Survival Games / Walls | Loot economy, border, longer rounds |
+| Memorize / Too Many Items | Heavy content or worldgen |
+| 2v2 / 1v3 / Duels | Needs team assignment + result rules |
+| Shared power-up meta | After the FFA eight feel good |
+
+---
+
+## 7. Database & storage strategy
+
+### MySQL (persistent)
+
+- `players` — identity / last seen
+- `player_stats` — wins, coins earned, stars, playtime
+- `minigame_history` — per-game placements for balance tuning
+
+### Redis (runtime — important when multi-server)
+
+- `party:instance:{id}` → instance state blob
+- `party:player:{uuid}:current` → current instance id
+- `party:queue` → matchmaking queue
+
+**Why Redis:** fast with many instances; easy sync when splitting across game servers.
+
+---
+
+## 8. World & instance management
+
+- Each `PartyInstance` uses its own board world (ASP clone of a template when slime is enabled).
+- Load world when the match starts (or on create, if product requires early show).
+- Unload as soon as the instance cleans up; never leave players in a world about to unload.
+- Cap active instances per game server by RAM.
+
+**Initial recommendation (64GB game server):** about **15–18** concurrent party instances.
+
+**Minigame arenas (later):** dedicated small maps or pads per minigame id, either:
+
+- regions inside the board world, or  
+- separate slime templates loaded only for the minigame phase  
+
+Wave-1 games can start on a **shared arena region** so the SPI and ranking path ship before full multi-map rotation.
+
+---
+
+## 9. Matchmaking (dynamic countdown)
+
+| Queue size | Countdown |
+|------------|-----------|
+| >10 players waiting | 60 seconds |
+| >20 | 30 seconds |
+| Full / ~40 (or max room size) | 10 seconds, then start |
+
+**Goal:** cut wait time while keeping each instance small (4–10 players) for Mario Party feel.
+
+---
+
+## 10. Scaling roadmap
+
+| Phase | Players | Game servers | Instances / server | Notes |
+|-------|---------|--------------|--------------------|--------|
+| Phase 1 | 100–150 | 1 | 10–12 | Stabilize core loop |
+| Phase 2 | 300–400 | 2–3 | 12–18 | Original capacity goal |
+| Phase 3 | 500+ | 4+ | 15–20 | Horizontal scale + Redis sync |
+
+---
+
+## 11. Important decisions
+
+- Prefer **small instances** (4–8 players) over huge lobbies in one board.
+- Use **AdvancedSlimePaper** for many worlds without permanent world folders per match.
+- Combine **board movement + coin shop** (Cytooxien-inspired), not stars-only.
+- Launch with **8 solid minigames**, then grow to 10–12 — quality over count.
+- Design Redis/MySQL/Velocity in from the start; implement when single-server limits bite.
+- Architecture long-term: **lobby + multiple game servers**.
+- Minigames pay **placement coins always**; optional in-round bonus coins later (hits, pickups, risk).
+
+---
+
+## 12. Development roadmap
+
+**Phase 1 — foundation (current direction)**
+
+- `PartyInstance` + `PartyManager` + board dice turns
+- ASP board load/unload
+- Minigame SPI + Dummy
+- Ship first minigames: Hot Potato, Spleef, Musical Chairs, Red Light
+
+**Phase 2 — full launch eight + economy**
+
+- Complete all 8 launch minigames
+- Random minigame picker (replace hard-coded dummy only)
+- Coin rewards + early board shop hooks
+- Create/join GUI polish
+
+**Phase 3 — multi-server**
+
+- Split lobby vs game server
+- Velocity proxy
+- Redis-backed sessions and queue
+
+**Phase 4 — product depth**
+
+- Minigame & map rotation (Cytooxien-style)
+- More boards
+- Teams / duels minigames
+- Ranks, cosmetics, detailed stats
+
+---
+
+## 13. Quick reference — launch minigame ids
+
+| Id | Display name | Engine |
+|----|--------------|--------|
+| `hot_potato` | Hot Potato | Pass + eliminate |
+| `spleef` | Spleef | Floor break + last standing |
+| `musical_chairs` | Musical Chairs | Seat claim rounds |
+| `color_chaos` | Color Chaos | Color floor vanish |
+| `red_light` | Red Light, Green Light | Freeze race |
+| `floor_is_lava` | Floor is Lava | Trail vanish + last standing |
+| `race` | Race | Finish-line race |
+| `laser_tag` | Laser Tag | Score FFA |
+
+---
+
+This document is the product/system north star for McParty. Implementation details for the current single-server plugin live in `AGENTS.md`. Update both when architecture or the launch minigame list changes in a lasting way.

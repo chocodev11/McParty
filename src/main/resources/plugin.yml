@@ -6,6 +6,7 @@ api-version: '26.1.2'
 load: POSTWORLD
 authors: [McParty]
 depend: [WorldEdit]
+softdepend: [packetevents]
 
 commands:
   party:
@@ -14,7 +15,7 @@ commands:
     permission: mcparty.party
   partyadmin:
     description: Board slot and setup admin commands
-    usage: /partyadmin <slot|path|walls>
+    usage: /partyadmin <slot|path>
     permission: mcparty.admin
     aliases: [padmin]
 

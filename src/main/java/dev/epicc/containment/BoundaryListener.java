@@ -1,6 +1,7 @@
 package dev.epicc.containment;
 
 import dev.epicc.board.BoardSlot;
+import dev.epicc.board.PathHopMover;
 import dev.epicc.party.PartyInstance;
 import dev.epicc.party.PartyManager;
 import dev.epicc.party.PartyState;
@@ -17,11 +18,11 @@ import org.bukkit.event.player.PlayerTeleportEvent;
 public final class BoundaryListener implements Listener {
 
     private final PartyManager partyManager;
-    private final FakeWallService fakeWallService;
+    private final PathHopMover pathHopMover;
 
-    public BoundaryListener(PartyManager partyManager, FakeWallService fakeWallService) {
+    public BoundaryListener(PartyManager partyManager, PathHopMover pathHopMover) {
         this.partyManager = partyManager;
-        this.fakeWallService = fakeWallService;
+        this.pathHopMover = pathHopMover;
     }
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
@@ -40,6 +41,10 @@ public final class BoundaryListener implements Listener {
 
         Player player = event.getPlayer();
         if (player.hasPermission("mcparty.admin.bypass")) {
+            return;
+        }
+        // path hop rises/falls outside the floor plane intentionally
+        if (pathHopMover.isHopping(player.getUniqueId())) {
             return;
         }
 
@@ -77,17 +82,11 @@ public final class BoundaryListener implements Listener {
             if (spawn != null) {
                 event.setRespawnLocation(spawn);
             }
-            player.getServer().getScheduler().runTaskLater(
-                    partyManager.plugin(),
-                    () -> fakeWallService.reapply(player, slot.boundary()),
-                    1L
-            );
         });
     }
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        fakeWallService.clear(event.getPlayer());
         partyManager.leave(event.getPlayer(), true);
     }
 }

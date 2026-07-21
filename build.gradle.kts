@@ -28,14 +28,20 @@ repositories {
         name = "infernalsuite-releases"
         url = uri("https://repo.infernalsuite.com/repository/maven-releases/")
     }
+    maven {
+        name = "codemc-releases"
+        url = uri("https://repo.codemc.io/repository/maven-releases/")
+    }
 }
 
 dependencies {
     compileOnly("io.papermc.paper:paper-api:26.1.2.build.+")
     // Provided by AdvancedSlimePaper server fork
     compileOnly("com.infernalsuite.asp:api:4.2.0-SNAPSHOT")
-    // Reference loaders are not on the server — must be shaded into the plugin
+    // Reference loaders are not on the server — must be shaded into this plugin
     implementation("com.infernalsuite.asp:file-loader:4.2.0-SNAPSHOT")
+    // Soft-depend at runtime (plugin.yml); not shaded
+    compileOnly("com.github.retrooper:packetevents-spigot:2.7.0")
     // Non-transitive: WorldEdit strict Guava/Gson constraints conflict with Paper 26
     compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.14") {
         isTransitive = false

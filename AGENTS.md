@@ -29,6 +29,7 @@ Instructions for AI coding agents working in this repository. Read this before p
 | Minecraft / API | Paper API **26.1.2** (`api-version: '26.1.2'`) |
 | Java | **25** (toolchain + `options.release`) |
 | Hard plugin depend | **WorldEdit** (`depend: [WorldEdit]` in `plugin.yml`) |
+| Soft plugin depend | **PacketEvents** (`softdepend: [packetevents]`) — seamless same-env world teleports (no dirt screen) |
 | Optional path | If `slime.enabled: false` or ASP API init fails, parties use permanent board-slot worlds (no clone/unload) |
 
 **Not plain Paper.** ASP API (`com.infernalsuite.asp.api`) is provided by the server. Loaders are **not** on the server — they must be shaded into this plugin.
@@ -57,8 +58,9 @@ plugins/McParty/slime_worlds/party_board.slime
 | `com.infernalsuite.asp:api:4.2.0-SNAPSHOT` | `compileOnly` | ASP — server-provided |
 | `com.infernalsuite.asp:file-loader:4.2.0-SNAPSHOT` | `implementation` | Shaded into jar |
 | `worldedit-bukkit` / `worldedit-core` 7.3.14 | `compileOnly`, `isTransitive = false` | Guava/Gson clash with Paper 26 if transitive |
+| `packetevents-spigot` 2.7.0 | `compileOnly` | Soft-depend; not shaded — install PacketEvents on server for seamless world TP |
 
-Repositories: Maven Central, PaperMC, EngineHub, InfernalSuite releases + snapshots.
+Repositories: Maven Central, PaperMC, EngineHub, InfernalSuite, CodeMC releases.
 
 ### Packaging
 
@@ -87,11 +89,12 @@ src/main/java/dev/epicc/
     setup/WorldEditHook.java  # WE selection → SlotBoundary
   command/                    # /party, /partyadmin
   config/PluginConfig.java    # Typed config from config.yml
-  containment/                # Boundary + fake barrier walls
+  containment/                # Slot boundary clamp (move/teleport)
   minigame/                   # Minigame interface + dummy + manager
   party/                      # PartyInstance, PartyManager, state, settings
   player/PlayerSessionService.java  # player UUID → party UUID
   slime/SlimeWorldService.java      # ASP load / clone / unload
+  seamless/                   # Optional PacketEvents RESPAWN cancel (no dirt screen)
   store/                      # InstanceStore + in-memory impl
 
 src/main/resources/
@@ -119,9 +122,10 @@ Persistent data at runtime:
 2. `PlayerSessionService`, `InMemoryInstanceStore`
 3. `BoardSlotRegistry` → `load()`
 4. `SlimeWorldService` (ASP + FileLoader)
-5. `FakeWallService`, `MinigameManager` (+ `DummyMinigame`)
-6. `PartyManager`
-7. `BoundaryListener`, commands
+5. `SeamlessWorldChangeService` (PacketEvents hook if present)
+6. `MinigameManager` (+ `DummyMinigame`)
+7. `PartyManager`
+8. `BoundaryListener`, commands
 
 `onDisable`: `partyManager.shutdown()` → unload slime worlds → save slots.
 
@@ -134,7 +138,6 @@ PartyManager
   ├── BoardSlotRegistry (template slots; claim/release)
   ├── SlimeWorldService (per-instance world names)
   ├── BoardTurnController (per playing instance)
-  ├── FakeWallService
   └── MinigameManager
 
 PartyInstance
@@ -178,18 +181,21 @@ WAITING → STARTING → PLAYING → ENDING → CLEANUP
    - Sync: `loadClone` (`asp.loadWorld` — **main thread only**)
    - `templateSlot.forWorld(cloneWorld)` → runtime slot with same coords
 5. Else: use permanent template slot world.
-6. Countdown → `beginPlaying` (teleport spawn, walls, attach `BoardTurnController`).
+6. Countdown → `beginPlaying` (teleport spawn, attach `BoardTurnController`).
 
-**Board turns** (`BoardTurnController`)
+**Board turns** (`BoardTurnController` + `board/dice/*`)
 
-1. Each player rolls (`/party roll` or auto-roll timer).
-2. Dice advances `PartyPlayer.boardIndex` along `BoardSlot.path()`.
-3. After all players acted once in a round → `MinigameManager.runDummy` → apply coin rewards → next round.
-4. After `maxTurns` rounds → `instance.requestEnd` → podium → cleanup.
+1. Current player gets a visual dice (`DicePresenter`): ItemDisplay + Interaction raycast in front of them; result is rolled up front.
+2. Spin until **click** (or `/party roll`) or **timeout** (`board.dice-interact-seconds`, default 5s).
+3. Final face shows briefly, then a passenger ItemDisplay “hat” (`DiceHatService`); path index advances.
+4. `PathHopMover`: rise in place → teleport high above target path point → fall down (fall damage cancelled). Turn continues only after land.
+5. After all players acted once in a round → `MinigameManager.runRandom` (reveal titles → start, no teleport) → apply coin rewards → next round.
+6. After `maxTurns` rounds → `instance.requestEnd` → podium → cleanup.
+7. Custom look: resource pack `resourcepack/` models `mcparty:dice_1`…`dice_6` (`DiceItems`).
 
 **Cleanup**
 
-- Clear walls, sessions, release template slot (by id in registry), `slime.unloadForInstance` (teleports players out, `unloadWorld(..., false)`), remove from store.
+- Clear sessions, release template slot (by id in registry), `slime.unloadForInstance` (teleports players out, `unloadWorld(..., false)`), remove from store.
 
 ### Board slots vs slime worlds
 
@@ -202,8 +208,7 @@ Admins still set up path/spawn/bounds with WorldEdit on a world that has matchin
 ### Containment
 
 - `SlotBoundary` — axis-aligned box; `isInside` / `clampInside`.
-- `BoundaryListener` — cancels moves outside boundary during STARTING/PLAYING/ENDING (unless `mcparty.admin.bypass`).
-- `FakeWallService` — client-side barrier shell via block send (not real blocks).
+- `BoundaryListener` — clamps moves/teleports outside boundary during STARTING/PLAYING/ENDING (unless `mcparty.admin.bypass`). No fake barrier blocks.
 
 ### Minigames
 
@@ -215,9 +220,10 @@ public interface Minigame {
 }
 ```
 
-- Only `DummyMinigame` is registered today (timed, awards coins by rank list from config).
-- `MinigameManager` holds a single `active` minigame; always `cancelActive()` before starting another.
-- New minigames: implement `Minigame`, wire through `MinigameManager` (and eventually a picker); do not put game logic in `PartyManager`.
+- `MinigameRegistry` holds games; `pickRandom()` selects one (only `DummyMinigame` registered today).
+- After each board round: **reveal** (title roulette, config ticks) → then `start()` **in place** (no minigame teleport).
+- `MinigameManager` owns reveal + one `active` minigame; `cancelActive()` aborts both.
+- New minigames: implement `Minigame` (+ `displayName()`), `registry.register(...)` in bootstrap; do not put game logic in `PartyManager`.
 
 ### Commands & permissions
 
@@ -225,15 +231,14 @@ public interface Minigame {
 |---------|------------|------|
 | `/party create\|join\|leave\|start\|list\|roll` | `mcparty.party` (default true) | Players |
 | `/party end [id]` | `mcparty.admin` | Force end |
-| `/partyadmin slot\|path\|walls` (alias `padmin`) | `mcparty.admin` | Board setup |
-| Bypass walls | `mcparty.admin.bypass` | Ops |
+| `/partyadmin slot\|path` (alias `padmin`) | `mcparty.admin` | Board setup |
+| Bypass boundary | `mcparty.admin.bypass` | Ops |
 
 Admin slot setup:
 
 - `slot create <id>` — WorldEdit cuboid → boundary  
 - `slot spawn <id>` — set spawn at feet  
 - `path add/clear <id>` — board path points  
-- `walls show/hide <id>` — preview barriers  
 - Slot is **ready** only with spawn + non-empty path + boundary  
 
 Commands return `Optional<String>` errors from `PartyManager` → red chat prefix `[McParty]`.
@@ -283,11 +288,15 @@ Important groups:
 
 - `party.*` — sizes, max instances, countdown, turns, starting coins  
 - `board.dice-min/max`  
-- `containment.wall-material/height`  
-- `minigame.dummy-*`  
+- `minigame.dummy-*`, `minigame.reveal-duration-ticks`, `minigame.reveal-interval-ticks`  
+- `seamless-world-change.enabled` — cancel RESPAWN on McParty same-env world teleports (needs PacketEvents)  
 - `slime.*` — ASP template and world naming  
 
 Add new config only through `PluginConfig` + default `config.yml` together.
+
+### Seamless world change
+
+`SeamlessWorldChangeService` marks a player only when McParty teleports them (`PartyManager.beginPlaying`, slime unload evacuations). PacketEvents cancels the next `RESPAWN` if environments and world heights match. No chunk-unload fan-out. Fail-open if PE missing or config off. Same-world board steps (`BoardTurnController`) do not need this.
 
 ---
 
@@ -355,7 +364,7 @@ Design doc also allows load on create — if changing, keep one clear owner (`Pa
 | Party create/join/leave/start/end/list/roll | Done |
 | Board slots + WE setup + path + spawn | Done |
 | Turn controller + dice + dummy minigame | Done |
-| Boundary + fake walls | Done |
+| Boundary clamp (no fake walls) | Done |
 | ASP template clone load/unload | Done |
 | In-memory instance store | Done |
 | Redis / MySQL / Velocity multi-server | **Not implemented** |
