@@ -8,13 +8,13 @@ import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
-import org.bukkit.entity.Interaction;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Transformation;
+import org.bukkit.util.Vector;
 import org.joml.AxisAngle4f;
 import org.joml.Vector3f;
 
@@ -25,20 +25,23 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.IntConsumer;
 
 /**
- * Spawns a spinny ItemDisplay + Interaction in front of the player.
- * Settles on click or timeout; result is chosen when the session starts.
+ * Rolling die rides the player as a passenger (always in front, no per-tick teleport).
+ * On settle: detaches once and drops to the ground in front.
  */
 public final class DicePresenter {
 
+    private static final float CUBE_HALF = 14f / 16f / 2f;
+    /** Local Y of ride attachment ≈ chest/eye for standing player. */
+    private static final float RIDE_EYE_Y = 1.4f;
+
     private final JavaPlugin plugin;
     private final DiceHatService hats;
-    private final double spawnDistance;
-    private final int interactTicks;
-    private final int spinIntervalTicks;
-    private final float displayScale;
+    private double spawnDistance;
+    private int interactTicks;
+    private int spinIntervalTicks;
+    private float displayScale;
 
     private final Map<UUID, Session> byPlayer = new ConcurrentHashMap<>();
-    private final Map<UUID, Session> byInteraction = new ConcurrentHashMap<>();
 
     public DicePresenter(
             JavaPlugin plugin,
@@ -50,6 +53,10 @@ public final class DicePresenter {
     ) {
         this.plugin = plugin;
         this.hats = hats;
+        reconfigure(spawnDistance, interactSeconds, spinIntervalTicks, displayScale);
+    }
+
+    public void reconfigure(double spawnDistance, int interactSeconds, int spinIntervalTicks, float displayScale) {
         this.spawnDistance = Math.max(0.5, spawnDistance);
         this.interactTicks = Math.max(1, interactSeconds) * 20;
         this.spinIntervalTicks = Math.max(1, spinIntervalTicks);
@@ -70,42 +77,45 @@ public final class DicePresenter {
         }
 
         int result = dice.roll();
-        Location at = spawnLocation(player);
         Session session = new Session(player.getUniqueId(), result, onSettled);
+        Vector3f front = frontOffset();
 
-        ItemDisplay display = player.getWorld().spawn(at, ItemDisplay.class, d -> {
+        ItemDisplay display = player.getWorld().spawn(player.getLocation(), ItemDisplay.class, d -> {
             d.setItemStack(DiceItems.face(spinFace(dice)));
-            d.setBillboard(Display.Billboard.CENTER);
+            d.setBillboard(Display.Billboard.FIXED);
             d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
             d.setInterpolationDuration(spinIntervalTicks);
-            d.setTransformation(identityScale(displayScale));
+            d.setTeleportDuration(0);
+            d.setTransformation(tumble(front, 0f, 0f));
             d.setPersistent(false);
+            d.setShadowRadius(0f);
         });
 
-        Interaction interaction = player.getWorld().spawn(at, Interaction.class, i -> {
-            i.setInteractionWidth(0.9f);
-            i.setInteractionHeight(0.9f);
-            i.setResponsive(true);
-            i.setPersistent(false);
-        });
+        if (!player.addPassenger(display)) {
+            display.remove();
+            return false;
+        }
 
         session.display = display;
-        session.interaction = interaction;
         byPlayer.put(player.getUniqueId(), session);
-        byInteraction.put(interaction.getUniqueId(), session);
 
         session.spinTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (session.settled || session.display == null || !session.display.isValid()) {
                 return;
             }
+            // Keep riding if something dismounted us
+            Player rolling = plugin.getServer().getPlayer(session.playerId);
+            if (rolling != null && rolling.isOnline() && session.display.getVehicle() == null) {
+                rolling.addPassenger(session.display);
+            }
+
             session.display.setItemStack(DiceItems.face(spinFace(dice)));
-            float angle = ThreadLocalRandom.current().nextFloat() * ((float) Math.PI * 2f);
-            session.display.setTransformation(new Transformation(
-                    new Vector3f(0f, 0f, 0f),
-                    new AxisAngle4f(angle, 0f, 1f, 0f),
-                    new Vector3f(displayScale, displayScale, displayScale),
-                    new AxisAngle4f(angle * 0.5f, 1f, 0f, 0f)
-            ));
+            float yaw = ThreadLocalRandom.current().nextFloat() * ((float) Math.PI * 2f);
+            float pitch = ThreadLocalRandom.current().nextFloat() * ((float) Math.PI * 2f);
+            session.display.setInterpolationDelay(0);
+            session.display.setInterpolationDuration(spinIntervalTicks);
+            // Same front offset every frame — only rotation changes
+            session.display.setTransformation(tumble(front, yaw, pitch));
         }, 0L, spinIntervalTicks);
 
         session.timeoutTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> settle(session), interactTicks);
@@ -116,18 +126,6 @@ public final class DicePresenter {
     public boolean trySettle(Player player) {
         Session session = byPlayer.get(player.getUniqueId());
         if (session == null) {
-            return false;
-        }
-        settle(session);
-        return true;
-    }
-
-    public boolean trySettleFromEntity(Player player, Entity entity) {
-        if (entity == null) {
-            return false;
-        }
-        Session session = byInteraction.get(entity.getUniqueId());
-        if (session == null || !session.playerId.equals(player.getUniqueId())) {
             return false;
         }
         settle(session);
@@ -151,7 +149,6 @@ public final class DicePresenter {
             cleanupEntities(session);
         }
         byPlayer.clear();
-        byInteraction.clear();
     }
 
     private void settle(Session session) {
@@ -161,14 +158,33 @@ public final class DicePresenter {
         session.settled = true;
         cancelSpinAndTimeout(session);
 
+        Player player = plugin.getServer().getPlayer(session.playerId);
         Location particleAt = null;
+
         if (session.display != null && session.display.isValid()) {
             session.display.setItemStack(DiceItems.face(session.result));
-            session.display.setTransformation(identityScale(displayScale));
-            particleAt = session.display.getLocation().clone().add(0, 0.15, 0);
+
+            // Detach so we can place it in the world once
+            Entity vehicle = session.display.getVehicle();
+            if (vehicle != null) {
+                vehicle.removePassenger(session.display);
+            }
+
+            Location landAt;
+            if (player != null && player.isOnline()) {
+                landAt = groundInFront(player);
+            } else {
+                landAt = session.display.getLocation();
+            }
+
+            session.display.setTeleportDuration(Math.max(1, spinIntervalTicks));
+            session.display.teleport(landAt);
+            session.display.setInterpolationDelay(0);
+            session.display.setInterpolationDuration(spinIntervalTicks);
+            session.display.setTransformation(landUpright(displayScale));
+            particleAt = landAt.clone().add(0, 0.15, 0);
         }
 
-        Player player = plugin.getServer().getPlayer(session.playerId);
         if (player != null && player.isOnline()) {
             hats.setHat(player, session.result);
             if (particleAt == null) {
@@ -179,7 +195,7 @@ public final class DicePresenter {
             spawnPastelSmoke(particleAt);
         }
 
-        // brief hold so the final face is visible, then remove prop and apply move
+        long holdTicks = Math.max(12L, spinIntervalTicks + 6L);
         session.settleTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             session.settleTask = null;
             if (session.aborted) {
@@ -191,35 +207,41 @@ public final class DicePresenter {
             if (cb != null) {
                 cb.accept(session.result);
             }
-        }, 6L);
+        }, holdTicks);
     }
 
-    /**
-     * Soft burst when the roll locks.
-     * Vanilla {@link Particle#LARGE_SMOKE} cannot be tinted (always gray/white), so we use
-     * large-size pastel {@link Particle#DUST} for color and a few LARGE_SMOKE for volume
-     * is skipped — only pastel dust so nothing reads pure white.
-     */
+    private Vector3f frontOffset() {
+        // Local space of passenger on player: +Y up, −Z roughly look-forward for FIXED
+        return new Vector3f(0f, RIDE_EYE_Y, (float) -spawnDistance);
+    }
+
+    private Transformation tumble(Vector3f front, float yaw, float pitch) {
+        return new Transformation(
+                new Vector3f(front),
+                new AxisAngle4f(yaw, 0f, 1f, 0f),
+                new Vector3f(displayScale, displayScale, displayScale),
+                new AxisAngle4f(pitch, 1f, 0f, 0f)
+        );
+    }
+
     private static void spawnPastelSmoke(Location at) {
         World world = at.getWorld();
         if (world == null) {
             return;
         }
         ThreadLocalRandom rng = ThreadLocalRandom.current();
-        // pastel only — no pure white / harsh purple
         Color[] pastels = {
-                Color.fromRGB(255, 182, 193), // pink
-                Color.fromRGB(255, 218, 185), // peach
-                Color.fromRGB(255, 250, 205), // lemon cream
-                Color.fromRGB(189, 236, 182), // mint
-                Color.fromRGB(174, 214, 241), // baby blue
-                Color.fromRGB(230, 204, 232), // soft lilac
-                Color.fromRGB(255, 209, 220), // rose
+                Color.fromRGB(255, 182, 193),
+                Color.fromRGB(255, 218, 185),
+                Color.fromRGB(255, 250, 205),
+                Color.fromRGB(189, 236, 182),
+                Color.fromRGB(174, 214, 241),
+                Color.fromRGB(230, 204, 232),
+                Color.fromRGB(255, 209, 220),
         };
 
         for (int i = 0; i < 22; i++) {
             Color c = pastels[rng.nextInt(pastels.length)];
-            // size ~2.2 reads as soft smoke puffs
             Particle.DustOptions dust = new Particle.DustOptions(c, 2.2f);
             double ox = rng.nextDouble(-0.45, 0.45);
             double oy = rng.nextDouble(-0.15, 0.5);
@@ -234,14 +256,11 @@ public final class DicePresenter {
             session.settleTask.cancel();
             session.settleTask = null;
         }
-        if (session.interaction != null) {
-            byInteraction.remove(session.interaction.getUniqueId(), session);
-            if (session.interaction.isValid()) {
-                session.interaction.remove();
-            }
-            session.interaction = null;
-        }
         if (session.display != null && session.display.isValid()) {
+            Entity vehicle = session.display.getVehicle();
+            if (vehicle != null) {
+                vehicle.removePassenger(session.display);
+            }
             session.display.remove();
         }
         session.display = null;
@@ -262,19 +281,31 @@ public final class DicePresenter {
         byPlayer.remove(session.playerId, session);
     }
 
-    private Location spawnLocation(Player player) {
-        Location eye = player.getEyeLocation();
-        RayTraceResult hit = player.getWorld().rayTraceBlocks(
-                eye, eye.getDirection(), spawnDistance, FluidCollisionMode.NEVER, true
-        );
-        Location at;
-        if (hit != null && hit.getHitPosition() != null) {
-            at = hit.getHitPosition().toLocation(player.getWorld());
-            at.subtract(eye.getDirection().multiply(0.35));
+    private Location groundInFront(Player player) {
+        Location feet = player.getLocation();
+        Vector flat = feet.getDirection().setY(0);
+        if (flat.lengthSquared() < 1.0e-6) {
+            flat = new Vector(0, 0, 1);
         } else {
-            at = eye.clone().add(eye.getDirection().multiply(spawnDistance));
+            flat.normalize();
         }
-        at.add(0, -0.15, 0);
+        Vector offset = flat.multiply(spawnDistance);
+
+        Location probe = feet.clone().add(offset).add(0, 1.5, 0);
+        World world = player.getWorld();
+        RayTraceResult floor = world.rayTraceBlocks(
+                probe, new Vector(0, -1, 0), 8.0, FluidCollisionMode.NEVER, true
+        );
+
+        Location at;
+        if (floor != null && floor.getHitPosition() != null) {
+            at = floor.getHitPosition().toLocation(world);
+        } else {
+            at = feet.clone().add(offset);
+            at.setY(feet.getY());
+        }
+
+        at.add(0, displayScale * CUBE_HALF, 0);
         at.setYaw(player.getLocation().getYaw());
         at.setPitch(0f);
         return at;
@@ -284,10 +315,11 @@ public final class DicePresenter {
         return dice.roll();
     }
 
-    private static Transformation identityScale(float scale) {
+    private static Transformation landUpright(float scale) {
+        float yaw = ThreadLocalRandom.current().nextFloat() * ((float) Math.PI * 2f);
         return new Transformation(
                 new Vector3f(0f, 0f, 0f),
-                new AxisAngle4f(0f, 0f, 1f, 0f),
+                new AxisAngle4f(yaw, 0f, 1f, 0f),
                 new Vector3f(scale, scale, scale),
                 new AxisAngle4f(0f, 0f, 1f, 0f)
         );
@@ -298,7 +330,6 @@ public final class DicePresenter {
         final int result;
         final IntConsumer onSettled;
         ItemDisplay display;
-        Interaction interaction;
         BukkitTask spinTask;
         BukkitTask timeoutTask;
         BukkitTask settleTask;

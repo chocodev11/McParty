@@ -5,7 +5,6 @@ description: Mario Party-style multiplayer minigame system
 api-version: '26.1.2'
 load: POSTWORLD
 authors: [McParty]
-depend: [WorldEdit]
 softdepend: [packetevents]
 
 commands:
@@ -15,7 +14,7 @@ commands:
     permission: mcparty.party
   partyadmin:
     description: Board slot and setup admin commands
-    usage: /partyadmin <path|slot>
+    usage: /partyadmin <path|slot|reload>
     permission: mcparty.admin
     aliases: [padmin]
 

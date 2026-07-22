@@ -1,8 +1,8 @@
 package dev.epicc.resourcepack;
 
+import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -47,6 +47,7 @@ public final class ResourcePackService {
 
     private final JavaPlugin plugin;
     private final PluginConfig config;
+    private final MessageService messages;
     private final AtomicBoolean ready = new AtomicBoolean(false);
 
     private String packUrl = "";
@@ -54,9 +55,10 @@ public final class ResourcePackService {
     private byte[] packBytes = new byte[0];
     private HttpServer httpServer;
 
-    public ResourcePackService(JavaPlugin plugin, PluginConfig config) {
+    public ResourcePackService(JavaPlugin plugin, PluginConfig config, MessageService messages) {
         this.plugin = plugin;
         this.config = config;
+        this.messages = messages;
     }
 
     public UUID packId() {
@@ -83,8 +85,8 @@ public final class ResourcePackService {
         return config.resourcePackKickOnDecline();
     }
 
-    public String kickMessage() {
-        return config.resourcePackKickMessage();
+    public Component kickMessage() {
+        return messages.get("resource-pack.kick");
     }
 
     public void start() {
@@ -115,6 +117,12 @@ public final class ResourcePackService {
         }
     }
 
+    /** Stop HTTP (if any), re-zip from source, and start again using current config. */
+    public void reload() {
+        shutdown();
+        start();
+    }
+
     public void shutdown() {
         ready.set(false);
         if (httpServer != null) {
@@ -122,6 +130,8 @@ public final class ResourcePackService {
             httpServer = null;
         }
         packBytes = new byte[0];
+        packUrl = "";
+        packSha1 = "";
     }
 
     /**
@@ -139,7 +149,7 @@ public final class ResourcePackService {
         if (!isReady() || player == null || !player.isOnline()) {
             return;
         }
-        Component prompt = Component.text(config.resourcePackPrompt());
+        Component prompt = messages.get("resource-pack.prompt");
         player.setResourcePack(
                 PACK_ID,
                 packUrl,
@@ -183,10 +193,14 @@ public final class ResourcePackService {
         }
 
         String zipName = sanitizeZipName(config.resourcePackLocalZipName());
-        Path zipPath = data.resolve(zipName);
+        // Written under plugins/McParty/output/ for easy fetch / external hosting
+        Path outDir = data.resolve("output");
+        Files.createDirectories(outDir);
+        Path zipPath = outDir.resolve(zipName);
         packBytes = zipDirectory(sourceDir);
         Files.write(zipPath, packBytes);
         packSha1 = sha1Hex(packBytes);
+        plugin.getLogger().info("Resource pack zip written to " + zipPath);
 
         String publicUrl = config.resourcePackLocalPublicUrl();
         if (publicUrl.isEmpty()) {
@@ -397,16 +411,10 @@ public final class ResourcePackService {
     }
 
     public void notifyDeclined(Player player) {
-        player.sendMessage(Component.text(
-                "[McParty] Resource pack declined — dice may look like plain paper.",
-                NamedTextColor.YELLOW
-        ));
+        messages.send(player, "resource-pack.declined");
     }
 
     public void notifyFailed(Player player, String reason) {
-        player.sendMessage(Component.text(
-                "[McParty] Resource pack failed (" + reason + "). Dice may look like plain paper.",
-                NamedTextColor.YELLOW
-        ));
+        messages.send(player, "resource-pack.failed", "reason", reason == null ? "" : reason);
     }
 }

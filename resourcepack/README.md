@@ -58,4 +58,7 @@ Do not also set the same pack in `server.properties` unless you know you want tw
 Replace `assets/mcparty/textures/item/dice_1.png` … `dice_6.png` with your own  
 16×16 or 32×32 textures. Keep the same file names.
 
+Models are a **14×14×14** cube (`from [1,1,1]` → `to [15,15,15]`) with the result
+face on **up** and opposites summing to 7. Side faces use the other numbers.
+
 `pack_format` in `pack.mcmeta` may need bumping when the client version changes.

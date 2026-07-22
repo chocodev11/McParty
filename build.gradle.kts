@@ -17,10 +17,6 @@ repositories {
         url = uri("https://repo.papermc.io/repository/maven-public/")
     }
     maven {
-        name = "enginehub"
-        url = uri("https://maven.enginehub.org/repo/")
-    }
-    maven {
         name = "infernalsuite-snapshots"
         url = uri("https://repo.infernalsuite.com/repository/maven-snapshots/")
     }
@@ -42,13 +38,6 @@ dependencies {
     implementation("com.infernalsuite.asp:file-loader:4.2.0-SNAPSHOT")
     // Soft-depend at runtime (plugin.yml); not shaded
     compileOnly("com.github.retrooper:packetevents-spigot:2.7.0")
-    // Non-transitive: WorldEdit strict Guava/Gson constraints conflict with Paper 26
-    compileOnly("com.sk89q.worldedit:worldedit-bukkit:7.3.14") {
-        isTransitive = false
-    }
-    compileOnly("com.sk89q.worldedit:worldedit-core:7.3.14") {
-        isTransitive = false
-    }
 }
 
 tasks {

@@ -1,10 +1,11 @@
 package dev.epicc.command;
 
+import dev.epicc.McPartyPlugin;
 import dev.epicc.board.BoardSlot;
 import dev.epicc.board.BoardSlotRegistry;
 import dev.epicc.board.setup.PathSetupService;
+import dev.epicc.config.MessageService;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -21,18 +22,39 @@ import java.util.stream.Collectors;
 
 public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
 
+    private final McPartyPlugin plugin;
     private final BoardSlotRegistry slots;
     private final PathSetupService pathSetup;
+    private final MessageService messages;
 
-    public PartyAdminCommand(BoardSlotRegistry slots, PathSetupService pathSetup) {
+    public PartyAdminCommand(
+            McPartyPlugin plugin,
+            BoardSlotRegistry slots,
+            PathSetupService pathSetup,
+            MessageService messages
+    ) {
+        this.plugin = plugin;
         this.slots = slots;
         this.pathSetup = pathSetup;
+        this.messages = messages;
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
+        if (args.length >= 1 && args[0].equalsIgnoreCase("reload")) {
+            try {
+                plugin.reloadPluginConfig();
+                messages.send(sender, "admin.reload-ok");
+            } catch (Exception e) {
+                plugin.getLogger().severe("Config reload failed: " + e.getMessage());
+                e.printStackTrace();
+                messages.send(sender, "admin.reload-failed");
+            }
+            return true;
+        }
+
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Players only.");
+            messages.send(sender, "general.players-only-except-reload");
             return true;
         }
         if (args.length == 0) {
@@ -51,74 +73,74 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
 
     private void handleSlot(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage(Component.text("/partyadmin slot <list|delete> [id]", NamedTextColor.AQUA));
+            messages.send(player, "admin.slot-usage");
             return;
         }
         String sub = args[1].toLowerCase(Locale.ROOT);
         switch (sub) {
             case "delete" -> {
                 if (args.length < 3) {
-                    msg(player, "Usage: /partyadmin slot delete <id>", true);
+                    messages.send(player, "admin.slot-delete-usage");
                     return;
                 }
                 if (slots.delete(args[2])) {
-                    msg(player, "Deleted slot.", false);
+                    messages.send(player, "admin.slot-deleted");
                 } else {
-                    msg(player, "Slot not found.", true);
+                    messages.send(player, "admin.slot-not-found");
                 }
             }
             case "list" -> {
                 if (slots.all().isEmpty()) {
-                    msg(player, "No slots.", false);
+                    messages.send(player, "admin.slot-none");
                     return;
                 }
                 for (BoardSlot slot : slots.all()) {
-                    msg(player, slot.id()
-                            + " ready=" + slot.isReady()
-                            + " free=" + slot.isFree()
-                            + " path=" + slot.path().size(), false);
+                    player.sendMessage(messages.get(
+                            "admin.slot-entry",
+                            "id", slot.id(),
+                            "ready", Boolean.toString(slot.isReady()),
+                            "free", Boolean.toString(slot.isFree()),
+                            "path", Integer.toString(slot.path().size())
+                    ));
                 }
             }
-            default -> player.sendMessage(Component.text("/partyadmin slot <list|delete>", NamedTextColor.AQUA));
+            default -> messages.send(player, "admin.slot-usage-short");
         }
     }
 
     private void handlePath(Player player, String[] args) {
         if (args.length < 2) {
-            player.sendMessage(Component.text("/partyadmin path <create|undo|end> [name]", NamedTextColor.AQUA));
+            messages.send(player, "admin.path-usage");
             return;
         }
         String sub = args[1].toLowerCase(Locale.ROOT);
-        Optional<String> err = switch (sub) {
+        Optional<Component> err = switch (sub) {
             case "create" -> {
                 if (args.length < 3) {
-                    yield Optional.of("Usage: /partyadmin path create <name>");
+                    yield Optional.of(messages.get("admin.path-create-usage"));
                 }
                 yield pathSetup.start(player, args[2]);
             }
             case "undo" -> pathSetup.undo(player);
             case "end" -> pathSetup.end(player);
             default -> {
-                player.sendMessage(Component.text("/partyadmin path <create|undo|end> [name]", NamedTextColor.AQUA));
+                messages.send(player, "admin.path-usage");
                 yield Optional.empty();
             }
         };
-        err.ifPresent(msg -> msg(player, msg, true));
+        err.ifPresent(player::sendMessage);
     }
 
     private void help(Player player) {
-        player.sendMessage(Component.text("/partyadmin path create|undo|end", NamedTextColor.AQUA));
-        player.sendMessage(Component.text("/partyadmin slot list|delete", NamedTextColor.AQUA));
-    }
-
-    private void msg(Player player, String text, boolean error) {
-        player.sendMessage(Component.text("[McParty] " + text, error ? NamedTextColor.RED : NamedTextColor.GREEN));
+        messages.send(player, "admin.help-path");
+        messages.send(player, "admin.help-slot");
+        messages.send(player, "admin.help-reload");
     }
 
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filter(List.of("slot", "path"), args[0]);
+            return filter(List.of("slot", "path", "reload"), args[0]);
         }
         if (args.length == 2) {
             return switch (args[0].toLowerCase(Locale.ROOT)) {

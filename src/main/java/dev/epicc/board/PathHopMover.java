@@ -1,7 +1,6 @@
 package dev.epicc.board;
 
 import org.bukkit.Location;
-import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -18,28 +17,32 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Path move: rise in place → teleport high above target → natural fall (no fall damage).
+ * Path move: upward velocity hop → at apex (vy ≤ 0) teleport to target XZ at that Y → fall.
+ * No potion effects; no per-tick Y teleports during rise.
  */
 public final class PathHopMover implements Listener {
 
     private final JavaPlugin plugin;
-    private final int riseTicks;
-    private final double height;
-    private final int fallMaxTicks;
+    private double upVelocity;
+    private int riseMaxTicks;
+    private int fallMaxTicks;
 
     private final Map<UUID, Hop> hops = new ConcurrentHashMap<>();
-    /** Brief post-land immunity so late FALL events do not hurt. */
     private final Set<UUID> fallImmune = ConcurrentHashMap.newKeySet();
 
     public PathHopMover(
             JavaPlugin plugin,
-            double height,
-            double riseSeconds,
+            double upVelocity,
+            double riseMaxSeconds,
             double fallMaxSeconds
     ) {
         this.plugin = plugin;
-        this.height = Math.max(0.5, height);
-        this.riseTicks = Math.max(1, (int) Math.round(Math.max(0.05, riseSeconds) * 20.0));
+        reconfigure(upVelocity, riseMaxSeconds, fallMaxSeconds);
+    }
+
+    public void reconfigure(double upVelocity, double riseMaxSeconds, double fallMaxSeconds) {
+        this.upVelocity = Math.max(0.1, upVelocity);
+        this.riseMaxTicks = Math.max(10, (int) Math.round(Math.max(0.5, riseMaxSeconds) * 20.0));
         this.fallMaxTicks = Math.max(10, (int) Math.round(Math.max(0.5, fallMaxSeconds) * 20.0));
     }
 
@@ -61,15 +64,18 @@ public final class PathHopMover implements Listener {
 
         cancel(player.getUniqueId());
 
-        Location start = player.getLocation().clone();
         Location land = dest.clone();
-        Hop hop = new Hop(player.getUniqueId(), start, land, onDone);
+        Hop hop = new Hop(player.getUniqueId(), land, onDone, player.getWalkSpeed());
         hops.put(player.getUniqueId(), hop);
 
         player.setFallDistance(0f);
-        player.setVelocity(new Vector(0, 0, 0));
+        player.setWalkSpeed(0f);
+        player.setFlying(false);
+        player.setAllowFlight(false);
+        // Single upward impulse — gravity brings vy down to ≤ 0 at the apex
+        player.setVelocity(new Vector(0, upVelocity, 0));
 
-        hop.task = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> tick(hop), 0L, 1L);
+        hop.task = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> tick(hop), 1L, 1L);
     }
 
     /** Abort hop without running {@code onDone} (party end / replace). */
@@ -85,7 +91,7 @@ public final class PathHopMover implements Listener {
         fallImmune.remove(playerId);
         Player p = plugin.getServer().getPlayer(playerId);
         if (p != null && p.isOnline()) {
-            p.setFallDistance(0f);
+            clearHopState(p, hop.savedWalkSpeed);
         }
     }
 
@@ -106,35 +112,38 @@ public final class PathHopMover implements Listener {
         hop.tick++;
 
         if (hop.phase == Phase.RISE) {
-            double t = Math.min(1.0, (double) hop.tick / riseTicks);
-            // ease-out rise
-            double eased = 1.0 - (1.0 - t) * (1.0 - t);
-            Location at = hop.start.clone();
-            at.setY(hop.start.getY() + height * eased);
-            at.setYaw(player.getLocation().getYaw());
-            at.setPitch(player.getLocation().getPitch());
-            player.teleport(at);
-            player.setVelocity(new Vector(0, 0, 0));
+            Vector v = player.getVelocity();
+            // Pin XZ only — keep natural Y from velocity + gravity
+            if (v.getX() != 0.0 || v.getZ() != 0.0) {
+                player.setVelocity(new Vector(0, v.getY(), 0));
+                v = player.getVelocity();
+            }
             player.setFallDistance(0f);
 
-            if (hop.tick >= riseTicks) {
-                hop.phase = Phase.FALL;
-                hop.tick = 0;
-                Location peak = hop.land.clone().add(0, height, 0);
-                peak.setYaw(hop.land.getYaw());
-                peak.setPitch(hop.land.getPitch());
-                player.teleport(peak);
-                player.setFallDistance(0f);
-                // small downward nudge so client starts falling immediately
-                player.setVelocity(new Vector(0, -0.15, 0));
+            boolean apex = hop.tick > 1 && v.getY() <= 0.0;
+            boolean timedOut = hop.tick >= riseMaxTicks;
+            if (!apex && !timedOut) {
+                return;
             }
+
+            // Keep this exact Y; move XZ to above the path target
+            double peakY = player.getLocation().getY();
+            hop.phase = Phase.FALL;
+            hop.tick = 0;
+
+            Location peak = hop.land.clone();
+            peak.setY(peakY);
+            peak.setYaw(hop.land.getYaw());
+            peak.setPitch(hop.land.getPitch());
+            player.teleport(peak);
+            player.setFallDistance(0f);
+            player.setVelocity(new Vector(0, 0, 0));
             return;
         }
 
-        // FALL — gravity only; keep fallDistance for animation, block damage via listener
+        // FALL — gravity only
         if (player.isOnGround() || hop.tick >= fallMaxTicks) {
             Location land = hop.land.clone();
-            // snap to path point yaw/pitch; keep XZ if already close
             player.teleport(land);
             player.setFallDistance(0f);
             player.setVelocity(new Vector(0, 0, 0));
@@ -151,7 +160,7 @@ public final class PathHopMover implements Listener {
 
         Player p = plugin.getServer().getPlayer(hop.playerId);
         if (p != null && p.isOnline()) {
-            p.setFallDistance(0f);
+            clearHopState(p, hop.savedWalkSpeed);
         }
 
         UUID id = hop.playerId;
@@ -167,6 +176,12 @@ public final class PathHopMover implements Listener {
         if (runCallback && hop.onDone != null) {
             hop.onDone.run();
         }
+    }
+
+    private static void clearHopState(Player p, float walkSpeed) {
+        p.setFallDistance(0f);
+        p.setVelocity(new Vector(0, 0, 0));
+        p.setWalkSpeed(Math.max(0f, Math.min(1f, walkSpeed)));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
@@ -198,18 +213,18 @@ public final class PathHopMover implements Listener {
 
     private static final class Hop {
         final UUID playerId;
-        final Location start;
         final Location land;
         final Runnable onDone;
+        final float savedWalkSpeed;
         Phase phase = Phase.RISE;
         int tick;
         BukkitTask task;
 
-        Hop(UUID playerId, Location start, Location land, Runnable onDone) {
+        Hop(UUID playerId, Location land, Runnable onDone, float savedWalkSpeed) {
             this.playerId = playerId;
-            this.start = start;
             this.land = land;
             this.onDone = onDone;
+            this.savedWalkSpeed = savedWalkSpeed;
         }
     }
 }

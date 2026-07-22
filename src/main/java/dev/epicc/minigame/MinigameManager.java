@@ -1,5 +1,6 @@
 package dev.epicc.minigame;
 
+import dev.epicc.config.MessageService;
 import dev.epicc.party.PartyInstance;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -10,23 +11,46 @@ import java.util.function.Consumer;
 public final class MinigameManager {
 
     private final JavaPlugin plugin;
+    private final MessageService messages;
     private final MinigameRegistry registry;
-    private final int revealDurationTicks;
-    private final int revealIntervalTicks;
+    private int revealDurationTicks;
+    private int revealIntervalMinTicks;
+    private int revealIntervalMaxTicks;
+    private int revealExpandIntervalTicks;
 
     private Minigame active;
     private MinigameRevealAnimator reveal;
 
     public MinigameManager(
             JavaPlugin plugin,
+            MessageService messages,
             MinigameRegistry registry,
             int revealDurationTicks,
-            int revealIntervalTicks
+            int revealIntervalMinTicks,
+            int revealIntervalMaxTicks,
+            int revealExpandIntervalTicks
     ) {
         this.plugin = plugin;
+        this.messages = messages;
         this.registry = registry;
+        reconfigure(
+                revealDurationTicks,
+                revealIntervalMinTicks,
+                revealIntervalMaxTicks,
+                revealExpandIntervalTicks
+        );
+    }
+
+    public void reconfigure(
+            int revealDurationTicks,
+            int revealIntervalMinTicks,
+            int revealIntervalMaxTicks,
+            int revealExpandIntervalTicks
+    ) {
         this.revealDurationTicks = revealDurationTicks;
-        this.revealIntervalTicks = revealIntervalTicks;
+        this.revealIntervalMinTicks = revealIntervalMinTicks;
+        this.revealIntervalMaxTicks = revealIntervalMaxTicks;
+        this.revealExpandIntervalTicks = revealExpandIntervalTicks;
     }
 
     public MinigameRegistry registry() {
@@ -46,13 +70,19 @@ public final class MinigameManager {
             return;
         }
 
-        reveal = new MinigameRevealAnimator(plugin, revealDurationTicks, revealIntervalTicks);
+        reveal = new MinigameRevealAnimator(
+                plugin,
+                messages,
+                revealDurationTicks,
+                revealIntervalMinTicks,
+                revealIntervalMaxTicks,
+                revealExpandIntervalTicks
+        );
         reveal.start(online, picked, registry.displayNames(), () -> {
             reveal = null;
             if (instance == null) {
                 return;
             }
-            // refresh online list after reveal; still no teleport
             List<Player> stillOnline = online.stream().filter(Player::isOnline).toList();
             if (stillOnline.isEmpty()) {
                 done.accept(new MinigameResult());

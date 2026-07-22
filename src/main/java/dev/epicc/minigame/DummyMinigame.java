@@ -1,7 +1,6 @@
 package dev.epicc.minigame;
 
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
+import dev.epicc.config.MessageService;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitTask;
 
@@ -11,32 +10,52 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.Consumer;
 
+/**
+ * Placeholder minigame used for board rounds and reveal-animation testing.
+ * Multiple instances can be registered with different ids / display names.
+ */
 public final class DummyMinigame implements Minigame {
 
-    private final int durationSeconds;
-    private final List<Integer> coinRewards;
+    private final MessageService messages;
+    private final String id;
+    private final String displayName;
+    private int durationSeconds;
+    private List<Integer> coinRewards;
     private BukkitTask task;
 
-    public DummyMinigame(int durationSeconds, List<Integer> coinRewards) {
+    public DummyMinigame(
+            MessageService messages,
+            String id,
+            String displayName,
+            int durationSeconds,
+            List<Integer> coinRewards
+    ) {
+        this.messages = messages;
+        this.id = id;
+        this.displayName = displayName;
+        reconfigure(durationSeconds, coinRewards);
+    }
+
+    public void reconfigure(int durationSeconds, List<Integer> coinRewards) {
         this.durationSeconds = Math.max(1, durationSeconds);
         this.coinRewards = coinRewards;
     }
 
     @Override
     public String id() {
-        return "dummy";
+        return id;
     }
 
     @Override
     public String displayName() {
-        return "Dummy Round";
+        return displayName;
     }
 
     @Override
     public void start(MinigameContext context, Consumer<MinigameResult> done) {
         cancel();
         for (Player player : context.onlinePlayers()) {
-            player.sendMessage(Component.text("[McParty] Dummy minigame started!", NamedTextColor.AQUA));
+            messages.send(player, "minigame.dummy-started", "name", displayName);
         }
 
         task = context.plugin().getServer().getScheduler().runTaskLater(context.plugin(), () -> {
@@ -49,10 +68,12 @@ public final class DummyMinigame implements Minigame {
                 int coins = i < coinRewards.size() ? coinRewards.get(i) : 1;
                 result.setPlacement(p.getUniqueId(), place);
                 result.setCoins(p.getUniqueId(), coins);
-                p.sendMessage(Component.text(
-                        "[McParty] Place #" + place + " (+" + coins + " coins)",
-                        NamedTextColor.GREEN
-                ));
+                messages.send(
+                        p,
+                        "minigame.dummy-place",
+                        "place", Integer.toString(place),
+                        "coins", Integer.toString(coins)
+                );
             }
             done.accept(result);
         }, durationSeconds * 20L);

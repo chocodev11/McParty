@@ -1,9 +1,9 @@
 package dev.epicc.command;
 
+import dev.epicc.config.MessageService;
 import dev.epicc.party.PartyInstance;
 import dev.epicc.party.PartyManager;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -20,15 +20,17 @@ import java.util.Optional;
 public final class PartyCommand implements CommandExecutor, TabCompleter {
 
     private final PartyManager parties;
+    private final MessageService messages;
 
-    public PartyCommand(PartyManager parties) {
+    public PartyCommand(PartyManager parties, MessageService messages) {
         this.parties = parties;
+        this.messages = messages;
     }
 
     @Override
     public boolean onCommand(@NotNull CommandSender sender, @NotNull Command command, @NotNull String label, @NotNull String[] args) {
         if (!(sender instanceof Player player)) {
-            sender.sendMessage("Players only.");
+            messages.send(sender, "general.players-only");
             return true;
         }
         if (args.length == 0) {
@@ -37,7 +39,7 @@ public final class PartyCommand implements CommandExecutor, TabCompleter {
         }
 
         String sub = args[0].toLowerCase(Locale.ROOT);
-        Optional<String> err = switch (sub) {
+        Optional<Component> err = switch (sub) {
             case "create" -> parties.create(player);
             case "join" -> parties.join(player, args.length > 1 ? args[1] : null);
             case "leave" -> parties.leave(player, false);
@@ -48,7 +50,7 @@ public final class PartyCommand implements CommandExecutor, TabCompleter {
             }
             case "end" -> {
                 if (!player.hasPermission("mcparty.admin")) {
-                    yield Optional.of("No permission.");
+                    yield Optional.of(messages.get("general.no-permission"));
                 }
                 yield parties.forceEnd(player, args.length > 1 ? args[1] : null);
             }
@@ -58,27 +60,29 @@ public final class PartyCommand implements CommandExecutor, TabCompleter {
                 yield Optional.empty();
             }
         };
-        err.ifPresent(msg -> player.sendMessage(Component.text("[McParty] " + msg, NamedTextColor.RED)));
+        err.ifPresent(player::sendMessage);
         return true;
     }
 
     private void list(Player player) {
         var all = parties.all();
         if (all.isEmpty()) {
-            player.sendMessage(Component.text("[McParty] No active parties.", NamedTextColor.GRAY));
+            messages.send(player, "party.list-empty");
             return;
         }
-        player.sendMessage(Component.text("[McParty] Parties:", NamedTextColor.GOLD));
+        messages.send(player, "party.list-header");
         for (PartyInstance i : all) {
-            player.sendMessage(Component.text(
-                    " - " + i.shortId() + " | " + i.state() + " | " + i.playerCount() + "p",
-                    NamedTextColor.YELLOW
+            player.sendMessage(messages.get(
+                    "party.list-entry",
+                    "id", i.shortId(),
+                    "state", i.state().name(),
+                    "count", Integer.toString(i.playerCount())
             ));
         }
     }
 
     private void sendHelp(Player player) {
-        player.sendMessage(Component.text("/party create|join [id]|leave|start|list|roll|end", NamedTextColor.AQUA));
+        messages.send(player, "party.help");
     }
 
     @Override

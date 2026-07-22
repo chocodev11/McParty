@@ -1,12 +1,11 @@
 package dev.epicc.board;
 
 import dev.epicc.board.dice.DicePresenter;
+import dev.epicc.config.MessageService;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.party.PartyInstance;
 import dev.epicc.party.PartyPlayer;
 import dev.epicc.party.PartyState;
-import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -18,6 +17,7 @@ import java.util.UUID;
 public final class BoardTurnController {
 
     private final JavaPlugin plugin;
+    private final MessageService messages;
     private final MinigameManager minigameManager;
     private final Dice dice;
     private final DicePresenter dicePresenter;
@@ -33,12 +33,14 @@ public final class BoardTurnController {
 
     public BoardTurnController(
             JavaPlugin plugin,
+            MessageService messages,
             MinigameManager minigameManager,
             Dice dice,
             DicePresenter dicePresenter,
             PathHopMover pathHopMover
     ) {
         this.plugin = plugin;
+        this.messages = messages;
         this.minigameManager = minigameManager;
         this.dice = dice;
         this.dicePresenter = dicePresenter;
@@ -118,10 +120,7 @@ public final class BoardTurnController {
 
         waitingForRoll = true;
         activeRoller = current.uuid();
-        instance.broadcast(Component.text(
-                "[McParty] " + current.name() + "'s turn — click the dice (or /party roll)",
-                NamedTextColor.AQUA
-        ));
+        instance.broadcast(messages.get("board.turn", "player", current.name()));
 
         boolean started = dicePresenter.start(player, dice, result -> {
             if (instance == null || instance.state() != PartyState.PLAYING) {
@@ -149,9 +148,11 @@ public final class BoardTurnController {
 
         Location dest = instance.slot().path().get(next);
 
-        instance.broadcast(Component.text(
-                "[McParty] " + partyPlayer.name() + " rolled " + roll + " → space " + next,
-                NamedTextColor.GOLD
+        instance.broadcast(messages.get(
+                "board.rolled",
+                "player", partyPlayer.name(),
+                "roll", Integer.toString(roll),
+                "space", Integer.toString(next)
         ));
 
         moving = true;
@@ -210,7 +211,7 @@ public final class BoardTurnController {
             return;
         }
 
-        instance.broadcast(Component.text("[McParty] Round complete — picking minigame…", NamedTextColor.LIGHT_PURPLE));
+        instance.broadcast(messages.get("board.round-complete"));
         minigameManager.runRandom(instance, online, result -> {
             if (instance == null) {
                 return;

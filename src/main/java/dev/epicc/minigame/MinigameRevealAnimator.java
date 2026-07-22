@@ -1,7 +1,7 @@
 package dev.epicc.minigame;
 
+import dev.epicc.config.MessageService;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.title.Title;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -13,50 +13,108 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Title roulette before a minigame starts. No teleport — players stay where they are.
- * Customize tick timing via config; swap title content here when you refine the animation.
+ * Minigame pick reveal: subtitle roulette that starts fast and slows to a stop,
+ * then title expands the chosen name from the middle letters outward.
  */
 final class MinigameRevealAnimator {
 
     private final JavaPlugin plugin;
-    private final int durationTicks;
-    private final int intervalTicks;
+    private final MessageService messages;
+    private final int spinDurationTicks;
+    private final int intervalMinTicks;
+    private final int intervalMaxTicks;
+    private final int expandIntervalTicks;
 
     private BukkitTask task;
-    private int elapsed;
     private boolean stopped;
 
-    MinigameRevealAnimator(JavaPlugin plugin, int durationTicks, int intervalTicks) {
+    private enum Phase { SPIN, EXPAND }
+
+    MinigameRevealAnimator(
+            JavaPlugin plugin,
+            MessageService messages,
+            int spinDurationTicks,
+            int intervalMinTicks,
+            int intervalMaxTicks,
+            int expandIntervalTicks
+    ) {
         this.plugin = plugin;
-        this.durationTicks = Math.max(1, durationTicks);
-        this.intervalTicks = Math.max(1, intervalTicks);
+        this.messages = messages;
+        this.spinDurationTicks = Math.max(1, spinDurationTicks);
+        this.intervalMinTicks = Math.max(1, intervalMinTicks);
+        this.intervalMaxTicks = Math.max(this.intervalMinTicks, intervalMaxTicks);
+        this.expandIntervalTicks = Math.max(1, expandIntervalTicks);
     }
 
     void start(List<Player> players, Minigame picked, List<String> poolNames, Runnable onDone) {
         cancel();
         stopped = false;
-        elapsed = 0;
         List<Player> audience = new ArrayList<>(players);
         List<String> names = poolNames.isEmpty()
                 ? List.of(picked.displayName())
                 : List.copyOf(poolNames);
+        String finalName = picked.displayName();
+        int expandMax = expandMaxStep(finalName);
 
-        // immediate first frame
-        showSpinFrame(audience, randomName(names, picked.displayName()));
+        Phase[] phase = {Phase.SPIN};
+        int[] spinTick = {0};
+        int[] nextSwapAt = {0};
+        String[] currentSubtitle = {randomName(names, null)};
+        int[] expandStep = {0};
+        int[] expandWait = {0};
+
+        showSpinFrame(audience, currentSubtitle[0]);
 
         task = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (stopped) {
                 return;
             }
-            elapsed += intervalTicks;
-            if (elapsed >= durationTicks) {
+
+            if (phase[0] == Phase.SPIN) {
+                spinTick[0]++;
+                if (spinTick[0] >= spinDurationTicks) {
+                    currentSubtitle[0] = finalName;
+                    phase[0] = Phase.EXPAND;
+                    expandStep[0] = 0;
+                    expandWait[0] = 0;
+                    showExpandFrame(audience, finalName, 0);
+                    return;
+                }
+                if (spinTick[0] >= nextSwapAt[0]) {
+                    double progress = (double) spinTick[0] / spinDurationTicks;
+                    // Quadratic ease-in: swaps start frequent, end sparse
+                    double eased = progress * progress;
+                    int interval = intervalMinTicks
+                            + (int) Math.round((intervalMaxTicks - intervalMinTicks) * eased);
+                    interval = Math.max(1, interval);
+
+                    boolean nearEnd = spinTick[0] + interval >= spinDurationTicks || progress >= 0.85;
+                    if (nearEnd) {
+                        currentSubtitle[0] = finalName;
+                    } else {
+                        currentSubtitle[0] = randomName(names, currentSubtitle[0]);
+                    }
+                    showSpinFrame(audience, currentSubtitle[0]);
+                    nextSwapAt[0] = spinTick[0] + interval;
+                }
+                return;
+            }
+
+            // EXPAND — middle letter(s) first, then outward
+            expandWait[0]++;
+            if (expandWait[0] < expandIntervalTicks) {
+                return;
+            }
+            expandWait[0] = 0;
+            expandStep[0]++;
+            if (expandStep[0] > expandMax) {
                 stopTaskOnly();
                 showFinal(audience, picked);
                 onDone.run();
                 return;
             }
-            showSpinFrame(audience, randomName(names, picked.displayName()));
-        }, intervalTicks, intervalTicks);
+            showExpandFrame(audience, finalName, expandStep[0]);
+        }, 1L, 1L);
     }
 
     void cancel() {
@@ -72,43 +130,86 @@ final class MinigameRevealAnimator {
     }
 
     private static String randomName(List<String> names, String avoidIfPossible) {
+        if (names.isEmpty()) {
+            return "";
+        }
         if (names.size() == 1) {
             return names.get(0);
         }
         ThreadLocalRandom r = ThreadLocalRandom.current();
         String pick = names.get(r.nextInt(names.size()));
-        if (names.size() > 1 && pick.equals(avoidIfPossible)) {
+        if (avoidIfPossible != null && pick.equals(avoidIfPossible)) {
             pick = names.get(r.nextInt(names.size()));
         }
         return pick;
     }
 
-    private static void showSpinFrame(List<Player> players, String name) {
+    /**
+     * Center-out mask: step 0 = middle letter(s); each step unlocks one char left and right.
+     * Hidden positions are spaces so the title width stays stable.
+     */
+    static String expandFrame(String name, int step) {
+        if (name == null || name.isEmpty()) {
+            return "";
+        }
+        int n = name.length();
+        int left = (n - 1) / 2;
+        int right = n / 2;
+        int L = Math.max(0, left - step);
+        int R = Math.min(n - 1, right + step);
+        char[] out = new char[n];
+        for (int i = 0; i < n; i++) {
+            out[i] = (i >= L && i <= R) ? name.charAt(i) : ' ';
+        }
+        return new String(out);
+    }
+
+    static int expandMaxStep(String name) {
+        if (name == null || name.isEmpty()) {
+            return 0;
+        }
+        int n = name.length();
+        int left = (n - 1) / 2;
+        int right = n / 2;
+        return Math.max(left, n - 1 - right);
+    }
+
+    private void showSpinFrame(List<Player> players, String subtitle) {
         Title title = Title.title(
-                Component.text("???", NamedTextColor.YELLOW),
-                Component.text(name, NamedTextColor.GRAY),
-                Title.Times.times(Duration.ZERO, Duration.ofMillis(400), Duration.ZERO)
+                messages.get("minigame.reveal-spin-title"),
+                Component.text(subtitle == null ? "" : subtitle),
+                Title.Times.times(Duration.ZERO, Duration.ofMillis(500), Duration.ZERO)
+        );
+        show(players, title);
+    }
+
+    private void showExpandFrame(List<Player> players, String fullName, int step) {
+        Title title = Title.title(
+                Component.text(expandFrame(fullName, step)),
+                messages.get("minigame.reveal-ready-subtitle"),
+                Title.Times.times(Duration.ZERO, Duration.ofMillis(700), Duration.ZERO)
+        );
+        show(players, title);
+    }
+
+    private void showFinal(List<Player> players, Minigame picked) {
+        Title title = Title.title(
+                Component.text(picked.displayName()),
+                messages.get("minigame.reveal-ready-subtitle"),
+                Title.Times.times(Duration.ofMillis(100), Duration.ofSeconds(2), Duration.ofMillis(300))
         );
         for (Player player : players) {
             if (player.isOnline()) {
                 player.showTitle(title);
+                messages.send(player, "minigame.selected", "name", picked.displayName());
             }
         }
     }
 
-    private static void showFinal(List<Player> players, Minigame picked) {
-        Title title = Title.title(
-                Component.text(picked.displayName(), NamedTextColor.GOLD),
-                Component.text("Get ready!", NamedTextColor.YELLOW),
-                Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(300))
-        );
+    private static void show(List<Player> players, Title title) {
         for (Player player : players) {
             if (player.isOnline()) {
                 player.showTitle(title);
-                player.sendMessage(Component.text(
-                        "[McParty] Minigame: " + picked.displayName(),
-                        NamedTextColor.LIGHT_PURPLE
-                ));
             }
         }
     }

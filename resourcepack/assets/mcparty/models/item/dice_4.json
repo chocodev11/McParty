@@ -1,6 +1,32 @@
 {
-  "parent": "minecraft:item/generated",
   "textures": {
-    "layer0": "mcparty:item/dice_4"
+    "particle": "mcparty:item/dice_4",
+    "up": "mcparty:item/dice_4",
+    "down": "mcparty:item/dice_3",
+    "north": "mcparty:item/dice_1",
+    "south": "mcparty:item/dice_6",
+    "east": "mcparty:item/dice_2",
+    "west": "mcparty:item/dice_5"
+  },
+  "elements": [
+    {
+      "from": [1, 1, 1],
+      "to": [15, 15, 15],
+      "faces": {
+        "up":    { "uv": [0, 0, 16, 16], "texture": "#up" },
+        "down":  { "uv": [0, 0, 16, 16], "texture": "#down" },
+        "north": { "uv": [0, 0, 16, 16], "texture": "#north" },
+        "south": { "uv": [0, 0, 16, 16], "texture": "#south" },
+        "east":  { "uv": [0, 0, 16, 16], "texture": "#east" },
+        "west":  { "uv": [0, 0, 16, 16], "texture": "#west" }
+      }
+    }
+  ],
+  "display": {
+    "fixed": {
+      "rotation": [0, 0, 0],
+      "translation": [0, 0, 0],
+      "scale": [1, 1, 1]
+    }
   }
 }

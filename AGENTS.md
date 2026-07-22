@@ -28,7 +28,6 @@ Instructions for AI coding agents working in this repository. Read this before p
 | Server | **AdvancedSlimePaper (ASP)** — Paper fork with Slime Region Format API |
 | Minecraft / API | Paper API **26.1.2** (`api-version: '26.1.2'`) |
 | Java | **25** (toolchain + `options.release`) |
-| Hard plugin depend | **WorldEdit** (`depend: [WorldEdit]` in `plugin.yml`) |
 | Soft plugin depend | **PacketEvents** (`softdepend: [packetevents]`) — seamless same-env world teleports (no dirt screen) |
 | Optional path | If `slime.enabled: false` or ASP API init fails, parties use permanent board-slot worlds (no clone/unload) |
 
@@ -57,10 +56,9 @@ plugins/McParty/slime_worlds/party_board.slime
 | `io.papermc.paper:paper-api:26.1.2.build.+` | `compileOnly` | Bukkit/Paper API |
 | `com.infernalsuite.asp:api:4.2.0-SNAPSHOT` | `compileOnly` | ASP — server-provided |
 | `com.infernalsuite.asp:file-loader:4.2.0-SNAPSHOT` | `implementation` | Shaded into jar |
-| `worldedit-bukkit` / `worldedit-core` 7.3.14 | `compileOnly`, `isTransitive = false` | Guava/Gson clash with Paper 26 if transitive |
 | `packetevents-spigot` 2.7.0 | `compileOnly` | Soft-depend; not shaded — install PacketEvents on server for seamless world TP |
 
-Repositories: Maven Central, PaperMC, EngineHub, InfernalSuite, CodeMC releases.
+Repositories: Maven Central, PaperMC, InfernalSuite, CodeMC releases.
 
 ### Packaging
 
@@ -86,7 +84,7 @@ Output: `build/libs/McParty-1.0.0-SNAPSHOT.jar` (version may change).
 src/main/java/dev/epicc/
   McPartyPlugin.java          # Bootstrap: wire services, register commands/listeners
   board/                      # Board slots, path, turns, dice
-    setup/                    # WE pos1 path builder (gold/yellow 3x3 pads)
+    setup/                    # Path stick (blaze rod) builder (gold/yellow 3x3 pads)
   command/                    # /party, /partyadmin
   config/PluginConfig.java    # Typed config from config.yml
   containment/                # Slot boundary clamp (move/teleport)
@@ -110,6 +108,7 @@ Persistent data at runtime:
 | File / path | Purpose |
 |-------------|---------|
 | `plugins/McParty/config.yml` | Defaults from resources; `PluginConfig` reads once on enable |
+| `plugins/McParty/messages.yml` | All player-facing text (MiniMessage); `MessageService` — reloaded with `/partyadmin reload` |
 | `plugins/McParty/slots.yml` | Board slots (world name, bounds, path, spawn) — `BoardSlotRegistry` |
 | `plugins/McParty/slime_worlds/*.slime` | Template worlds for ASP FileLoader |
 
@@ -192,7 +191,7 @@ WAITING → STARTING → PLAYING → ENDING → CLEANUP
 1. Current player gets a visual dice (`DicePresenter`): ItemDisplay + Interaction raycast in front of them; result is rolled up front.
 2. Spin until **click** (or `/party roll`) or **timeout** (`board.dice-interact-seconds`, default 5s).
 3. Final face shows briefly, then a passenger ItemDisplay “hat” (`DiceHatService`); path index advances.
-4. `PathHopMover`: rise in place → teleport high above target path point → fall down (fall damage cancelled). Turn continues only after land.
+4. `PathHopMover`: upward velocity hop → at apex (`vy ≤ 0`) teleport to target XZ at that exact Y → natural fall (fall damage cancelled).
 5. After all players acted once in a round → `MinigameManager.runRandom` (reveal titles → start, no teleport) → apply coin rewards → next round.
 6. After `maxTurns` rounds → `instance.requestEnd` → podium → cleanup.
 7. Custom look: resource pack `resourcepack/` models `mcparty:dice_1`…`dice_6` (`DiceItems`), prompted by `ResourcePackService`.
@@ -201,8 +200,9 @@ WAITING → STARTING → PLAYING → ENDING → CLEANUP
 
 - Config: `resource-pack.*` — `mode: local` (zip data-folder pack + JDK `HttpServer`) or `mode: external` (URL + SHA-1).
 - Bundled pack ships in the jar under `resourcepack/`; extracted to `plugins/McParty/resourcepack/` if missing.
-- Local: SHA-1 of zip; serve `GET /mcparty.zip`; set `local.public-url` to a client-reachable URL (open firewall port).
-- Prompt via `Player#setResourcePack(UUID, url, sha1, prompt, required)`; status via `PlayerResourcePackStatusEvent`.
+- Local: zip written to `plugins/McParty/output/<zip-name>`; SHA-1 of zip; serve `GET /mcparty.zip`; set `local.public-url` to a client-reachable URL (open firewall port).
+- `/partyadmin reload` reloads `config.yml` + `messages.yml`, re-applies party/board/minigame settings, and restarts the resource pack (re-zip + HTTP). Slime loader and seamless PE hook stay as at enable (server restart to change those).
+- Prompt via `Player#setResourcePack(UUID, url, sha1, prompt, required)`; prompt/kick text from `messages.yml`. Status via `PlayerResourcePackStatusEvent`.
 - `send-on: party` (create/join) or `join` (login). Fail-open if disabled or setup fails.
 
 **Cleanup**
@@ -211,11 +211,11 @@ WAITING → STARTING → PLAYING → ENDING → CLEANUP
 
 ### Board slots vs slime worlds
 
-- **Template slot** (in `slots.yml`): setup on any loaded world via path builder (WE pos1 pads). Stores integer bounds + path/spawn coords + world name.
+- **Template slot** (in `slots.yml`): setup on any loaded world via path builder (Path Stick pads). Stores integer bounds + path/spawn coords + world name.
 - **Runtime slot**: `BoardSlot.forWorld(World)` / `BoardPath.forWorld` / `SlotBoundary.forWorld` rebind the **same coordinates** onto the loaded slime clone.
 - Claiming uses the **registry** slot; cleanup releases via `slots.get(id)`.
 
-Admins still set up path/spawn/bounds with WorldEdit on a world that has matching geometry to the `.slime` template.
+Admins set up path/spawn/bounds with the Path Stick on a world that has matching geometry to the `.slime` template.
 
 ### Containment
 
@@ -243,17 +243,17 @@ public interface Minigame {
 |---------|------------|------|
 | `/party create\|join\|leave\|start\|list\|roll` | `mcparty.party` (default true) | Players |
 | `/party end [id]` | `mcparty.admin` | Force end |
-| `/partyadmin path\|slot` (alias `padmin`) | `mcparty.admin` | Board setup |
+| `/partyadmin path\|slot\|reload` (alias `padmin`) | `mcparty.admin` | Board setup + config reload |
 | Bypass boundary | `mcparty.admin.bypass` | Ops |
 
 Admin board setup (path builder):
 
-- `path create <name>` — start setup session for one board  
-- WorldEdit **pos1** (wand left-click or `//pos1`) — place flat 3×3 pad (center `GOLD_BLOCK`, ring `YELLOW_WOOL`) and append path space  
+- `path create <name>` — start setup session; gives a **Path Stick** (blaze rod, custom name + PDC marker)  
+- **Break a block** while holding the Path Stick — cancel break, place flat 3×3 pad (center `GOLD_BLOCK`, ring `YELLOW_WOOL`), append path space  
 - `path undo` — restore last pad blocks + drop last path space  
-- `path end` — spawn = first space; boundary = AABB of all pads + Y padding; save ready `BoardSlot`  
+- `path end` — spawn = first space; boundary = AABB of all pads + Y padding; save ready `BoardSlot`; remove Path Stick  
 - `slot list` / `slot delete <id>` — manage saved boards  
-- Quit / disable mid-setup cancels session and restores pads  
+- Quit / disable / world change mid-setup cancels session, restores pads, removes Path Stick  
 
 Commands return `Optional<String>` errors from `PartyManager` / setup → red chat prefix `[McParty]`.
 
@@ -304,10 +304,12 @@ Important groups:
 - `board.dice-min/max`  
 - `minigame.dummy-*`, `minigame.reveal-duration-ticks`, `minigame.reveal-interval-ticks`  
 - `seamless-world-change.enabled` — cancel RESPAWN on McParty same-env world teleports (needs PacketEvents)  
-- `resource-pack.*` — local HTTP or external URL, send-on join/party, prompt/required/kick  
+- `resource-pack.*` — local HTTP or external URL, send-on join/party, required/kick-on-decline (prompt/kick text in `messages.yml`)  
+- `messages.yml` — all player chat/title/item strings (MiniMessage)
 - `slime.*` — ASP template and world naming  
 
 Add new config only through `PluginConfig` + default `config.yml` together.
+Add player-facing text only through `MessageService` + default `messages.yml` together (MiniMessage; placeholders as `<name>`).
 
 ### Seamless world change
 
@@ -339,7 +341,6 @@ Match existing style; do not reformat unrelated code.
 - Depend on Spigot-only APIs when Paper/ASP equivalents exist.
 - Call `asp.loadWorld` off the main thread.
 - Leave players in a world that is about to unload.
-- Make WorldEdit transitive again without verifying the Guava conflict.
 - Implement Redis/MySQL/Velocity multi-server pieces without an explicit request (design lives in `mcparty.md` only for now).
 - Commit secrets or absolute machine-specific paths.
 
@@ -377,7 +378,7 @@ Design doc also allows load on create — if changing, keep one clear owner (`Pa
 | Feature | Status |
 |---------|--------|
 | Party create/join/leave/start/end/list/roll | Done |
-| Board slots + WE setup + path + spawn | Done |
+| Board slots + Path Stick setup + path + spawn | Done |
 | Turn controller + dice + dummy minigame | Done |
 | Boundary clamp (no fake walls) | Done |
 | ASP template clone load/unload | Done |
@@ -412,13 +413,14 @@ Prefer incremental features that fit the current single-process, in-memory desig
 | `PartyInstance` / `PartyPlayer` / `PartyState` | Match state |
 | `BoardSlotRegistry` / `BoardSlot` / `BoardPath` | Board geometry |
 | `BoardTurnController` / `Dice` | Turn loop |
-| `PathSetupService` / `PathSetupListener` | WE pos1 path builder |
-| `WorldEditHook` | WE pos1 primary position |
+| `PathSetupService` / `PathSetupListener` | Path Stick break-block path builder |
+| `PathSetupWand` | Blaze rod stick (name + custom_data PDC) |
 | `SlimeWorldService` | ASP worlds |
 | `InstanceStore` | Party persistence (memory) |
 | `PlayerSessionService` | Membership index |
 | `Minigame` / `MinigameManager` | Minigame SPI |
 | `PluginConfig` | Typed settings |
+| `MessageService` | `messages.yml` MiniMessage lookup + placeholders |
 | `ResourcePackService` | Dice pack host + prompt |
 
 When in doubt: **put orchestration in `PartyManager`, world IO in `SlimeWorldService`, board rules in `board/`, minigame rules in `minigame/`.**

@@ -8,6 +8,7 @@ import dev.epicc.board.Dice;
 import dev.epicc.board.PathHopMover;
 import dev.epicc.board.dice.DiceHatService;
 import dev.epicc.board.dice.DicePresenter;
+import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.player.PlayerSessionService;
@@ -16,13 +17,14 @@ import dev.epicc.seamless.SeamlessWorldChangeService;
 import dev.epicc.slime.SlimeWorldService;
 import dev.epicc.store.InstanceStore;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
+import net.kyori.adventure.title.Title;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -36,6 +38,7 @@ public final class PartyManager {
 
     private final JavaPlugin plugin;
     private final PluginConfig config;
+    private final MessageService messages;
     private final InstanceStore store;
     private final PlayerSessionService sessions;
     private final BoardSlotRegistry slots;
@@ -52,6 +55,7 @@ public final class PartyManager {
     public PartyManager(
             JavaPlugin plugin,
             PluginConfig config,
+            MessageService messages,
             InstanceStore store,
             PlayerSessionService sessions,
             BoardSlotRegistry slots,
@@ -65,6 +69,7 @@ public final class PartyManager {
     ) {
         this.plugin = plugin;
         this.config = config;
+        this.messages = messages;
         this.store = store;
         this.sessions = sessions;
         this.slots = slots;
@@ -81,6 +86,10 @@ public final class PartyManager {
         return plugin;
     }
 
+    public MessageService messages() {
+        return messages;
+    }
+
     public Optional<PartyInstance> instanceOf(UUID playerId) {
         return sessions.instanceOf(playerId).flatMap(store::get);
     }
@@ -89,12 +98,12 @@ public final class PartyManager {
         return store.all();
     }
 
-    public Optional<String> create(Player host) {
+    public Optional<Component> create(Player host) {
         if (sessions.isInParty(host.getUniqueId())) {
-            return Optional.of("You are already in a party.");
+            return Optional.of(messages.get("party.already-in"));
         }
         if (store.size() >= config.maxInstances()) {
-            return Optional.of("Server party limit reached.");
+            return Optional.of(messages.get("party.limit-reached"));
         }
         PartySettings settings = new PartySettings(
                 config.minPlayers(),
@@ -110,17 +119,14 @@ public final class PartyManager {
         instance.addPlayer(pp);
         store.put(instance);
         sessions.bind(host.getUniqueId(), instance.id());
-        host.sendMessage(Component.text(
-                "[McParty] Created party " + instance.shortId() + " — others: /party join " + instance.shortId(),
-                NamedTextColor.GREEN
-        ));
+        messages.send(host, "party.created", "id", instance.shortId());
         offerResourcePack(host);
         return Optional.empty();
     }
 
-    public Optional<String> join(Player player, String shortOrFullId) {
+    public Optional<Component> join(Player player, String shortOrFullId) {
         if (sessions.isInParty(player.getUniqueId())) {
-            return Optional.of("You are already in a party.");
+            return Optional.of(messages.get("party.already-in"));
         }
         PartyInstance instance = findByShortId(shortOrFullId).orElse(null);
         if (instance == null) {
@@ -131,19 +137,21 @@ public final class PartyManager {
                     .orElse(null);
         }
         if (instance == null) {
-            return Optional.of("No open party found.");
+            return Optional.of(messages.get("party.no-open"));
         }
         if (instance.state() != PartyState.WAITING) {
-            return Optional.of("That party already started.");
+            return Optional.of(messages.get("party.already-started"));
         }
         PartyPlayer pp = new PartyPlayer(player.getUniqueId(), player.getName(), instance.settings().startingCoins());
         if (!instance.addPlayer(pp)) {
-            return Optional.of("Could not join (full or invalid).");
+            return Optional.of(messages.get("party.join-failed"));
         }
         sessions.bind(player.getUniqueId(), instance.id());
-        instance.broadcast(Component.text(
-                "[McParty] " + player.getName() + " joined (" + instance.playerCount() + "/" + instance.settings().maxPlayers() + ")",
-                NamedTextColor.YELLOW
+        instance.broadcast(messages.get(
+                "party.joined",
+                "player", player.getName(),
+                "count", Integer.toString(instance.playerCount()),
+                "max", Integer.toString(instance.settings().maxPlayers())
         ));
         offerResourcePack(player);
         return Optional.empty();
@@ -155,21 +163,18 @@ public final class PartyManager {
         }
     }
 
-    public Optional<String> leave(Player player, boolean silent) {
+    public Optional<Component> leave(Player player, boolean silent) {
         Optional<PartyInstance> opt = instanceOf(player.getUniqueId());
         if (opt.isEmpty()) {
-            return silent ? Optional.empty() : Optional.of("You are not in a party.");
+            return silent ? Optional.empty() : Optional.of(messages.get("party.not-in"));
         }
         PartyInstance instance = opt.get();
         sessions.unbind(player.getUniqueId());
         instance.removePlayer(player.getUniqueId());
 
         if (!silent) {
-            player.sendMessage(Component.text("[McParty] You left the party.", NamedTextColor.GRAY));
-            instance.broadcast(Component.text(
-                    "[McParty] " + player.getName() + " left.",
-                    NamedTextColor.GRAY
-            ));
+            messages.send(player, "party.left-self");
+            instance.broadcast(messages.get("party.left-broadcast", "player", player.getName()));
         }
 
         if (instance.playerCount() == 0) {
@@ -187,28 +192,31 @@ public final class PartyManager {
         return Optional.empty();
     }
 
-    public Optional<String> start(Player requester) {
+    public Optional<Component> start(Player requester) {
         PartyInstance instance = instanceOf(requester.getUniqueId()).orElse(null);
         if (instance == null) {
-            return Optional.of("You are not in a party.");
+            return Optional.of(messages.get("party.not-in"));
         }
         if (!instance.isHost(requester.getUniqueId()) && !requester.hasPermission("mcparty.admin")) {
-            return Optional.of("Only the host can start.");
+            return Optional.of(messages.get("party.only-host-start"));
         }
         if (!instance.canStart()) {
-            return Optional.of("Need at least " + instance.settings().minPlayers() + " players.");
+            return Optional.of(messages.get(
+                    "party.need-players",
+                    "min", Integer.toString(instance.settings().minPlayers())
+            ));
         }
         if (instance.state() != PartyState.WAITING) {
-            return Optional.of("Party already starting/started.");
+            return Optional.of(messages.get("party.already-starting"));
         }
 
         BoardSlot templateSlot = slots.claimFree(instance.id()).orElse(null);
         if (templateSlot == null) {
-            return Optional.of("No free ready board slot. Setup with /partyadmin.");
+            return Optional.of(messages.get("party.no-board-slot"));
         }
 
         instance.setState(PartyState.STARTING);
-        instance.broadcast(Component.text("[McParty] Loading world…", NamedTextColor.GREEN));
+        instance.broadcast(messages.get("party.loading-world"));
 
         if (slime.isReady()) {
             startWithSlime(instance, templateSlot);
@@ -230,10 +238,7 @@ public final class PartyManager {
                     return;
                 }
                 if (clone.isEmpty()) {
-                    instance.broadcast(Component.text(
-                            "[McParty] Failed to load slime world (missing template?). Aborting.",
-                            NamedTextColor.RED
-                    ));
+                    instance.broadcast(messages.get("party.slime-load-failed"));
                     instance.setState(PartyState.WAITING);
                     templateSlot.release();
                     return;
@@ -241,10 +246,7 @@ public final class PartyManager {
 
                 Optional<World> world = slime.loadClone(instanceId, clone.get());
                 if (world.isEmpty()) {
-                    instance.broadcast(Component.text(
-                            "[McParty] Failed to register slime world. Aborting.",
-                            NamedTextColor.RED
-                    ));
+                    instance.broadcast(messages.get("party.slime-register-failed"));
                     instance.setState(PartyState.WAITING);
                     templateSlot.release();
                     return;
@@ -261,6 +263,7 @@ public final class PartyManager {
 
     private void beginCountdown(PartyInstance instance) {
         int countdown = config.startCountdownSeconds();
+        Title.Times times = Title.Times.times(Duration.ZERO, Duration.ofMillis(1100), Duration.ofMillis(200));
         BukkitTask task = plugin.getServer().getScheduler().runTaskTimer(plugin, new Runnable() {
             int left = countdown;
 
@@ -275,14 +278,24 @@ public final class PartyManager {
                     beginPlaying(instance);
                     return;
                 }
-                instance.broadcast(Component.text("[McParty] " + left + "…", NamedTextColor.YELLOW));
+                Title title = Title.title(
+                        messages.get("party.countdown-title", "seconds", Integer.toString(left)),
+                        messages.get("party.countdown-subtitle", "seconds", Integer.toString(left)),
+                        times
+                );
+                for (PartyPlayer pp : instance.players()) {
+                    Player p = plugin.getServer().getPlayer(pp.uuid());
+                    if (p != null && p.isOnline()) {
+                        p.showTitle(title);
+                    }
+                }
                 left--;
             }
         }, 0L, 20L);
         countdowns.put(instance.id(), task);
     }
 
-    public Optional<String> forceEnd(Player admin, String shortId) {
+    public Optional<Component> forceEnd(Player admin, String shortId) {
         PartyInstance instance;
         if (shortId == null || shortId.isBlank()) {
             instance = instanceOf(admin.getUniqueId()).orElse(null);
@@ -290,23 +303,23 @@ public final class PartyManager {
             instance = findByShortId(shortId).orElse(null);
         }
         if (instance == null) {
-            return Optional.of("Party not found.");
+            return Optional.of(messages.get("party.not-found"));
         }
         endInternal(instance);
         return Optional.empty();
     }
 
-    public Optional<String> roll(Player player) {
+    public Optional<Component> roll(Player player) {
         PartyInstance instance = instanceOf(player.getUniqueId()).orElse(null);
         if (instance == null) {
-            return Optional.of("Not in a party.");
+            return Optional.of(messages.get("party.not-in-short"));
         }
         BoardTurnController controller = controllers.get(instance.id());
         if (controller == null) {
-            return Optional.of("Game not running.");
+            return Optional.of(messages.get("party.game-not-running"));
         }
         if (!controller.roll(player)) {
-            return Optional.of("Not your turn.");
+            return Optional.of(messages.get("party.not-your-turn"));
         }
         return Optional.empty();
     }
@@ -327,21 +340,28 @@ public final class PartyManager {
     private void beginPlaying(PartyInstance instance) {
         BoardSlot slot = instance.slot();
         if (slot == null || !slot.isReady()) {
-            instance.broadcast(Component.text("[McParty] Slot invalid — aborting.", NamedTextColor.RED));
+            instance.broadcast(messages.get("party.slot-invalid"));
             cleanup(instance);
             return;
         }
 
+        Title startTitle = Title.title(
+                messages.get("party.start-title"),
+                messages.get("party.start-subtitle"),
+                Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(400))
+        );
         Location spawn = slot.spawn();
         for (PartyPlayer pp : instance.players()) {
             Player p = plugin.getServer().getPlayer(pp.uuid());
             if (p != null && p.isOnline()) {
                 seamless.teleport(p, spawn);
+                p.showTitle(startTitle);
             }
         }
 
         BoardTurnController controller = new BoardTurnController(
                 plugin,
+                messages,
                 minigames,
                 new Dice(instance.settings().diceMin(), instance.settings().diceMax()),
                 dicePresenter,
@@ -374,12 +394,15 @@ public final class PartyManager {
         ranked.sort(Comparator
                 .comparingInt(PartyPlayer::boardIndex).reversed()
                 .thenComparing(Comparator.comparingInt(PartyPlayer::coins).reversed()));
-        instance.broadcast(Component.text("[McParty] === Results ===", NamedTextColor.GOLD));
+        instance.broadcast(messages.get("party.results-header"));
         for (int i = 0; i < ranked.size(); i++) {
             PartyPlayer pp = ranked.get(i);
-            instance.broadcast(Component.text(
-                    "#" + (i + 1) + " " + pp.name() + " — space " + pp.boardIndex() + ", " + pp.coins() + " coins",
-                    NamedTextColor.YELLOW
+            instance.broadcast(messages.get(
+                    "party.results-line",
+                    "place", Integer.toString(i + 1),
+                    "player", pp.name(),
+                    "space", Integer.toString(pp.boardIndex()),
+                    "coins", Integer.toString(pp.coins())
             ));
         }
     }

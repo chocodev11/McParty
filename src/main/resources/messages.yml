@@ -1,0 +1,97 @@
+# McParty player-facing messages (MiniMessage)
+# Docs: https://docs.advntr.dev/minimessage/format.html
+# Placeholders use <name> (e.g. <player>, <id>). Insert prefix with {prefix}.
+
+prefix: "<gray>[</gray><gold>McParty</gold><gray>]</gray> "
+
+general:
+  players-only: "{prefix}<red>Players only."
+  players-only-except-reload: "{prefix}<red>Players only (except /partyadmin reload)."
+  no-permission: "{prefix}<red>No permission."
+
+party:
+  already-in: "{prefix}<red>You are already in a party."
+  limit-reached: "{prefix}<red>Server party limit reached."
+  created: "{prefix}<green>Created party <id> — others: /party join <id>"
+  no-open: "{prefix}<red>No open party found."
+  already-started: "{prefix}<red>That party already started."
+  join-failed: "{prefix}<red>Could not join (full or invalid)."
+  joined: "{prefix}<yellow><player> joined (<count>/<max>)"
+  not-in: "{prefix}<red>You are not in a party."
+  left-self: "{prefix}<gray>You left the party."
+  left-broadcast: "{prefix}<gray><player> left."
+  only-host-start: "{prefix}<red>Only the host can start."
+  need-players: "{prefix}<red>Need at least <min> players."
+  already-starting: "{prefix}<red>Party already starting/started."
+  no-board-slot: "{prefix}<red>No free ready board slot. Setup with /partyadmin."
+  loading-world: "{prefix}<green>Loading world…"
+  slime-load-failed: "{prefix}<red>Failed to load slime world (missing template?). Aborting."
+  slime-register-failed: "{prefix}<red>Failed to register slime world. Aborting."
+  countdown-title: "<yellow><seconds>"
+  countdown-subtitle: "<gray>Starting…"
+  start-title: "<gold>Go!"
+  start-subtitle: "<yellow>Good luck"
+  not-found: "{prefix}<red>Party not found."
+  not-in-short: "{prefix}<red>Not in a party."
+  game-not-running: "{prefix}<red>Game not running."
+  not-your-turn: "{prefix}<red>Not your turn."
+  slot-invalid: "{prefix}<red>Slot invalid — aborting."
+  results-header: "{prefix}<gold>=== Results ==="
+  results-line: "<yellow>#<place> <player> — space <space>, <coins> coins"
+  list-empty: "{prefix}<gray>No active parties."
+  list-header: "{prefix}<gold>Parties:"
+  list-entry: "<yellow> - <id> | <state> | <count>p"
+  help: "<aqua>/party create|join [id]|leave|start|list|roll|end"
+
+board:
+  turn: "{prefix}<aqua><player>'s turn — click the dice (or /party roll)"
+  rolled: "{prefix}<gold><player> rolled <roll> → space <space>"
+  round-complete: "{prefix}<light_purple>Round complete — picking minigame…"
+
+minigame:
+  dummy-started: "{prefix}<aqua><name> started!"
+  dummy-place: "{prefix}<green>Place #<place> (+<coins> coins)"
+  reveal-spin-title: "<yellow>???"
+  reveal-ready-subtitle: "<yellow>Get ready!"
+  selected: "{prefix}<light_purple>Minigame: <name>"
+
+admin:
+  reload-ok: "{prefix}<green>Config reloaded (resource pack restarted). Slime/seamless need a server restart to change."
+  reload-failed: "{prefix}<red>Config reload failed — check console."
+  slot-usage: "<aqua>/partyadmin slot <list|delete> [id]"
+  slot-usage-short: "<aqua>/partyadmin slot <list|delete>"
+  slot-delete-usage: "{prefix}<red>Usage: /partyadmin slot delete <id>"
+  slot-deleted: "{prefix}<green>Deleted slot."
+  slot-not-found: "{prefix}<red>Slot not found."
+  slot-none: "{prefix}<green>No slots."
+  slot-entry: "{prefix}<green><id> ready=<ready> free=<free> path=<path>"
+  path-usage: "<aqua>/partyadmin path <create|undo|end> [name]"
+  path-create-usage: "{prefix}<red>Usage: /partyadmin path create <name>"
+  help-path: "<aqua>/partyadmin path create|undo|end"
+  help-slot: "<aqua>/partyadmin slot list|delete"
+  help-reload: "<aqua>/partyadmin reload"
+
+path:
+  already-setup: "{prefix}<red>Already setting up a path. Use /partyadmin path end or undo."
+  name-required: "{prefix}<red>Path name required."
+  name-invalid: "{prefix}<red>Invalid name. Use letters, numbers, _ or -."
+  board-exists: "{prefix}<red>Board '<name>' already exists. Delete it first."
+  started: "{prefix}<green>Path setup '<name>' started. Break a block with the Path Stick for each space."
+  wrong-world: "{prefix}<red>Space must be in the same world as path setup."
+  space-placed: "{prefix}<green>Space #<index> placed (<total> total)."
+  not-setup: "{prefix}<red>Not setting up a path. Use /partyadmin path create <name>."
+  nothing-to-undo: "{prefix}<red>Nothing to undo."
+  undid: "{prefix}<green>Undid last space (<left> left)."
+  need-space: "{prefix}<red>Add at least one space with the Path Stick before ending."
+  board-exists-end: "{prefix}<red>Board '<name>' already exists."
+  saved: "{prefix}<green>Path '<name>' saved with <count> space(s)."
+  cancelled: "{prefix}<red>Path setup cancelled; pads restored."
+  stick-name: "<gold>Path Stick"
+  stick-lore-1: "<gray>Break a block to place a path space"
+  stick-lore-2: "<dark_gray>/partyadmin path undo | end"
+
+resource-pack:
+  prompt: "McParty needs this pack for custom dice models."
+  kick: "You must accept the McParty resource pack."
+  declined: "{prefix}<yellow>Resource pack declined — dice may look like plain paper."
+  failed: "{prefix}<yellow>Resource pack failed (<reason>). Dice may look like plain paper."

@@ -33,7 +33,7 @@ public final class ResourcePackListener implements Listener {
             case DECLINED -> {
                 packs.notifyDeclined(player);
                 if (packs.kickOnDecline()) {
-                    player.kick(net.kyori.adventure.text.Component.text(packs.kickMessage()));
+                    player.kick(packs.kickMessage());
                 }
             }
             case FAILED_DOWNLOAD, FAILED_RELOAD, INVALID_URL, DISCARDED ->

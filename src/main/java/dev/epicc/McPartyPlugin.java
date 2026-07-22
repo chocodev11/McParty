@@ -7,9 +7,9 @@ import dev.epicc.board.dice.DiceHatService;
 import dev.epicc.board.dice.DicePresenter;
 import dev.epicc.board.setup.PathSetupListener;
 import dev.epicc.board.setup.PathSetupService;
-import dev.epicc.board.setup.WorldEditHook;
 import dev.epicc.command.PartyAdminCommand;
 import dev.epicc.command.PartyCommand;
+import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.containment.BoundaryListener;
 import dev.epicc.minigame.DummyMinigame;
@@ -25,17 +25,28 @@ import dev.epicc.store.InMemoryInstanceStore;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public final class McPartyPlugin extends JavaPlugin {
 
+    private PluginConfig config;
+    private MessageService messages;
     private PartyManager partyManager;
     private BoardSlotRegistry slotRegistry;
     private PathSetupService pathSetupService;
-    private SlimeWorldService slimeWorldService;
     private ResourcePackService resourcePackService;
+    private DicePresenter dicePresenter;
+    private DiceHatService diceHats;
+    private PathHopMover pathHopMover;
+    private MinigameManager minigames;
+    private final List<DummyMinigame> dummyMinigames = new ArrayList<>();
+    private SlimeWorldService slimeWorldService;
 
     @Override
     public void onEnable() {
-        PluginConfig config = new PluginConfig(this);
+        config = new PluginConfig(this);
+        messages = new MessageService(this);
         PlayerSessionService sessions = new PlayerSessionService();
         InMemoryInstanceStore store = new InMemoryInstanceStore();
         slotRegistry = new BoardSlotRegistry(this);
@@ -45,7 +56,7 @@ public final class McPartyPlugin extends JavaPlugin {
                 this, config.seamlessWorldChangeEnabled()
         );
 
-        resourcePackService = new ResourcePackService(this, config);
+        resourcePackService = new ResourcePackService(this, config, messages);
         resourcePackService.start();
 
         slimeWorldService = new SlimeWorldService(
@@ -60,19 +71,45 @@ public final class McPartyPlugin extends JavaPlugin {
                 seamless
         );
 
-        MinigameRegistry minigameRegistry = new MinigameRegistry(
-                new DummyMinigame(config.dummyDurationSeconds(), config.dummyCoinRewards())
-        );
-        // Register more Minigame impls here later: minigameRegistry.register(...)
-        MinigameManager minigames = new MinigameManager(
+        // Five dummy entries so the reveal roulette has distinct names to spin through
+        String[][] dummyDefs = {
+                {"lightning-dash", "Lightning Dash"},
+                {"block-bash", "Block Bash"},
+                {"color-match", "Color Match"},
+                {"hot-potato", "Hot Potato"},
+                {"sky-race", "Sky Race"}
+        };
+        dummyMinigames.clear();
+        DummyMinigame firstDummy = null;
+        for (String[] def : dummyDefs) {
+            DummyMinigame dummy = new DummyMinigame(
+                    messages,
+                    def[0],
+                    def[1],
+                    config.dummyDurationSeconds(),
+                    config.dummyCoinRewards()
+            );
+            dummyMinigames.add(dummy);
+            if (firstDummy == null) {
+                firstDummy = dummy;
+            }
+        }
+        MinigameRegistry minigameRegistry = new MinigameRegistry(firstDummy);
+        for (int i = 1; i < dummyMinigames.size(); i++) {
+            minigameRegistry.register(dummyMinigames.get(i));
+        }
+        minigames = new MinigameManager(
                 this,
+                messages,
                 minigameRegistry,
                 config.minigameRevealDurationTicks(),
-                config.minigameRevealIntervalTicks()
+                config.minigameRevealIntervalMinTicks(),
+                config.minigameRevealIntervalMaxTicks(),
+                config.minigameRevealExpandIntervalTicks()
         );
 
-        DiceHatService diceHats = new DiceHatService(config.diceHatScale());
-        DicePresenter dicePresenter = new DicePresenter(
+        diceHats = new DiceHatService(config.diceHatScale());
+        dicePresenter = new DicePresenter(
                 this,
                 diceHats,
                 config.diceSpawnDistance(),
@@ -80,15 +117,15 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.diceSpinIntervalTicks(),
                 config.diceDisplayScale()
         );
-        PathHopMover pathHopMover = new PathHopMover(
+        pathHopMover = new PathHopMover(
                 this,
-                config.hopHeight(),
-                config.hopRiseSeconds(),
+                config.hopUpVelocity(),
+                config.hopRiseMaxSeconds(),
                 config.hopFallMaxSeconds()
         );
 
         partyManager = new PartyManager(
-                this, config, store, sessions, slotRegistry, minigames, slimeWorldService, seamless,
+                this, config, messages, store, sessions, slotRegistry, minigames, slimeWorldService, seamless,
                 dicePresenter, diceHats, pathHopMover, resourcePackService
         );
 
@@ -97,18 +134,17 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(pathHopMover, this);
         getServer().getPluginManager().registerEvents(new ResourcePackListener(resourcePackService), this);
 
-        PartyCommand partyCommand = new PartyCommand(partyManager);
+        PartyCommand partyCommand = new PartyCommand(partyManager, messages);
         PluginCommand party = getCommand("party");
         if (party != null) {
             party.setExecutor(partyCommand);
             party.setTabCompleter(partyCommand);
         }
 
-        WorldEditHook worldEditHook = new WorldEditHook();
-        pathSetupService = new PathSetupService(this, slotRegistry, worldEditHook);
+        pathSetupService = new PathSetupService(this, slotRegistry, messages);
         getServer().getPluginManager().registerEvents(new PathSetupListener(this, pathSetupService), this);
 
-        PartyAdminCommand adminCommand = new PartyAdminCommand(slotRegistry, pathSetupService);
+        PartyAdminCommand adminCommand = new PartyAdminCommand(this, slotRegistry, pathSetupService, messages);
         PluginCommand partyAdmin = getCommand("partyadmin");
         if (partyAdmin != null) {
             partyAdmin.setExecutor(adminCommand);
@@ -122,6 +158,40 @@ public final class McPartyPlugin extends JavaPlugin {
         } else {
             getLogger().info("McParty enabled (slime disabled)");
         }
+    }
+
+    /**
+     * Reload {@code config.yml} + {@code messages.yml} and re-apply hot settings
+     * (party/board/minigame/resource pack). Slime loader + seamless PE hook stay as at enable.
+     */
+    public void reloadPluginConfig() {
+        config.reload();
+        messages.reload();
+
+        diceHats.reconfigure(config.diceHatScale());
+        dicePresenter.reconfigure(
+                config.diceSpawnDistance(),
+                config.diceInteractSeconds(),
+                config.diceSpinIntervalTicks(),
+                config.diceDisplayScale()
+        );
+        pathHopMover.reconfigure(
+                config.hopUpVelocity(),
+                config.hopRiseMaxSeconds(),
+                config.hopFallMaxSeconds()
+        );
+        minigames.reconfigure(
+                config.minigameRevealDurationTicks(),
+                config.minigameRevealIntervalMinTicks(),
+                config.minigameRevealIntervalMaxTicks(),
+                config.minigameRevealExpandIntervalTicks()
+        );
+        for (DummyMinigame dummy : dummyMinigames) {
+            dummy.reconfigure(config.dummyDurationSeconds(), config.dummyCoinRewards());
+        }
+
+        resourcePackService.reload();
+        getLogger().info("Config reloaded");
     }
 
     @Override

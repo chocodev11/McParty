@@ -2,9 +2,9 @@ package dev.epicc.board.setup;
 
 import dev.epicc.board.BoardPath;
 import dev.epicc.board.BoardSlotRegistry;
+import dev.epicc.config.MessageService;
 import dev.epicc.containment.SlotBoundary;
 import net.kyori.adventure.text.Component;
-import net.kyori.adventure.text.format.NamedTextColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -29,43 +29,37 @@ public final class PathSetupService {
 
     private final JavaPlugin plugin;
     private final BoardSlotRegistry slots;
-    private final WorldEditHook worldEdit;
+    private final MessageService messages;
     private final Map<UUID, PathSetupSession> sessions = new ConcurrentHashMap<>();
 
-    public PathSetupService(JavaPlugin plugin, BoardSlotRegistry slots, WorldEditHook worldEdit) {
+    public PathSetupService(JavaPlugin plugin, BoardSlotRegistry slots, MessageService messages) {
         this.plugin = plugin;
         this.slots = slots;
-        this.worldEdit = worldEdit;
+        this.messages = messages;
     }
 
     public boolean isSettingUp(UUID playerId) {
         return sessions.containsKey(playerId);
     }
 
-    public Optional<String> start(Player player, String rawName) {
+    public Optional<Component> start(Player player, String rawName) {
         if (sessions.containsKey(player.getUniqueId())) {
-            return Optional.of("Already setting up a path. Use /partyadmin path end or undo.");
+            return Optional.of(messages.get("path.already-setup"));
         }
         if (rawName == null || rawName.isBlank()) {
-            return Optional.of("Path name required.");
+            return Optional.of(messages.get("path.name-required"));
         }
         String name = rawName.toLowerCase(Locale.ROOT);
         if (!name.matches("[a-z0-9_\\-]+")) {
-            return Optional.of("Invalid name. Use letters, numbers, _ or -.");
+            return Optional.of(messages.get("path.name-invalid"));
         }
         if (slots.get(name).isPresent()) {
-            return Optional.of("Board '" + name + "' already exists. Delete it first.");
+            return Optional.of(messages.get("path.board-exists", "name", name));
         }
         sessions.put(player.getUniqueId(), new PathSetupSession(player.getUniqueId(), name, player.getWorld()));
-        msg(player, "Path setup '" + name + "' started. Set WorldEdit pos1 for each space.", false);
+        PathSetupWand.give(plugin, player, messages);
+        messages.send(player, "path.started", "name", name);
         return Optional.empty();
-    }
-
-    public void tryPlaceFromWorldEdit(Player player) {
-        if (!isSettingUp(player.getUniqueId())) {
-            return;
-        }
-        worldEdit.primaryPosition(player).ifPresent(pos -> onPrimarySelected(player, pos));
     }
 
     public void onPrimarySelected(Player player, Location blockLoc) {
@@ -74,7 +68,7 @@ public final class PathSetupService {
             return;
         }
         if (blockLoc.getWorld() == null || !blockLoc.getWorld().equals(session.world())) {
-            msg(player, "pos1 must be in the same world as path setup.", true);
+            messages.send(player, "path.wrong-world");
             return;
         }
         if (session.isDuplicatePrimary(blockLoc)) {
@@ -114,31 +108,36 @@ public final class PathSetupService {
         session.markPrimary(blockLoc);
 
         int index = session.spaces().size() - 1;
-        msg(player, "Space #" + index + " placed (" + session.spaces().size() + " total).", false);
+        messages.send(
+                player,
+                "path.space-placed",
+                "index", Integer.toString(index),
+                "total", Integer.toString(session.spaces().size())
+        );
     }
 
-    public Optional<String> undo(Player player) {
+    public Optional<Component> undo(Player player) {
         PathSetupSession session = sessions.get(player.getUniqueId());
         if (session == null) {
-            return Optional.of("Not setting up a path. Use /partyadmin path create <name>.");
+            return Optional.of(messages.get("path.not-setup"));
         }
         if (session.spaces().isEmpty()) {
-            return Optional.of("Nothing to undo.");
+            return Optional.of(messages.get("path.nothing-to-undo"));
         }
         PlacedSpace last = session.spaces().remove(session.spaces().size() - 1);
         last.restore();
         session.clearLastPrimary();
-        msg(player, "Undid last space (" + session.spaces().size() + " left).", false);
+        messages.send(player, "path.undid", "left", Integer.toString(session.spaces().size()));
         return Optional.empty();
     }
 
-    public Optional<String> end(Player player) {
+    public Optional<Component> end(Player player) {
         PathSetupSession session = sessions.get(player.getUniqueId());
         if (session == null) {
-            return Optional.of("Not setting up a path. Use /partyadmin path create <name>.");
+            return Optional.of(messages.get("path.not-setup"));
         }
         if (session.spaces().isEmpty()) {
-            return Optional.of("Add at least one space with WorldEdit pos1 before ending.");
+            return Optional.of(messages.get("path.need-space"));
         }
 
         BoardPath path = new BoardPath();
@@ -171,11 +170,17 @@ public final class PathSetupService {
         );
 
         if (!slots.createReady(session.name(), session.world(), boundary, path, spawn)) {
-            return Optional.of("Board '" + session.name() + "' already exists.");
+            return Optional.of(messages.get("path.board-exists-end", "name", session.name()));
         }
 
         sessions.remove(player.getUniqueId());
-        msg(player, "Path '" + session.name() + "' saved with " + path.size() + " space(s).", false);
+        PathSetupWand.removeAll(plugin, player);
+        messages.send(
+                player,
+                "path.saved",
+                "name", session.name(),
+                "count", Integer.toString(path.size())
+        );
         return Optional.empty();
     }
 
@@ -193,7 +198,8 @@ public final class PathSetupService {
         }
         Player online = plugin.getServer().getPlayer(playerId);
         if (online != null && online.isOnline()) {
-            msg(online, "Path setup cancelled; pads restored.", true);
+            PathSetupWand.removeAll(plugin, online);
+            messages.send(online, "path.cancelled");
         }
     }
 
@@ -201,9 +207,5 @@ public final class PathSetupService {
         for (UUID id : List.copyOf(sessions.keySet())) {
             cancel(id);
         }
-    }
-
-    private static void msg(Player player, String text, boolean error) {
-        player.sendMessage(Component.text("[McParty] " + text, error ? NamedTextColor.RED : NamedTextColor.GREEN));
     }
 }
