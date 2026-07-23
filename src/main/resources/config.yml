@@ -9,17 +9,21 @@ party:
 board:
   dice-min: 1
   dice-max: 6
-  # Visual dice (ItemDisplay + Interaction). Needs resource pack mcparty:dice_1..6
-  dice-interact-seconds: 5
-  # Face/transform update rate while spinning (8 = 2.5 swaps/sec)
-  dice-spin-interval-ticks: 8
+  # Visual dice (ItemDisplay). Needs resource pack mcparty:dice_1..6
+  # Stops only on click or this timeout (everyone rolls each round)
+  dice-interact-seconds: 10
+  # Transform step while spinning (4 = 5 steps/sec, steady tumble)
+  dice-spin-interval-ticks: 4
   dice-spawn-distance: 2.0
-  dice-display-scale: 0.6
-  dice-hat-scale: 0.35
+  # Model cube is 14/16 block; 1.0 matches texture size 1:1 on ItemDisplay
+  dice-display-scale: 1.0
+  # Public hat above head (larger than the old 0.35)
+  dice-hat-scale: 0.8
   # Path hop: upward velocity → when vy≤0 keep that Y, TP to target XZ, then fall
-  hop-up-velocity: 0.85
+  # ~1.70 ≈ 15-block apex under vanilla living gravity/drag
+  hop-up-velocity: 1.70
   hop-rise-max-seconds: 3
-  hop-fall-max-seconds: 4
+  hop-fall-max-seconds: 6
 
 minigame:
   dummy-duration-seconds: 5
@@ -73,7 +77,9 @@ resource-pack:
     public-url: ""
 
 # AdvancedSlimePaper — per-party world load/unload
-# Place template as: plugins/McParty/<worlds-directory>/<template-world>.slime
+# Place templates as: plugins/McParty/<worlds-directory>/<name>.slime
+# Path setup does not assign slime-template; slots may leave it empty and use template-world
+# until a template is generated and written to slots.yml.
 slime:
   enabled: true
   worlds-directory: slime_worlds

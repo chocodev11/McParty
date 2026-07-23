@@ -5,6 +5,7 @@ import dev.epicc.board.BoardSlot;
 import dev.epicc.board.BoardSlotRegistry;
 import dev.epicc.board.setup.PathSetupService;
 import dev.epicc.config.MessageService;
+import dev.epicc.slime.SlimeWorldService;
 import net.kyori.adventure.text.Component;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -26,17 +27,20 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
     private final BoardSlotRegistry slots;
     private final PathSetupService pathSetup;
     private final MessageService messages;
+    private final SlimeWorldService slime;
 
     public PartyAdminCommand(
             McPartyPlugin plugin,
             BoardSlotRegistry slots,
             PathSetupService pathSetup,
-            MessageService messages
+            MessageService messages,
+            SlimeWorldService slime
     ) {
         this.plugin = plugin;
         this.slots = slots;
         this.pathSetup = pathSetup;
         this.messages = messages;
+        this.slime = slime;
     }
 
     @Override
@@ -95,9 +99,14 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
                     return;
                 }
                 for (BoardSlot slot : slots.all()) {
+                    String template = slot.slimeTemplate();
+                    if (template == null || template.isBlank()) {
+                        template = slime.defaultTemplate() + "*";
+                    }
                     player.sendMessage(messages.get(
                             "admin.slot-entry",
                             "id", slot.id(),
+                            "template", template,
                             "ready", Boolean.toString(slot.isReady()),
                             "free", Boolean.toString(slot.isFree()),
                             "path", Integer.toString(slot.path().size())
@@ -123,6 +132,41 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             }
             case "undo" -> pathSetup.undo(player);
             case "end" -> pathSetup.end(player);
+            case "remove" -> {
+                if (args.length < 3) {
+                    yield Optional.of(messages.get("admin.path-remove-usage"));
+                }
+                String id = args[2];
+                if (slots.delete(id)) {
+                    messages.send(player, "admin.path-removed", "name", id.toLowerCase(Locale.ROOT));
+                    yield Optional.empty();
+                }
+                yield Optional.of(messages.get("admin.path-not-found", "name", id.toLowerCase(Locale.ROOT)));
+            }
+            case "slime" -> {
+                if (args.length < 4) {
+                    yield Optional.of(messages.get("admin.path-slime-usage"));
+                }
+                String pathId = args[2].toLowerCase(Locale.ROOT);
+                String template = args[3].trim();
+                if (slots.get(pathId).isEmpty()) {
+                    yield Optional.of(messages.get("admin.path-not-found", "name", pathId));
+                }
+                List<String> available = slime.listTemplates();
+                if (!available.contains(template) && available.stream().noneMatch(t -> t.equalsIgnoreCase(template))) {
+                    yield Optional.of(messages.get("admin.path-slime-missing", "template", template));
+                }
+                // Use exact folder basename casing if present
+                String resolved = available.stream()
+                        .filter(t -> t.equalsIgnoreCase(template))
+                        .findFirst()
+                        .orElse(template);
+                if (!slots.setSlimeTemplate(pathId, resolved)) {
+                    yield Optional.of(messages.get("admin.path-not-found", "name", pathId));
+                }
+                messages.send(player, "admin.path-slime-set", "name", pathId, "template", resolved);
+                yield Optional.empty();
+            }
             default -> {
                 messages.send(player, "admin.path-usage");
                 yield Optional.empty();
@@ -145,16 +189,26 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         if (args.length == 2) {
             return switch (args[0].toLowerCase(Locale.ROOT)) {
                 case "slot" -> filter(List.of("list", "delete"), args[1]);
-                case "path" -> filter(List.of("create", "undo", "end"), args[1]);
+                case "path" -> filter(List.of("create", "undo", "end", "remove", "slime"), args[1]);
                 default -> List.of();
             };
         }
         if (args.length == 3) {
             String g = args[0].toLowerCase(Locale.ROOT);
             String s = args[1].toLowerCase(Locale.ROOT);
-            if (g.equals("slot") && s.equals("delete")) {
+            if ((g.equals("slot") && s.equals("delete"))
+                    || (g.equals("path") && (s.equals("remove") || s.equals("slime")))) {
                 List<String> ids = slots.all().stream().map(BoardSlot::id).collect(Collectors.toCollection(ArrayList::new));
                 return filter(ids, args[2]);
+            }
+            // path create <name> — free-type name, no suggestions
+            return List.of();
+        }
+        if (args.length == 4) {
+            String g = args[0].toLowerCase(Locale.ROOT);
+            String s = args[1].toLowerCase(Locale.ROOT);
+            if (g.equals("path") && s.equals("slime")) {
+                return filter(slime.listTemplates(), args[3]);
             }
         }
         return List.of();

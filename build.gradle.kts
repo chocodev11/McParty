@@ -1,3 +1,14 @@
+import proguard.gradle.ProGuardTask
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath("com.guardsquare:proguard-gradle:7.9.1")
+    }
+}
+
 plugins {
     java
 }
@@ -55,6 +66,8 @@ tasks {
 
     jar {
         archiveBaseName.set("McParty")
+        // Unoptimized fat jar; ProGuard produces the deploy artifact
+        archiveClassifier.set("full")
         // Shade file-loader (and any runtime deps) into the plugin jar
         from({
             configurations.runtimeClasspath.get()
@@ -68,4 +81,61 @@ tasks {
         options.encoding = "UTF-8"
         options.release.set(25)
     }
+}
+
+// Shrink + optimize the shaded jar (Guardsquare ProGuard free edition)
+val proguardTask = tasks.register<ProGuardTask>("proguard") {
+    group = "build"
+    description = "Shrink and optimize the shaded McParty jar with ProGuard"
+    dependsOn(tasks.jar)
+
+    configuration(files("proguard-rules.pro"))
+
+    injars(tasks.jar.flatMap { it.archiveFile })
+    outjars(layout.buildDirectory.file("libs/McParty-${project.version}.jar"))
+
+    // Server-provided / soft-depend APIs (not in the fat jar). Prefer compileClasspath
+    // minus runtimeClasspath so we do not list the shaded file-loader twice.
+    val libraryJars = configurations.compileClasspath.get().files
+        .filter { it.extension == "jar" }
+        .filter { jar -> jar !in configurations.runtimeClasspath.get().files }
+    libraryjars(files(libraryJars))
+
+    // JDK modules referenced by the plugin / shaded deps
+    val javaHome = System.getProperty("java.home")
+    val jmodFilter = mapOf(
+        "jarfilter" to "!**.jar",
+        "filter" to "!module-info.class",
+    )
+    listOf(
+        "java.base",
+        "java.logging",
+        "java.xml",
+        "java.desktop",
+        "java.management",
+        "java.naming",
+        "java.sql",
+        "jdk.httpserver",
+    ).forEach { module ->
+        val jmod = file("$javaHome/jmods/$module.jmod")
+        if (jmod.exists()) {
+            // Named filters first (Groovy-style API on ProGuardTask)
+            libraryjars(jmodFilter, jmod)
+        }
+    }
+
+    printmapping(layout.buildDirectory.file("proguard/mapping.txt"))
+    printseeds(layout.buildDirectory.file("proguard/seeds.txt"))
+    printusage(layout.buildDirectory.file("proguard/usage.txt"))
+}
+
+tasks.assemble {
+    dependsOn(proguardTask)
+}
+
+// Default package target: optimized jar (same as assemble)
+tasks.register("packagePlugin") {
+    group = "build"
+    description = "Build the ProGuard-optimized McParty plugin jar"
+    dependsOn(proguardTask)
 }

@@ -1,5 +1,6 @@
 package dev.epicc.board.dice;
 
+import org.bukkit.Location;
 import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.ItemDisplay;
@@ -13,12 +14,13 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Sticky dice hat: ItemDisplay passenger of the player (rides head like gear).
- * FIXED billboard so it turns with the body instead of facing the camera.
+ * Sticky dice hat: ItemDisplay passenger of the player (public — everyone can see it).
+ * FIXED billboard, pitch-zero spawn, no extra local rotation.
  */
 public final class DiceHatService {
 
-    private static final float HEAD_Y = 0.55f;
+    /** Above head; scale multiplies the 14/16 model cube. */
+    private static final float HEAD_Y = 0.75f;
 
     private final Map<UUID, ItemDisplay> hats = new ConcurrentHashMap<>();
     private float scale;
@@ -34,10 +36,17 @@ public final class DiceHatService {
     public void setHat(Player player, int face) {
         clear(player.getUniqueId());
 
-        ItemDisplay hat = player.getWorld().spawn(player.getLocation(), ItemDisplay.class, d -> {
+        // Fixed world orientation (yaw=pitch=0); only rides player via passenger attach
+        Location at = player.getLocation().clone();
+        at.setYaw(0f);
+        at.setPitch(0f);
+
+        ItemDisplay hat = player.getWorld().spawn(at, ItemDisplay.class, d -> {
+            // Public by default — all players can see the hat
+            d.setVisibleByDefault(true);
             d.setItemStack(DiceItems.face(face));
             d.setBillboard(Display.Billboard.FIXED);
-            d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
+            d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
             d.setInterpolationDuration(0);
             d.setTeleportDuration(0);
             d.setTransformation(new Transformation(
@@ -51,7 +60,8 @@ public final class DiceHatService {
             d.setShadowRadius(0f);
             d.setShadowStrength(0f);
         });
-        // Passenger = client-side stick to player (no server teleports)
+        hat.setRotation(0f, 0f);
+
         if (!player.addPassenger(hat)) {
             hat.remove();
             return;

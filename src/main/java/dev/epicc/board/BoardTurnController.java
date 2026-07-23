@@ -11,9 +11,14 @@ import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
+/**
+ * Board round loop: everyone rolls at once (private dice) → when all settled, hop in order → minigame.
+ */
 public final class BoardTurnController {
 
     private final JavaPlugin plugin;
@@ -24,12 +29,16 @@ public final class BoardTurnController {
     private final PathHopMover pathHopMover;
 
     private PartyInstance instance;
-    private int turnIndex;
-    private int turnsTakenThisRound;
     private boolean waitingForRoll;
     private boolean inMinigame;
     private boolean moving;
-    private UUID activeRoller;
+
+    /** Players still expected to finish their roll this round. */
+    private final Map<UUID, PartyPlayer> pendingRollers = new LinkedHashMap<>();
+    /** Settled face per player this round (before hops). */
+    private final Map<UUID, Integer> settledRolls = new LinkedHashMap<>();
+    private List<UUID> moveQueue = List.of();
+    private int moveIndex;
 
     public BoardTurnController(
             JavaPlugin plugin,
@@ -49,12 +58,13 @@ public final class BoardTurnController {
 
     public void attach(PartyInstance instance) {
         this.instance = instance;
-        this.turnIndex = 0;
-        this.turnsTakenThisRound = 0;
         this.waitingForRoll = false;
         this.inMinigame = false;
         this.moving = false;
-        this.activeRoller = null;
+        this.pendingRollers.clear();
+        this.settledRolls.clear();
+        this.moveQueue = List.of();
+        this.moveIndex = 0;
     }
 
     public void startTurns() {
@@ -62,17 +72,17 @@ public final class BoardTurnController {
             return;
         }
         instance.setState(PartyState.PLAYING);
-        beginTurn();
+        beginRound();
     }
 
     public boolean isWaitingForRoll(UUID playerId) {
         if (!waitingForRoll || inMinigame || instance == null) {
             return false;
         }
-        return activeRoller != null && activeRoller.equals(playerId);
+        return pendingRollers.containsKey(playerId) && dicePresenter.isRolling(playerId);
     }
 
-    /** Force-settle visual dice (/party roll) or no-op if not your turn. */
+    /** Force-settle visual dice (/party roll) or no-op if not rolling. */
     public boolean roll(Player player) {
         if (!isWaitingForRoll(player.getUniqueId())) {
             return false;
@@ -81,10 +91,11 @@ public final class BoardTurnController {
     }
 
     public void stop() {
-        if (activeRoller != null) {
-            dicePresenter.cancel(activeRoller);
-            activeRoller = null;
+        for (UUID id : new ArrayList<>(pendingRollers.keySet())) {
+            dicePresenter.cancel(id);
         }
+        pendingRollers.clear();
+        settledRolls.clear();
         if (instance != null) {
             for (PartyPlayer pp : instance.players()) {
                 pathHopMover.cancel(pp.uuid());
@@ -97,7 +108,7 @@ public final class BoardTurnController {
         instance = null;
     }
 
-    private void beginTurn() {
+    private void beginRound() {
         if (instance == null || instance.state() != PartyState.PLAYING) {
             return;
         }
@@ -106,46 +117,122 @@ public final class BoardTurnController {
             return;
         }
 
-        PartyPlayer current = currentPlayer();
-        if (current == null) {
-            instance.requestEnd("No players left");
-            return;
-        }
+        pendingRollers.clear();
+        settledRolls.clear();
+        moveQueue = List.of();
+        moveIndex = 0;
 
-        Player player = plugin.getServer().getPlayer(current.uuid());
-        if (player == null || !player.isOnline()) {
-            skipAbsentTurn();
+        List<PartyPlayer> online = new ArrayList<>();
+        for (PartyPlayer pp : instance.players()) {
+            Player p = plugin.getServer().getPlayer(pp.uuid());
+            if (p != null && p.isOnline()) {
+                online.add(pp);
+            }
+        }
+        if (online.isEmpty()) {
+            instance.requestEnd("No online players");
             return;
         }
 
         waitingForRoll = true;
-        activeRoller = current.uuid();
-        instance.broadcast(messages.get("board.turn", "player", current.name()));
+        instance.broadcast(messages.get("board.roll-all"));
 
-        boolean started = dicePresenter.start(player, dice, result -> {
-            if (instance == null || instance.state() != PartyState.PLAYING) {
-                return;
+        for (PartyPlayer pp : online) {
+            Player player = plugin.getServer().getPlayer(pp.uuid());
+            if (player == null || !player.isOnline()) {
+                continue;
             }
-            applyRoll(player, current, result);
-        });
-        if (!started) {
-            // Should not happen; fall back to instant roll
-            applyRoll(player, current, dice.roll());
+            pendingRollers.put(pp.uuid(), pp);
+            boolean started = dicePresenter.start(player, dice, result -> {
+                if (instance == null || instance.state() != PartyState.PLAYING) {
+                    return;
+                }
+                onPlayerSettled(pp.uuid(), result);
+            });
+            if (!started) {
+                // Already had a session or passenger failed — apply instant roll
+                onPlayerSettled(pp.uuid(), dice.roll());
+            }
+        }
+
+        if (pendingRollers.isEmpty()) {
+            waitingForRoll = false;
+            instance.requestEnd("No online players");
         }
     }
 
-    private void applyRoll(Player player, PartyPlayer partyPlayer, int roll) {
-        waitingForRoll = false;
-        activeRoller = null;
+    private void onPlayerSettled(UUID playerId, int roll) {
+        PartyPlayer partyPlayer = pendingRollers.remove(playerId);
+        if (partyPlayer == null) {
+            // Duplicate settle callback
+            return;
+        }
+        settledRolls.put(playerId, roll);
 
-        if (partyPlayer == null || instance == null || instance.slot() == null) {
+        if (instance != null) {
+            instance.broadcast(messages.get(
+                    "board.rolled-face",
+                    "player", partyPlayer.name(),
+                    "roll", Integer.toString(roll)
+            ));
+        }
+
+        // Wait until everyone who started a roll has finished (presenter already held 1s)
+        if (!pendingRollers.isEmpty()) {
+            return;
+        }
+
+        waitingForRoll = false;
+        beginMoves();
+    }
+
+    private void beginMoves() {
+        if (instance == null || instance.state() != PartyState.PLAYING || instance.slot() == null) {
+            return;
+        }
+
+        // Hop in party order for anyone who settled
+        List<UUID> order = new ArrayList<>();
+        for (PartyPlayer pp : instance.players()) {
+            if (settledRolls.containsKey(pp.uuid())) {
+                order.add(pp.uuid());
+            }
+        }
+        if (order.isEmpty()) {
+            startMinigameThenContinue();
+            return;
+        }
+
+        moveQueue = order;
+        moveIndex = 0;
+        hopNext();
+    }
+
+    private void hopNext() {
+        if (instance == null || instance.state() != PartyState.PLAYING || instance.slot() == null) {
+            moving = false;
+            return;
+        }
+        if (moveIndex >= moveQueue.size()) {
+            moving = false;
+            startMinigameThenContinue();
+            return;
+        }
+
+        UUID id = moveQueue.get(moveIndex);
+        Integer roll = settledRolls.get(id);
+        PartyPlayer partyPlayer = instance.player(id).orElse(null);
+        Player player = plugin.getServer().getPlayer(id);
+
+        if (roll == null || partyPlayer == null || player == null || !player.isOnline()) {
+            moveIndex++;
+            hopNext();
             return;
         }
 
         int maxIndex = Math.max(0, instance.slot().path().size() - 1);
         int next = Math.min(partyPlayer.boardIndex() + roll, maxIndex);
         partyPlayer.setBoardIndex(next);
-
         Location dest = instance.slot().path().get(next);
 
         instance.broadcast(messages.get(
@@ -156,36 +243,10 @@ public final class BoardTurnController {
         ));
 
         moving = true;
-        pathHopMover.hop(player, dest, this::afterMove);
-    }
-
-    private void afterMove() {
-        if (instance == null || instance.state() != PartyState.PLAYING) {
-            moving = false;
-            return;
-        }
-        moving = false;
-        turnsTakenThisRound++;
-        if (turnsTakenThisRound >= instance.playerCount()) {
-            turnsTakenThisRound = 0;
-            startMinigameThenContinue();
-        } else {
-            turnIndex = (turnIndex + 1) % instance.playerCount();
-            beginTurn();
-        }
-    }
-
-    private void skipAbsentTurn() {
-        waitingForRoll = false;
-        activeRoller = null;
-        turnsTakenThisRound++;
-        turnIndex = (turnIndex + 1) % Math.max(1, instance.playerCount());
-        if (turnsTakenThisRound >= instance.playerCount()) {
-            turnsTakenThisRound = 0;
-            startMinigameThenContinue();
-        } else {
-            beginTurn();
-        }
+        pathHopMover.hop(player, dest, () -> {
+            moveIndex++;
+            hopNext();
+        });
     }
 
     private void startMinigameThenContinue() {
@@ -194,10 +255,11 @@ public final class BoardTurnController {
         }
         inMinigame = true;
         waitingForRoll = false;
-        if (activeRoller != null) {
-            dicePresenter.cancel(activeRoller);
-            activeRoller = null;
+        for (UUID id : new ArrayList<>(pendingRollers.keySet())) {
+            dicePresenter.cancel(id);
         }
+        pendingRollers.clear();
+
         List<Player> online = new ArrayList<>();
         for (PartyPlayer pp : instance.players()) {
             Player p = plugin.getServer().getPlayer(pp.uuid());
@@ -225,20 +287,8 @@ public final class BoardTurnController {
             if (instance.round() >= instance.settings().maxTurns()) {
                 instance.requestEnd("Max turns reached");
             } else {
-                turnIndex = 0;
-                beginTurn();
+                beginRound();
             }
         });
-    }
-
-    private PartyPlayer currentPlayer() {
-        if (instance == null || instance.players().isEmpty()) {
-            return null;
-        }
-        List<PartyPlayer> list = instance.players();
-        if (turnIndex >= list.size()) {
-            turnIndex = 0;
-        }
-        return list.get(turnIndex);
     }
 }

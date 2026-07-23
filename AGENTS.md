@@ -33,13 +33,17 @@ Instructions for AI coding agents working in this repository. Read this before p
 
 **Not plain Paper.** ASP API (`com.infernalsuite.asp.api`) is provided by the server. Loaders are **not** on the server — they must be shaded into this plugin.
 
-Deployed template file (when slime is on):
+Deployed template files (when slime is on):
 
 ```text
-plugins/McParty/<slime.worlds-directory>/<slime.template-world>.slime
-# default:
+plugins/McParty/<slime.worlds-directory>/<template-name>.slime
+# examples:
 plugins/McParty/slime_worlds/party_board.slime
+plugins/McParty/slime_worlds/beach.slime
 ```
+
+Each board slot may store which template to clone (`slots.yml` → `slime-template`).
+Path setup does not assign it (template is generated later). Empty field uses `slime.template-world`.
 
 ---
 
@@ -62,7 +66,16 @@ Repositories: Maven Central, PaperMC, InfernalSuite, CodeMC releases.
 
 ### Packaging
 
-The `jar` task fat-jars `runtimeClasspath` (currently the file-loader) into `McParty-*.jar` with `DuplicatesStrategy.EXCLUDE`. Do not switch to a bare thin jar without keeping loaders shaded.
+The `jar` task fat-jars `runtimeClasspath` (currently the file-loader) into `McParty-*-full.jar` with `DuplicatesStrategy.EXCLUDE`. Do not switch to a bare thin jar without keeping loaders shaded.
+
+**ProGuard** (`com.guardsquare:proguard-gradle:7.9.1`) then shrinks and optimizes that fat jar (no obfuscation by default — see `proguard-rules.pro`). Deploy artifact:
+
+```text
+build/libs/McParty-<version>.jar
+```
+
+- `./gradlew.bat jar` — shaded only (`*-full.jar`)
+- `./gradlew.bat proguard` / `assemble` / `packagePlugin` — optimized deploy jar
 
 `plugin.yml` version is expanded from Gradle `version` via `processResources`.
 
@@ -70,8 +83,8 @@ The `jar` task fat-jars `runtimeClasspath` (currently the file-loader) into `McP
 
 ```bash
 ./gradlew.bat compileJava
-# or full package:
-./gradlew.bat jar
+# or full package (includes ProGuard):
+./gradlew.bat assemble
 ```
 
 Output: `build/libs/McParty-1.0.0-SNAPSHOT.jar` (version may change).
@@ -180,19 +193,20 @@ WAITING → STARTING → PLAYING → ENDING → CLEANUP
 2. `slots.claimFree(instanceId)` — needs a **ready** free slot (spawn + path + boundary).
 3. State → STARTING.
 4. If `slime.isReady()`:
-   - Async: `prepareClone` (`readWorld` template read-only + `clone`)
+   - Resolve template from `slot.slimeTemplate()` (else config default)
+   - Async: `prepareClone(instanceId, template)` (`readWorld` read-only + `clone`)
    - Sync: `loadClone` (`asp.loadWorld` — **main thread only**)
    - `templateSlot.forWorld(cloneWorld)` → runtime slot with same coords
-5. Else: use permanent template slot world.
+5. Else: use permanent setup-world slot (no clone).
 6. Countdown → `beginPlaying` (teleport spawn, attach `BoardTurnController`).
 
 **Board turns** (`BoardTurnController` + `board/dice/*`)
 
-1. Current player gets a visual dice (`DicePresenter`): ItemDisplay + Interaction raycast in front of them; result is rolled up front.
-2. Spin until **click** (or `/party roll`) or **timeout** (`board.dice-interact-seconds`, default 5s).
-3. Final face shows briefly, then a passenger ItemDisplay “hat” (`DiceHatService`); path index advances.
-4. `PathHopMover`: upward velocity hop → at apex (`vy ≤ 0`) teleport to target XZ at that exact Y → natural fall (fall damage cancelled).
-5. After all players acted once in a round → `MinigameManager.runRandom` (reveal titles → start, no teleport) → apply coin rewards → next round.
+1. **Everyone rolls at once** each round: each player gets a private visual die (`DicePresenter` ItemDisplay passenger; `setVisibleByDefault(false)` + `showEntity` only for the roller). Result is rolled up front.
+2. Spin until **that player clicks** (or `/party roll`) or **timeout** (`board.dice-interact-seconds`, default 5s). No settle from being hit by others.
+3. On settle: land upright, set **public** dice hat (`DiceHatService`), hold **1 second**, then callback. When **all** rollers have settled → hop phase.
+4. Hops in party order: `PathHopMover` upward velocity → at apex (`vy ≤ 0`) TP to target XZ at that Y → fall (fall damage cancelled).
+5. After hops → `MinigameManager.runRandom` (reveal titles → start, no teleport) → coin rewards → next round.
 6. After `maxTurns` rounds → `instance.requestEnd` → podium → cleanup.
 7. Custom look: resource pack `resourcepack/` models `mcparty:dice_1`…`dice_6` (`DiceItems`), prompted by `ResourcePackService`.
 
@@ -211,11 +225,17 @@ WAITING → STARTING → PLAYING → ENDING → CLEANUP
 
 ### Board slots vs slime worlds
 
-- **Template slot** (in `slots.yml`): setup on any loaded world via path builder (Path Stick pads). Stores integer bounds + path/spawn coords + world name.
-- **Runtime slot**: `BoardSlot.forWorld(World)` / `BoardPath.forWorld` / `SlotBoundary.forWorld` rebind the **same coordinates** onto the loaded slime clone.
-- Claiming uses the **registry** slot; cleanup releases via `slots.get(id)`.
+- **Board slot** (in `slots.yml`): one path + spawn + bounds + optional **`slime-template`** (ASP file basename; empty → config default until generated). Setup world name is only where the path was built.
+- **Runtime slot**: `BoardSlot.forWorld(World)` rebinds the **same coordinates** onto the party's slime clone of that template.
+- Claiming uses the **registry** slot; cleanup releases via `slots.get(id)`. Multiple free slots = concurrent capacity (each can point at different templates, or the same template if you want more capacity on one map).
 
-Admins set up path/spawn/bounds with the Path Stick on a world that has matching geometry to the `.slime` template.
+Admin setup:
+
+```text
+/partyadmin path create <board-id>
+# Path Stick → spawn + pads → /partyadmin path end
+# slime-template is filled later when the .slime is generated
+```
 
 ### Containment
 
@@ -248,11 +268,14 @@ public interface Minigame {
 
 Admin board setup (path builder):
 
-- `path create <name>` — start setup session; gives a **Path Stick** (blaze rod, custom name + PDC marker)  
-- **Break a block** while holding the Path Stick — cancel break, place flat 3×3 pad (center `GOLD_BLOCK`, ring `YELLOW_WOOL`), append path space  
-- `path undo` — restore last pad blocks + drop last path space  
-- `path end` — spawn = first space; boundary = AABB of all pads + Y padding; save ready `BoardSlot`; remove Path Stick  
-- `slot list` / `slot delete <id>` — manage saved boards  
+- `path create <name>` — start setup; gives **Path Stick** (no slime template yet)  
+- **1st break** with Path Stick — set **spawn** only (no pad blocks). At game start players teleport randomly within 4 blocks of that point  
+- **Later breaks** — place flat 3×3 pad (center `GOLD_BLOCK`, ring `YELLOW_WOOL`), append path space  
+- `path undo` — drop last path pad (or clear spawn if no pads yet)  
+- `path end` — needs spawn + ≥1 path space; boundary = AABB of pads + spawn + Y padding; save ready `BoardSlot` with empty `slime-template`  
+- `path remove <name>` — delete board from `slots.yml`  
+- `path slime <name> <template>` — set `slime-template` from a basename present in `slime_worlds/`  
+- `slot list` / `slot delete <id>` — manage saved boards (list shows template; `*` = using config default)  
 - Quit / disable / world change mid-setup cancels session, restores pads, removes Path Stick  
 
 Commands return `Optional<String>` errors from `PartyManager` / setup → red chat prefix `[McParty]`.
@@ -278,9 +301,10 @@ Javadocs: https://docs.infernalsuite.com/
 
 | Method | Thread | Purpose |
 |--------|--------|---------|
-| `prepareClone(instanceId)` | Async OK | read template + clone |
+| `prepareClone(instanceId, template)` | Async OK | read named template + clone |
 | `loadClone(instanceId, clone)` | Main only | register world, map instance → name |
-| `loadForInstance(instanceId)` | Main only (full path) | convenience sync load |
+| `loadForInstance(instanceId, template)` | Main only (full path) | convenience sync load |
+| `listTemplates()` | Any | scan `*.slime` basenames (tab-complete) |
 | `unloadForInstance` / `unloadAll` | Main | teleport out + unload |
 
 Config keys under `slime:` — see `config.yml` and `PluginConfig`.

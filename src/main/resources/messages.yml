@@ -45,14 +45,18 @@ party:
 
 board:
   turn: "{prefix}<aqua><player>'s turn — click the dice (or /party roll)"
-  rolled: "{prefix}<gold><player> rolled <roll> → space <space>"
+  roll-all: "{prefix}<aqua>Everyone roll! Click your dice (or /party roll)"
+  rolled-face: "{prefix}<yellow><player> rolled a <roll>"
+  rolled: "{prefix}<gold><player> moves <roll> → space <space>"
   round-complete: "{prefix}<light_purple>Round complete — picking minigame…"
 
 minigame:
   dummy-started: "{prefix}<aqua><name> started!"
   dummy-place: "{prefix}<green>Place #<place> (+<coins> coins)"
+  # Title during spin; name always on subtitle (spin + center-out expand)
   reveal-spin-title: "<yellow>???"
-  reveal-ready-subtitle: "<yellow>Get ready!"
+  # Title after spin lands (name expands on subtitle)
+  reveal-ready-title: "<yellow>Get ready!"
   selected: "{prefix}<light_purple>Minigame: <name>"
 
 admin:
@@ -64,10 +68,16 @@ admin:
   slot-deleted: "{prefix}<green>Deleted slot."
   slot-not-found: "{prefix}<red>Slot not found."
   slot-none: "{prefix}<green>No slots."
-  slot-entry: "{prefix}<green><id> ready=<ready> free=<free> path=<path>"
-  path-usage: "<aqua>/partyadmin path <create|undo|end> [name]"
+  slot-entry: "{prefix}<green><id> template=<template> ready=<ready> free=<free> path=<path>"
+  path-usage: "<aqua>/partyadmin path <create|undo|end|remove|slime> [name] [template]"
   path-create-usage: "{prefix}<red>Usage: /partyadmin path create <name>"
-  help-path: "<aqua>/partyadmin path create|undo|end"
+  path-remove-usage: "{prefix}<red>Usage: /partyadmin path remove <name>"
+  path-removed: "{prefix}<green>Removed path '<name>' from slots.yml."
+  path-not-found: "{prefix}<red>Path '<name>' not found."
+  path-slime-usage: "{prefix}<red>Usage: /partyadmin path slime <name> <slime-template>"
+  path-slime-missing: "{prefix}<red>Slime template '<template>' not found in the slime worlds folder."
+  path-slime-set: "{prefix}<green>Path '<name>' slime template set to '<template>'."
+  help-path: "<aqua>/partyadmin path create <name> | undo | end | remove <name> | slime <name> <template>"
   help-slot: "<aqua>/partyadmin slot list|delete"
   help-reload: "<aqua>/partyadmin reload"
 
@@ -76,18 +86,21 @@ path:
   name-required: "{prefix}<red>Path name required."
   name-invalid: "{prefix}<red>Invalid name. Use letters, numbers, _ or -."
   board-exists: "{prefix}<red>Board '<name>' already exists. Delete it first."
-  started: "{prefix}<green>Path setup '<name>' started. Break a block with the Path Stick for each space."
+  started: "{prefix}<green>Path setup '<name>' started. First break = spawn (no pad), then break blocks for path spaces."
   wrong-world: "{prefix}<red>Space must be in the same world as path setup."
+  spawn-placed: "{prefix}<green>Spawn set (no pad). Players will appear within 4 blocks. Now place path spaces."
   space-placed: "{prefix}<green>Space #<index> placed (<total> total)."
   not-setup: "{prefix}<red>Not setting up a path. Use /partyadmin path create <name>."
   nothing-to-undo: "{prefix}<red>Nothing to undo."
   undid: "{prefix}<green>Undid last space (<left> left)."
-  need-space: "{prefix}<red>Add at least one space with the Path Stick before ending."
+  undid-spawn: "{prefix}<green>Cleared spawn. Break a block to set spawn again."
+  need-spawn: "{prefix}<red>Set spawn first (first Path Stick break, no pad)."
+  need-space: "{prefix}<red>Add at least one path space with the Path Stick before ending."
   board-exists-end: "{prefix}<red>Board '<name>' already exists."
-  saved: "{prefix}<green>Path '<name>' saved with <count> space(s)."
+  saved: "{prefix}<green>Path '<name>' saved with <count> space(s). Slime template can be set after generation."
   cancelled: "{prefix}<red>Path setup cancelled; pads restored."
   stick-name: "<gold>Path Stick"
-  stick-lore-1: "<gray>Break a block to place a path space"
+  stick-lore-1: "<gray>1st break: spawn (no pad). Then: path spaces"
   stick-lore-2: "<dark_gray>/partyadmin path undo | end"
 
 resource-pack:

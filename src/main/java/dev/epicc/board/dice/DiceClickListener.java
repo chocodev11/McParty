@@ -11,7 +11,7 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
 
 /**
- * Click (air/block/entity) settles the active dice roll.
+ * Explicit click settles the roller's own dice only (not damage from others, not off-hand).
  * Die rides the player as a passenger — no Interaction entity hitbox.
  */
 public final class DiceClickListener implements Listener {
@@ -34,6 +34,9 @@ public final class DiceClickListener implements Listener {
                 && action != Action.RIGHT_CLICK_BLOCK) {
             return;
         }
+        if (!presenter.isRolling(event.getPlayer().getUniqueId())) {
+            return;
+        }
         if (presenter.trySettle(event.getPlayer())) {
             event.setCancelled(true);
         }
@@ -44,6 +47,9 @@ public final class DiceClickListener implements Listener {
         if (event.getHand() != EquipmentSlot.HAND) {
             return;
         }
+        if (!presenter.isRolling(event.getPlayer().getUniqueId())) {
+            return;
+        }
         if (presenter.trySettle(event.getPlayer())) {
             event.setCancelled(true);
         }
@@ -52,6 +58,10 @@ public final class DiceClickListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onAttack(EntityDamageByEntityEvent event) {
         if (!(event.getDamager() instanceof Player player)) {
+            return;
+        }
+        // Only the attacker's own active roll — never settle from being hit
+        if (!presenter.isRolling(player.getUniqueId())) {
             return;
         }
         if (presenter.trySettle(player)) {

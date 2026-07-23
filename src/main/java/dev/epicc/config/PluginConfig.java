@@ -80,13 +80,13 @@ public final class PluginConfig {
         diceMin = c.getInt("board.dice-min", 1);
         diceMax = c.getInt("board.dice-max", 6);
         diceInteractSeconds = c.getInt("board.dice-interact-seconds", 5);
-        diceSpinIntervalTicks = c.getInt("board.dice-spin-interval-ticks", 8);
+        diceSpinIntervalTicks = c.getInt("board.dice-spin-interval-ticks", 4);
         diceSpawnDistance = c.getDouble("board.dice-spawn-distance", 2.0);
-        diceDisplayScale = (float) c.getDouble("board.dice-display-scale", 0.6);
-        diceHatScale = (float) c.getDouble("board.dice-hat-scale", 0.35);
-        hopUpVelocity = c.getDouble("board.hop-up-velocity", 0.85);
+        diceDisplayScale = (float) c.getDouble("board.dice-display-scale", 1.0);
+        diceHatScale = (float) c.getDouble("board.dice-hat-scale", 0.55);
+        hopUpVelocity = c.getDouble("board.hop-up-velocity", 1.70);
         hopRiseMaxSeconds = c.getDouble("board.hop-rise-max-seconds", 3.0);
-        hopFallMaxSeconds = c.getDouble("board.hop-fall-max-seconds", 4.0);
+        hopFallMaxSeconds = c.getDouble("board.hop-fall-max-seconds", 6.0);
 
         dummyDurationSeconds = c.getInt("minigame.dummy-duration-seconds", 5);
         List<Integer> rewards = c.getIntegerList("minigame.dummy-coin-rewards");

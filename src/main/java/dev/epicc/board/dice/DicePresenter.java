@@ -25,14 +25,20 @@ import java.util.concurrent.ThreadLocalRandom;
 import java.util.function.IntConsumer;
 
 /**
- * Rolling die rides the player as a passenger (always in front, no per-tick teleport).
- * On settle: detaches once and drops to the ground in front.
+ * Rolling die rides the player as a passenger (no freestanding teleport while spinning).
+ * Entity yaw/pitch stay 0; "in front" is world-space transformation translation on the eye look-ray
+ * (updated each tick; passenger attach is player height, so Y is relative to the top of the head).
+ * Visible only to the roller. On settle: detach, land upright on the look-ray floor, hold 1s, callback.
  */
 public final class DicePresenter {
 
     private static final float CUBE_HALF = 14f / 16f / 2f;
-    /** Local Y of ride attachment ≈ chest/eye for standing player. */
-    private static final float RIDE_EYE_Y = 1.4f;
+    private static final long SETTLE_HOLD_TICKS = 20L;
+    /** How far along the eye ray to search for a land surface on settle. */
+    private static final double SETTLE_RAY_RANGE = 8.0;
+    /** Steady tumble per spin step (radians) — consistent speed, not random jumps. */
+    private static final float SPIN_YAW_STEP = (float) (Math.PI / 3.0);
+    private static final float SPIN_PITCH_STEP = (float) (Math.PI / 4.0);
 
     private final JavaPlugin plugin;
     private final DiceHatService hats;
@@ -64,11 +70,12 @@ public final class DicePresenter {
     }
 
     public boolean isRolling(UUID playerId) {
-        return byPlayer.containsKey(playerId);
+        Session session = byPlayer.get(playerId);
+        return session != null && !session.settled;
     }
 
     /**
-     * Start visual roll. {@code onSettled} receives the final face (main thread).
+     * Start visual roll. {@code onSettled} receives the final face (main thread) after the hold.
      * Returns false if player already has a session.
      */
     public boolean start(Player player, Dice dice, IntConsumer onSettled) {
@@ -78,54 +85,84 @@ public final class DicePresenter {
 
         int result = dice.roll();
         Session session = new Session(player.getUniqueId(), result, onSettled);
-        Vector3f front = frontOffset();
 
-        ItemDisplay display = player.getWorld().spawn(player.getLocation(), ItemDisplay.class, d -> {
+        Location spawnAt = player.getLocation().clone();
+        spawnAt.setYaw(0f);
+        spawnAt.setPitch(0f);
+
+        ItemDisplay display = player.getWorld().spawn(spawnAt, ItemDisplay.class, d -> {
+            d.setVisibleByDefault(false);
             d.setItemStack(DiceItems.face(spinFace(dice)));
             d.setBillboard(Display.Billboard.FIXED);
-            d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
-            d.setInterpolationDuration(spinIntervalTicks);
+            // NONE so only our transformation scale controls size (FIXED adds item-frame shrink)
+            d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+            d.setInterpolationDuration(0);
             d.setTeleportDuration(0);
-            d.setTransformation(tumble(front, 0f, 0f));
+            // Entity yaw/pitch stay 0 — "in front" is pure translation from player look (no setRotation lag)
+            d.setTransformation(tumble(frontOffset(player), 0f, 0f));
             d.setPersistent(false);
             d.setShadowRadius(0f);
+            d.setViewRange(48f);
         });
+        display.setRotation(0f, 0f);
+
+        // Only the roller sees their die (re-show after mount — needed after world change)
+        player.showEntity(plugin, display);
 
         if (!player.addPassenger(display)) {
             display.remove();
             return false;
         }
+        player.showEntity(plugin, display);
 
         session.display = display;
         byPlayer.put(player.getUniqueId(), session);
 
+        // Every tick: remount + translation in front of look (snappy, no entity yaw sync)
+        session.faceTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
+            if (session.settled || session.display == null || !session.display.isValid()) {
+                return;
+            }
+            Player rolling = plugin.getServer().getPlayer(session.playerId);
+            if (rolling == null || !rolling.isOnline()) {
+                return;
+            }
+            if (session.display.getVehicle() == null) {
+                rolling.addPassenger(session.display);
+            }
+            // Keep private visibility after chunk/vehicle track updates
+            rolling.showEntity(plugin, session.display);
+            session.display.setRotation(0f, 0f);
+            session.display.setInterpolationDelay(0);
+            session.display.setInterpolationDuration(0);
+            session.display.setTransformation(
+                    tumble(frontOffset(rolling), session.spinYaw, session.spinPitch)
+            );
+        }, 0L, 1L);
+
+        // Tumble / face texture only (angles applied by faceTask)
         session.spinTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (session.settled || session.display == null || !session.display.isValid()) {
                 return;
             }
-            // Keep riding if something dismounted us
-            Player rolling = plugin.getServer().getPlayer(session.playerId);
-            if (rolling != null && rolling.isOnline() && session.display.getVehicle() == null) {
-                rolling.addPassenger(session.display);
+            session.spinYaw += SPIN_YAW_STEP;
+            session.spinPitch += SPIN_PITCH_STEP;
+            session.spinStep++;
+            if (session.spinStep % 2 == 0) {
+                session.display.setItemStack(DiceItems.face(spinFace(dice)));
             }
-
-            session.display.setItemStack(DiceItems.face(spinFace(dice)));
-            float yaw = ThreadLocalRandom.current().nextFloat() * ((float) Math.PI * 2f);
-            float pitch = ThreadLocalRandom.current().nextFloat() * ((float) Math.PI * 2f);
-            session.display.setInterpolationDelay(0);
-            session.display.setInterpolationDuration(spinIntervalTicks);
-            // Same front offset every frame — only rotation changes
-            session.display.setTransformation(tumble(front, yaw, pitch));
         }, 0L, spinIntervalTicks);
 
-        session.timeoutTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> settle(session), interactTicks);
+        session.timeoutTask = plugin.getServer().getScheduler().runTaskLater(
+                plugin, () -> settle(session), interactTicks
+        );
         return true;
     }
 
-    /** Click or /party roll — settle if this player owns an active session. */
+    /** Click or /party roll — settle if this player owns an active (not yet settled) session. */
     public boolean trySettle(Player player) {
         Session session = byPlayer.get(player.getUniqueId());
-        if (session == null) {
+        if (session == null || session.settled) {
             return false;
         }
         settle(session);
@@ -164,7 +201,6 @@ public final class DicePresenter {
         if (session.display != null && session.display.isValid()) {
             session.display.setItemStack(DiceItems.face(session.result));
 
-            // Detach so we can place it in the world once
             Entity vehicle = session.display.getVehicle();
             if (vehicle != null) {
                 vehicle.removePassenger(session.display);
@@ -175,14 +211,23 @@ public final class DicePresenter {
                 landAt = groundInFront(player);
             } else {
                 landAt = session.display.getLocation();
+                landAt.setPitch(0f);
             }
 
-            session.display.setTeleportDuration(Math.max(1, spinIntervalTicks));
+            // Short land motion, then freeze for the hold (see settleTask below)
+            int landAnimTicks = Math.max(1, spinIntervalTicks);
+            session.display.setTeleportDuration(landAnimTicks);
             session.display.teleport(landAt);
+            session.display.setRotation(landAt.getYaw(), 0f);
             session.display.setInterpolationDelay(0);
-            session.display.setInterpolationDuration(spinIntervalTicks);
+            session.display.setInterpolationDuration(landAnimTicks);
             session.display.setTransformation(landUpright(displayScale));
             particleAt = landAt.clone().add(0, 0.15, 0);
+
+            // Private display can drop tracking after dismount — keep roller viewer
+            if (player != null && player.isOnline()) {
+                player.showEntity(plugin, session.display);
+            }
         }
 
         if (player != null && player.isOnline()) {
@@ -195,24 +240,54 @@ public final class DicePresenter {
             spawnPastelSmoke(particleAt);
         }
 
-        long holdTicks = Math.max(12L, spinIntervalTicks + 6L);
+        // After land anim: freeze in place, stay SETTLE_HOLD_TICKS, then remove + board callback
+        int landAnimTicks = Math.max(1, spinIntervalTicks);
         session.settleTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            session.settleTask = null;
             if (session.aborted) {
+                session.settleTask = null;
                 return;
             }
-            cleanupEntities(session);
-            unregister(session);
-            IntConsumer cb = session.onSettled;
-            if (cb != null) {
-                cb.accept(session.result);
+            // Snap static for the hold second (no further interpolation)
+            if (session.display != null && session.display.isValid()) {
+                session.display.setTeleportDuration(0);
+                session.display.setInterpolationDuration(0);
             }
-        }, holdTicks);
+            session.settleTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                session.settleTask = null;
+                if (session.aborted) {
+                    return;
+                }
+                cleanupEntities(session);
+                unregister(session);
+                IntConsumer cb = session.onSettled;
+                if (cb != null) {
+                    cb.accept(session.result);
+                }
+            }, SETTLE_HOLD_TICKS);
+        }, landAnimTicks);
     }
 
-    private Vector3f frontOffset() {
-        // Local space of passenger on player: +Y up, −Z roughly look-forward for FIXED
-        return new Vector3f(0f, RIDE_EYE_Y, (float) -spawnDistance);
+    /**
+     * World-space translation so the die sits on the eye look-ray at {@link #spawnDistance}.
+     * Display entity yaw/pitch stay 0 (world-aligned axes). Passenger attach on a player is
+     * {@code AT_HEIGHT} (feet + {@link Player#getHeight()}), not the feet — a positive local Y
+     * stacks on top of the head and floats the die far above the eyes.
+     */
+    private Vector3f frontOffset(Player player) {
+        Location feet = player.getLocation();
+        Location eye = player.getEyeLocation();
+        Vector dir = eye.getDirection();
+        if (dir.lengthSquared() < 1.0e-6) {
+            dir = new Vector(0, 0, 1);
+        } else {
+            dir.normalize();
+        }
+        // target = eye + look * spawnDistance; attach ≈ feet + (0, height, 0)
+        double attachY = player.getHeight();
+        float fx = (float) (eye.getX() + dir.getX() * spawnDistance - feet.getX());
+        float fy = (float) (eye.getY() + dir.getY() * spawnDistance - (feet.getY() + attachY));
+        float fz = (float) (eye.getZ() + dir.getZ() * spawnDistance - feet.getZ());
+        return new Vector3f(fx, fy, fz);
     }
 
     private Transformation tumble(Vector3f front, float yaw, float pitch) {
@@ -240,13 +315,13 @@ public final class DicePresenter {
                 Color.fromRGB(255, 209, 220),
         };
 
-        for (int i = 0; i < 22; i++) {
+        for (int i = 0; i < 36; i++) {
             Color c = pastels[rng.nextInt(pastels.length)];
-            Particle.DustOptions dust = new Particle.DustOptions(c, 2.2f);
-            double ox = rng.nextDouble(-0.45, 0.45);
-            double oy = rng.nextDouble(-0.15, 0.5);
-            double oz = rng.nextDouble(-0.45, 0.45);
-            world.spawnParticle(Particle.DUST, at.clone().add(ox, oy, oz), 1, 0.02, 0.02, 0.02, 0, dust);
+            Particle.DustOptions dust = new Particle.DustOptions(c, 2.6f);
+            double ox = rng.nextDouble(-1.1, 1.1);
+            double oy = rng.nextDouble(-0.25, 1.0);
+            double oz = rng.nextDouble(-1.1, 1.1);
+            world.spawnParticle(Particle.DUST, at.clone().add(ox, oy, oz), 1, 0.08, 0.08, 0.08, 0, dust);
         }
     }
 
@@ -267,6 +342,10 @@ public final class DicePresenter {
     }
 
     private void cancelSpinAndTimeout(Session session) {
+        if (session.faceTask != null) {
+            session.faceTask.cancel();
+            session.faceTask = null;
+        }
         if (session.spinTask != null) {
             session.spinTask.cancel();
             session.spinTask = null;
@@ -281,18 +360,35 @@ public final class DicePresenter {
         byPlayer.remove(session.playerId, session);
     }
 
+    /**
+     * Land on the surface under the player's look ray (same aim as the spinning die).
+     * Raycasts from the eyes; if a block is hit, drops from that XZ to the floor so the
+     * die rests on pads/ground rather than sticking to a wall face.
+     */
     private Location groundInFront(Player player) {
-        Location feet = player.getLocation();
-        Vector flat = feet.getDirection().setY(0);
-        if (flat.lengthSquared() < 1.0e-6) {
-            flat = new Vector(0, 0, 1);
+        Location eye = player.getEyeLocation();
+        Vector dir = eye.getDirection();
+        if (dir.lengthSquared() < 1.0e-6) {
+            dir = new Vector(0, 0, 1);
         } else {
-            flat.normalize();
+            dir.normalize();
         }
-        Vector offset = flat.multiply(spawnDistance);
 
-        Location probe = feet.clone().add(offset).add(0, 1.5, 0);
         World world = player.getWorld();
+        double range = Math.max(spawnDistance, SETTLE_RAY_RANGE);
+        RayTraceResult lookHit = world.rayTraceBlocks(
+                eye, dir, range, FluidCollisionMode.NEVER, true
+        );
+
+        Vector aim;
+        if (lookHit != null && lookHit.getHitPosition() != null) {
+            aim = lookHit.getHitPosition();
+        } else {
+            aim = eye.toVector().add(dir.clone().multiply(spawnDistance));
+        }
+
+        // From slightly above the aim point, find the floor so the cube sits on a pad
+        Location probe = new Location(world, aim.getX(), aim.getY() + 0.25, aim.getZ());
         RayTraceResult floor = world.rayTraceBlocks(
                 probe, new Vector(0, -1, 0), 8.0, FluidCollisionMode.NEVER, true
         );
@@ -301,8 +397,9 @@ public final class DicePresenter {
         if (floor != null && floor.getHitPosition() != null) {
             at = floor.getHitPosition().toLocation(world);
         } else {
-            at = feet.clone().add(offset);
-            at.setY(feet.getY());
+            at = aim.toLocation(world);
+            // Fallback: keep player feet Y if no floor under the aim point
+            at.setY(player.getLocation().getY());
         }
 
         at.add(0, displayScale * CUBE_HALF, 0);
@@ -316,10 +413,9 @@ public final class DicePresenter {
     }
 
     private static Transformation landUpright(float scale) {
-        float yaw = ThreadLocalRandom.current().nextFloat() * ((float) Math.PI * 2f);
         return new Transformation(
                 new Vector3f(0f, 0f, 0f),
-                new AxisAngle4f(yaw, 0f, 1f, 0f),
+                new AxisAngle4f(0f, 0f, 1f, 0f),
                 new Vector3f(scale, scale, scale),
                 new AxisAngle4f(0f, 0f, 1f, 0f)
         );
@@ -330,9 +426,13 @@ public final class DicePresenter {
         final int result;
         final IntConsumer onSettled;
         ItemDisplay display;
+        BukkitTask faceTask;
         BukkitTask spinTask;
         BukkitTask timeoutTask;
         BukkitTask settleTask;
+        float spinYaw;
+        float spinPitch;
+        int spinStep;
         boolean settled;
         boolean aborted;
 

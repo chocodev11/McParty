@@ -51,6 +51,13 @@ public final class BoardSlotRegistry {
                 plugin.getLogger().warning("Slot '" + id + "' world missing: " + worldName);
                 continue;
             }
+            // Per-board ASP template; missing key keeps empty (PartyManager falls back to config default).
+            String slimeTemplate = sec.getString("slime-template", "");
+            if (slimeTemplate == null) {
+                slimeTemplate = "";
+            } else {
+                slimeTemplate = slimeTemplate.trim();
+            }
             SlotBoundary boundary = new SlotBoundary(
                     world,
                     sec.getInt("minX"), sec.getInt("minY"), sec.getInt("minZ"),
@@ -81,7 +88,10 @@ public final class BoardSlotRegistry {
                         (float) sec.getDouble("spawn.pitch")
                 );
             }
-            slots.put(id.toLowerCase(), new BoardSlot(id.toLowerCase(), world, boundary, path, spawn));
+            slots.put(
+                    id.toLowerCase(),
+                    new BoardSlot(id.toLowerCase(), world, slimeTemplate, boundary, path, spawn)
+            );
         }
         plugin.getLogger().info("Loaded " + slots.size() + " board slot(s)");
     }
@@ -91,6 +101,7 @@ public final class BoardSlotRegistry {
         for (BoardSlot slot : slots.values()) {
             String base = "slots." + slot.id();
             conf.set(base + ".world", slot.world().getName());
+            conf.set(base + ".slime-template", slot.slimeTemplate());
             SlotBoundary b = slot.boundary();
             conf.set(base + ".minX", b.minX());
             conf.set(base + ".minY", b.minY());
@@ -128,12 +139,20 @@ public final class BoardSlotRegistry {
         }
     }
 
-    public boolean createReady(String id, World world, SlotBoundary boundary, BoardPath path, Location spawn) {
+    public boolean createReady(
+            String id,
+            World world,
+            String slimeTemplate,
+            SlotBoundary boundary,
+            BoardPath path,
+            Location spawn
+    ) {
         String key = id.toLowerCase();
         if (slots.containsKey(key)) {
             return false;
         }
-        slots.put(key, new BoardSlot(key, world, boundary, path, spawn));
+        String template = slimeTemplate != null ? slimeTemplate.trim() : "";
+        slots.put(key, new BoardSlot(key, world, template, boundary, path, spawn));
         save();
         return true;
     }
@@ -145,6 +164,20 @@ public final class BoardSlotRegistry {
             return true;
         }
         return false;
+    }
+
+    /**
+     * Set ASP slime template basename on an existing slot and persist {@code slots.yml}.
+     * @return false if the path id is unknown
+     */
+    public boolean setSlimeTemplate(String id, String slimeTemplate) {
+        BoardSlot slot = slots.get(id.toLowerCase());
+        if (slot == null) {
+            return false;
+        }
+        slot.setSlimeTemplate(slimeTemplate);
+        save();
+        return true;
     }
 
     public Optional<BoardSlot> get(String id) {

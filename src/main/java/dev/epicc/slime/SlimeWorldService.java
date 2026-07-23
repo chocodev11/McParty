@@ -4,7 +4,6 @@ import com.infernalsuite.asp.api.AdvancedSlimePaperAPI;
 import com.infernalsuite.asp.api.exceptions.CorruptedWorldException;
 import com.infernalsuite.asp.api.exceptions.NewerFormatException;
 import com.infernalsuite.asp.api.exceptions.UnknownWorldException;
-import com.infernalsuite.asp.api.loaders.SlimeLoader;
 import com.infernalsuite.asp.api.world.SlimeWorld;
 import com.infernalsuite.asp.api.world.SlimeWorldInstance;
 import com.infernalsuite.asp.api.world.properties.SlimeProperties;
@@ -19,6 +18,9 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
@@ -27,13 +29,15 @@ import java.util.logging.Level;
 
 /**
  * Loads / unloads per-party slime worlds via AdvancedSlimePaper.
- * Template is read read-only, then cloned under a unique name for each instance.
+ * Each board slot names its own template; that file is read read-only, then cloned
+ * under a unique name for the party instance.
  */
 public final class SlimeWorldService {
 
     private final JavaPlugin plugin;
     private final boolean enabled;
-    private final String templateWorld;
+    /** Used only when a slot has no {@code slime-template} (legacy slots). */
+    private final String defaultTemplate;
     private final String worldPrefix;
     private final boolean allowMonsters;
     private final boolean allowAnimals;
@@ -41,14 +45,15 @@ public final class SlimeWorldService {
     private final SeamlessWorldChangeService seamless;
 
     private AdvancedSlimePaperAPI asp;
-    private SlimeLoader loader;
+    private FileLoader loader;
+    private File worldsDir;
     private final ConcurrentHashMap<UUID, String> instanceWorlds = new ConcurrentHashMap<>();
 
     public SlimeWorldService(
             JavaPlugin plugin,
             boolean enabled,
             String worldsDirectory,
-            String templateWorld,
+            String defaultTemplate,
             String worldPrefix,
             boolean allowMonsters,
             boolean allowAnimals,
@@ -57,7 +62,7 @@ public final class SlimeWorldService {
     ) {
         this.plugin = plugin;
         this.enabled = enabled;
-        this.templateWorld = templateWorld;
+        this.defaultTemplate = defaultTemplate;
         this.worldPrefix = worldPrefix;
         this.allowMonsters = allowMonsters;
         this.allowAnimals = allowAnimals;
@@ -71,13 +76,14 @@ public final class SlimeWorldService {
 
         try {
             this.asp = AdvancedSlimePaperAPI.instance();
-            File dir = new File(plugin.getDataFolder(), worldsDirectory);
-            this.loader = new FileLoader(dir);
-            plugin.getLogger().info("ASP slime loader ready (dir=" + dir.getAbsolutePath()
-                    + ", template=" + templateWorld + ")");
+            this.worldsDir = new File(plugin.getDataFolder(), worldsDirectory);
+            this.loader = new FileLoader(worldsDir);
+            plugin.getLogger().info("ASP slime loader ready (dir=" + worldsDir.getAbsolutePath()
+                    + ", default-template=" + defaultTemplate + ")");
         } catch (Throwable t) {
             this.asp = null;
             this.loader = null;
+            this.worldsDir = null;
             plugin.getLogger().log(Level.SEVERE,
                     "Failed to init AdvancedSlimePaper API. Run on AdvancedSlimePaper and check slime config.", t);
         }
@@ -91,15 +97,58 @@ public final class SlimeWorldService {
         return isEnabled();
     }
 
+    public String defaultTemplate() {
+        return defaultTemplate;
+    }
+
+    /**
+     * Resolves the ASP template name for a slot: slot field if set, else config default.
+     */
+    public String resolveTemplate(String slotTemplate) {
+        if (slotTemplate != null && !slotTemplate.isBlank()) {
+            return slotTemplate.trim();
+        }
+        return defaultTemplate;
+    }
+
+    /**
+     * Basenames of {@code *.slime} files in the configured worlds directory (for tab-complete).
+     */
+    public List<String> listTemplates() {
+        if (worldsDir == null || !worldsDir.isDirectory()) {
+            return List.of();
+        }
+        File[] files = worldsDir.listFiles((dir, name) -> name.toLowerCase(Locale.ROOT).endsWith(".slime"));
+        if (files == null || files.length == 0) {
+            return List.of();
+        }
+        List<String> names = new ArrayList<>(files.length);
+        Arrays.sort(files, (a, b) -> a.getName().compareToIgnoreCase(b.getName()));
+        for (File f : files) {
+            String n = f.getName();
+            names.add(n.substring(0, n.length() - ".slime".length()));
+        }
+        return names;
+    }
+
     public Optional<String> worldOf(UUID instanceId) {
         return Optional.ofNullable(instanceWorlds.get(instanceId));
     }
 
+    /** True if this Bukkit world is a live per-party slime clone managed by this service. */
+    public boolean isInstanceWorld(World world) {
+        if (world == null || instanceWorlds.isEmpty()) {
+            return false;
+        }
+        String name = world.getName();
+        return instanceWorlds.containsValue(name);
+    }
+
     /**
      * Read template (async-safe), clone, then load on the main thread.
-     * Returns the live Bukkit world name, or empty on failure.
+     * Returns the live Bukkit world, or empty on failure.
      */
-    public Optional<World> loadForInstance(UUID instanceId) {
+    public Optional<World> loadForInstance(UUID instanceId, String templateName) {
         if (!isReady()) {
             plugin.getLogger().warning("Slime service not ready — cannot load instance world.");
             return Optional.empty();
@@ -117,23 +166,25 @@ public final class SlimeWorldService {
             worldName = worldPrefix + instanceId.toString().replace("-", "").substring(0, 12);
         }
 
+        String template = resolveTemplate(templateName);
         try {
-            SlimePropertyMap props = defaultProperties();
-            // Disk IO — caller may run this async; loadWorld itself must be sync.
-            SlimeWorld template = asp.readWorld(loader, templateWorld, true, props);
-            SlimeWorld clone = template.clone(worldName); // temporary, not persisted
+            SlimeWorld templateWorld = asp.readWorld(loader, template, true, defaultProperties());
+            SlimeWorld clone = templateWorld.clone(worldName);
 
             if (!Bukkit.isPrimaryThread()) {
-                throw new IllegalStateException("loadWorld must be called on the main thread; call loadForInstance on main after async prepare, or use prepareClone + loadClone.");
+                throw new IllegalStateException(
+                        "loadWorld must be called on the main thread; call loadForInstance on main after async prepare, or use prepareClone + loadClone."
+                );
             }
 
             SlimeWorldInstance loaded = asp.loadWorld(clone, true);
             World bukkit = loaded.getBukkitWorld();
             instanceWorlds.put(instanceId, bukkit.getName());
-            plugin.getLogger().info("Loaded slime world '" + bukkit.getName() + "' for party " + shortId(instanceId));
+            plugin.getLogger().info("Loaded slime world '" + bukkit.getName()
+                    + "' (template=" + template + ") for party " + shortId(instanceId));
             return Optional.of(bukkit);
         } catch (UnknownWorldException e) {
-            plugin.getLogger().severe("Template slime world not found: '" + templateWorld
+            plugin.getLogger().severe("Template slime world not found: '" + template
                     + ".slime' in the configured worlds directory.");
             return Optional.empty();
         } catch (IOException | CorruptedWorldException | NewerFormatException | RuntimeException e) {
@@ -143,9 +194,9 @@ public final class SlimeWorldService {
     }
 
     /**
-     * Async-safe: read template and clone in memory (does not register the world).
+     * Async-safe: read the named template and clone in memory (does not register the world).
      */
-    public Optional<SlimeWorld> prepareClone(UUID instanceId) {
+    public Optional<SlimeWorld> prepareClone(UUID instanceId, String templateName) {
         if (!isReady()) {
             return Optional.empty();
         }
@@ -153,14 +204,16 @@ public final class SlimeWorldService {
         if (Bukkit.getWorld(worldName) != null || asp.getLoadedWorld(worldName) != null) {
             worldName = worldPrefix + instanceId.toString().replace("-", "").substring(0, 12);
         }
+        String template = resolveTemplate(templateName);
         try {
-            SlimeWorld template = asp.readWorld(loader, templateWorld, true, defaultProperties());
-            return Optional.of(template.clone(worldName));
+            SlimeWorld templateWorld = asp.readWorld(loader, template, true, defaultProperties());
+            return Optional.of(templateWorld.clone(worldName));
         } catch (UnknownWorldException e) {
-            plugin.getLogger().severe("Template slime world not found: '" + templateWorld + ".slime'");
+            plugin.getLogger().severe("Template slime world not found: '" + template + ".slime'");
             return Optional.empty();
         } catch (IOException | CorruptedWorldException | NewerFormatException | RuntimeException e) {
-            plugin.getLogger().log(Level.SEVERE, "Failed to prepare slime clone for party " + shortId(instanceId), e);
+            plugin.getLogger().log(Level.SEVERE, "Failed to prepare slime clone for party " + shortId(instanceId)
+                    + " (template=" + template + ")", e);
             return Optional.empty();
         }
     }

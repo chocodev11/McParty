@@ -20,6 +20,7 @@ import dev.epicc.player.PlayerSessionService;
 import dev.epicc.resourcepack.ResourcePackListener;
 import dev.epicc.resourcepack.ResourcePackService;
 import dev.epicc.seamless.SeamlessWorldChangeService;
+import dev.epicc.slime.SlimeFallDamageListener;
 import dev.epicc.slime.SlimeWorldService;
 import dev.epicc.store.InMemoryInstanceStore;
 import org.bukkit.command.PluginCommand;
@@ -132,6 +133,7 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new BoundaryListener(partyManager, pathHopMover), this);
         getServer().getPluginManager().registerEvents(new DiceClickListener(dicePresenter), this);
         getServer().getPluginManager().registerEvents(pathHopMover, this);
+        getServer().getPluginManager().registerEvents(new SlimeFallDamageListener(slimeWorldService), this);
         getServer().getPluginManager().registerEvents(new ResourcePackListener(resourcePackService), this);
 
         PartyCommand partyCommand = new PartyCommand(partyManager, messages);
@@ -144,7 +146,9 @@ public final class McPartyPlugin extends JavaPlugin {
         pathSetupService = new PathSetupService(this, slotRegistry, messages);
         getServer().getPluginManager().registerEvents(new PathSetupListener(this, pathSetupService), this);
 
-        PartyAdminCommand adminCommand = new PartyAdminCommand(this, slotRegistry, pathSetupService, messages);
+        PartyAdminCommand adminCommand = new PartyAdminCommand(
+                this, slotRegistry, pathSetupService, messages, slimeWorldService
+        );
         PluginCommand partyAdmin = getCommand("partyadmin");
         if (partyAdmin != null) {
             partyAdmin.setExecutor(adminCommand);

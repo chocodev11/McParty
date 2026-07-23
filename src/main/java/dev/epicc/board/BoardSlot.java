@@ -10,14 +10,24 @@ public final class BoardSlot {
 
     private final String id;
     private final World world;
+    /** ASP FileLoader world name (basename of {@code <name>.slime}), not the Bukkit setup world. */
+    private String slimeTemplate;
     private final SlotBoundary boundary;
     private final BoardPath path;
     private Location spawn;
     private UUID claimedBy;
 
-    public BoardSlot(String id, World world, SlotBoundary boundary, BoardPath path, Location spawn) {
+    public BoardSlot(
+            String id,
+            World world,
+            String slimeTemplate,
+            SlotBoundary boundary,
+            BoardPath path,
+            Location spawn
+    ) {
         this.id = id;
         this.world = world;
+        this.slimeTemplate = slimeTemplate != null ? slimeTemplate : "";
         this.boundary = boundary;
         this.path = path;
         this.spawn = spawn != null ? spawn.clone() : null;
@@ -25,6 +35,7 @@ public final class BoardSlot {
 
     public String id() { return id; }
     public World world() { return world; }
+    public String slimeTemplate() { return slimeTemplate; }
     public SlotBoundary boundary() { return boundary; }
     public BoardPath path() { return path; }
     public Location spawn() { return spawn != null ? spawn.clone() : null; }
@@ -32,6 +43,10 @@ public final class BoardSlot {
 
     public void setSpawn(Location spawn) {
         this.spawn = spawn != null ? spawn.clone() : null;
+    }
+
+    public void setSlimeTemplate(String slimeTemplate) {
+        this.slimeTemplate = slimeTemplate != null ? slimeTemplate.trim() : "";
     }
 
     public boolean isFree() {
@@ -73,6 +88,7 @@ public final class BoardSlot {
         return new BoardSlot(
                 id,
                 target,
+                slimeTemplate,
                 boundary != null ? boundary.forWorld(target) : null,
                 path.forWorld(target),
                 newSpawn

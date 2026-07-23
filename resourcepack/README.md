@@ -4,7 +4,9 @@ Provides custom item models:
 
 - `mcparty:dice_1` … `mcparty:dice_6`
 
-Server items set `item_model` to these ids (see `DiceItems`).
+Each id is **one cube, one texture** (all 6 sides use that face art). The server
+swaps models while spinning (`DiceItems.face` → `item_model` `mcparty:dice_N`).
+Not a single multi-face die mesh.
 
 ## Automatic (plugin)
 
@@ -55,8 +57,9 @@ Do not also set the same pack in `server.properties` unless you know you want tw
 
 ## Art
 
-Replace `assets/mcparty/textures/item/dice_1.png` … `dice_6.png` with your own  
-16×16 or 32×32 textures. Keep the same file names.
+Replace `assets/mcparty/textures/item/dice_1.png` … `dice_6.png` with your own.
+Textures are **14×14**. Models use `"texture_size": [14, 14]` and UV `[0,0,14,14]`
+so each face uses the full PNG.
 
 Models are a **14×14×14** cube (`from [1,1,1]` → `to [15,15,15]`) with the result
 face on **up** and opposites summing to 7. Side faces use the other numbers.

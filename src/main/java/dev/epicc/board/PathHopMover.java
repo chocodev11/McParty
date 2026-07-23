@@ -17,8 +17,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Path move: upward velocity hop → at apex (vy ≤ 0) teleport to target XZ at that Y → fall.
- * No potion effects; no per-tick Y teleports during rise.
+ * Path move: upward velocity hop → at apex (vy ≤ 0) face pad + teleport to target XZ at that Y → fall.
+ * Yaw/pitch applied mid-air at apex, not when landing. No potion effects.
  */
 public final class PathHopMover implements Listener {
 
@@ -126,25 +126,24 @@ public final class PathHopMover implements Listener {
                 return;
             }
 
-            // Keep this exact Y; move XZ to above the path target
+            // Apex: still mid-air — face the pad + snap XZ over target at this Y (look happens here, not on ground)
             double peakY = player.getLocation().getY();
             hop.phase = Phase.FALL;
             hop.tick = 0;
 
             Location peak = hop.land.clone();
             peak.setY(peakY);
-            peak.setYaw(hop.land.getYaw());
-            peak.setPitch(hop.land.getPitch());
+            applyLookAt(peak, hop.land);
             player.teleport(peak);
+            player.setRotation(peak.getYaw(), peak.getPitch());
             player.setFallDistance(0f);
+            // Stay mid-air; gravity handles the fall (do not wait until ground to rotate)
             player.setVelocity(new Vector(0, 0, 0));
             return;
         }
 
-        // FALL — gravity only
+        // FALL — gravity only; no pad snap (XZ was already set at apex)
         if (player.isOnGround() || hop.tick >= fallMaxTicks) {
-            Location land = hop.land.clone();
-            player.teleport(land);
             player.setFallDistance(0f);
             player.setVelocity(new Vector(0, 0, 0));
             finish(hop, true);
@@ -182,6 +181,25 @@ public final class PathHopMover implements Listener {
         p.setFallDistance(0f);
         p.setVelocity(new Vector(0, 0, 0));
         p.setWalkSpeed(Math.max(0f, Math.min(1f, walkSpeed)));
+    }
+
+    /** Set location yaw/pitch so the player looks at the pad from mid-air (apex). */
+    private static void applyLookAt(Location from, Location target) {
+        double dx = target.getX() - from.getX();
+        double dy = target.getY() - from.getY();
+        double dz = target.getZ() - from.getZ();
+        double horiz = Math.sqrt(dx * dx + dz * dz);
+        if (horiz < 1.0e-6 && Math.abs(dy) < 1.0e-6) {
+            from.setYaw(target.getYaw());
+            from.setPitch(target.getPitch());
+            return;
+        }
+        float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
+        float pitch = horiz < 1.0e-6
+                ? (dy > 0 ? -90f : 90f)
+                : (float) Math.toDegrees(-Math.atan2(dy, horiz));
+        from.setYaw(yaw);
+        from.setPitch(Math.max(-90f, Math.min(90f, pitch)));
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)

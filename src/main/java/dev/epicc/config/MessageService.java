@@ -96,6 +96,17 @@ public final class MessageService {
         return get(path, ph(k1, v1), ph(k2, v2), ph(k3, v3), ph(k4, v4));
     }
 
+    public Component get(
+            String path,
+            String k1, String v1,
+            String k2, String v2,
+            String k3, String v3,
+            String k4, String v4,
+            String k5, String v5
+    ) {
+        return get(path, ph(k1, v1), ph(k2, v2), ph(k3, v3), ph(k4, v4), ph(k5, v5));
+    }
+
     public void send(CommandSender sender, String path) {
         sender.sendMessage(get(path));
     }

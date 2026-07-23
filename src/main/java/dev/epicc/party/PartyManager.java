@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 
 public final class PartyManager {
 
@@ -230,8 +231,9 @@ public final class PartyManager {
 
     private void startWithSlime(PartyInstance instance, BoardSlot templateSlot) {
         final UUID instanceId = instance.id();
+        final String slimeTemplate = templateSlot.slimeTemplate();
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            Optional<SlimeWorld> clone = slime.prepareClone(instanceId);
+            Optional<SlimeWorld> clone = slime.prepareClone(instanceId, slimeTemplate);
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (instance.state() != PartyState.STARTING) {
                     templateSlot.release();
@@ -354,7 +356,7 @@ public final class PartyManager {
         for (PartyPlayer pp : instance.players()) {
             Player p = plugin.getServer().getPlayer(pp.uuid());
             if (p != null && p.isOnline()) {
-                seamless.teleport(p, spawn);
+                seamless.teleport(p, scatterAround(spawn, 4.0));
                 p.showTitle(startTitle);
             }
         }
@@ -369,7 +371,19 @@ public final class PartyManager {
         );
         controller.attach(instance);
         controllers.put(instance.id(), controller);
-        controller.startTurns();
+        // Delay first dice: private ItemDisplay passengers often fail same-tick as slime/world TP
+        // (spawn = "first slot", no pad — later rounds on pads already have client tracking).
+        final UUID instanceId = instance.id();
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            if (instance.state() != PartyState.STARTING) {
+                return;
+            }
+            BoardTurnController live = controllers.get(instanceId);
+            if (live == null) {
+                return;
+            }
+            live.startTurns();
+        }, 10L);
     }
 
     private void endInternal(PartyInstance instance) {
@@ -455,5 +469,23 @@ public final class PartyManager {
         return store.all().stream()
                 .filter(i -> i.shortId().equalsIgnoreCase(lower) || i.id().toString().startsWith(lower))
                 .findFirst();
+    }
+
+    /** Random horizontal offset within {@code radius} blocks of center (same Y/yaw/pitch). */
+    private static Location scatterAround(Location center, double radius) {
+        if (center == null || center.getWorld() == null) {
+            return center;
+        }
+        ThreadLocalRandom rng = ThreadLocalRandom.current();
+        double angle = rng.nextDouble() * Math.PI * 2.0;
+        double dist = Math.sqrt(rng.nextDouble()) * radius;
+        return new Location(
+                center.getWorld(),
+                center.getX() + Math.cos(angle) * dist,
+                center.getY(),
+                center.getZ() + Math.sin(angle) * dist,
+                center.getYaw(),
+                center.getPitch()
+        );
     }
 }

@@ -75,6 +75,26 @@ public final class PathSetupService {
             return;
         }
 
+        // First hit: spawn only (no pad blocks). Later hits: path pads.
+        if (!session.hasSpawn()) {
+            World world = session.world();
+            int cx = blockLoc.getBlockX();
+            int cy = blockLoc.getBlockY();
+            int cz = blockLoc.getBlockZ();
+            Location spawn = new Location(
+                    world,
+                    cx + 0.5,
+                    cy + 1.0,
+                    cz + 0.5,
+                    player.getLocation().getYaw(),
+                    0f
+            );
+            session.setSpawn(spawn);
+            session.markPrimary(blockLoc);
+            messages.send(player, "path.spawn-placed");
+            return;
+        }
+
         int cx = blockLoc.getBlockX();
         int cy = blockLoc.getBlockY();
         int cz = blockLoc.getBlockZ();
@@ -121,20 +141,29 @@ public final class PathSetupService {
         if (session == null) {
             return Optional.of(messages.get("path.not-setup"));
         }
-        if (session.spaces().isEmpty()) {
-            return Optional.of(messages.get("path.nothing-to-undo"));
+        if (!session.spaces().isEmpty()) {
+            PlacedSpace last = session.spaces().remove(session.spaces().size() - 1);
+            last.restore();
+            session.clearLastPrimary();
+            messages.send(player, "path.undid", "left", Integer.toString(session.spaces().size()));
+            return Optional.empty();
         }
-        PlacedSpace last = session.spaces().remove(session.spaces().size() - 1);
-        last.restore();
-        session.clearLastPrimary();
-        messages.send(player, "path.undid", "left", Integer.toString(session.spaces().size()));
-        return Optional.empty();
+        if (session.hasSpawn()) {
+            session.setSpawn(null);
+            session.clearLastPrimary();
+            messages.send(player, "path.undid-spawn");
+            return Optional.empty();
+        }
+        return Optional.of(messages.get("path.nothing-to-undo"));
     }
 
     public Optional<Component> end(Player player) {
         PathSetupSession session = sessions.get(player.getUniqueId());
         if (session == null) {
             return Optional.of(messages.get("path.not-setup"));
+        }
+        if (!session.hasSpawn()) {
+            return Optional.of(messages.get("path.need-spawn"));
         }
         if (session.spaces().isEmpty()) {
             return Optional.of(messages.get("path.need-space"));
@@ -158,7 +187,15 @@ public final class PathSetupService {
             maxPadY = Math.max(maxPadY, space.y());
         }
 
-        Location spawn = session.spaces().get(0).pathPoint();
+        Location spawn = session.spawn();
+        // Keep spawn inside the containment box
+        minX = Math.min(minX, spawn.getBlockX());
+        maxX = Math.max(maxX, spawn.getBlockX());
+        minZ = Math.min(minZ, spawn.getBlockZ());
+        maxZ = Math.max(maxZ, spawn.getBlockZ());
+        minPadY = Math.min(minPadY, spawn.getBlockY() - 1);
+        maxPadY = Math.max(maxPadY, spawn.getBlockY() - 1);
+
         SlotBoundary boundary = new SlotBoundary(
                 session.world(),
                 minX,
@@ -169,7 +206,8 @@ public final class PathSetupService {
                 maxZ
         );
 
-        if (!slots.createReady(session.name(), session.world(), boundary, path, spawn)) {
+        // Slime template is assigned later (generated after path setup); empty → config default until then.
+        if (!slots.createReady(session.name(), session.world(), "", boundary, path, spawn)) {
             return Optional.of(messages.get("path.board-exists-end", "name", session.name()));
         }
 
