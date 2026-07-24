@@ -17,6 +17,8 @@ public final class MinigameManager {
     private int revealIntervalMinTicks;
     private int revealIntervalMaxTicks;
     private int revealExpandIntervalTicks;
+    private int revealColorSteps;
+    private int revealColorIntervalTicks;
 
     private Minigame active;
     private MinigameRevealAnimator reveal;
@@ -28,7 +30,9 @@ public final class MinigameManager {
             int revealDurationTicks,
             int revealIntervalMinTicks,
             int revealIntervalMaxTicks,
-            int revealExpandIntervalTicks
+            int revealExpandIntervalTicks,
+            int revealColorSteps,
+            int revealColorIntervalTicks
     ) {
         this.plugin = plugin;
         this.messages = messages;
@@ -37,7 +41,9 @@ public final class MinigameManager {
                 revealDurationTicks,
                 revealIntervalMinTicks,
                 revealIntervalMaxTicks,
-                revealExpandIntervalTicks
+                revealExpandIntervalTicks,
+                revealColorSteps,
+                revealColorIntervalTicks
         );
     }
 
@@ -45,12 +51,16 @@ public final class MinigameManager {
             int revealDurationTicks,
             int revealIntervalMinTicks,
             int revealIntervalMaxTicks,
-            int revealExpandIntervalTicks
+            int revealExpandIntervalTicks,
+            int revealColorSteps,
+            int revealColorIntervalTicks
     ) {
         this.revealDurationTicks = revealDurationTicks;
         this.revealIntervalMinTicks = revealIntervalMinTicks;
         this.revealIntervalMaxTicks = revealIntervalMaxTicks;
         this.revealExpandIntervalTicks = revealExpandIntervalTicks;
+        this.revealColorSteps = revealColorSteps;
+        this.revealColorIntervalTicks = revealColorIntervalTicks;
     }
 
     public MinigameRegistry registry() {
@@ -76,7 +86,9 @@ public final class MinigameManager {
                 revealDurationTicks,
                 revealIntervalMinTicks,
                 revealIntervalMaxTicks,
-                revealExpandIntervalTicks
+                revealExpandIntervalTicks,
+                revealColorSteps,
+                revealColorIntervalTicks
         );
         reveal.start(online, picked, registry.displayNames(), () -> {
             reveal = null;

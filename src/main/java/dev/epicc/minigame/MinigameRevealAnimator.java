@@ -42,6 +42,7 @@ final class MinigameRevealAnimator {
     private final int intervalMaxTicks;
     private final int expandIntervalTicks;
     private final int colorSteps;
+    private final int colorIntervalTicks;
 
     private BukkitTask task;
     private boolean stopped;
@@ -54,7 +55,9 @@ final class MinigameRevealAnimator {
             int spinDurationTicks,
             int intervalMinTicks,
             int intervalMaxTicks,
-            int expandIntervalTicks
+            int expandIntervalTicks,
+            int colorSteps,
+            int colorIntervalTicks
     ) {
         this.plugin = plugin;
         this.messages = messages;
@@ -62,8 +65,8 @@ final class MinigameRevealAnimator {
         this.intervalMinTicks = Math.max(1, intervalMinTicks);
         this.intervalMaxTicks = Math.max(this.intervalMinTicks, intervalMaxTicks);
         this.expandIntervalTicks = Math.max(1, expandIntervalTicks);
-        // ~0.5s color ramp at 20 tps with expand spacing as a floor
-        this.colorSteps = Math.max(6, 10);
+        this.colorSteps = Math.max(1, colorSteps);
+        this.colorIntervalTicks = Math.max(1, colorIntervalTicks);
     }
 
     void start(List<Player> players, Minigame picked, List<String> poolNames, Runnable onDone) {
@@ -138,9 +141,9 @@ final class MinigameRevealAnimator {
                 return;
             }
 
-            // COLOR — full name white → yellow on subtitle
+            // COLOR — full name white → yellow on subtitle (few steps, longer pause)
             colorWait[0]++;
-            if (colorWait[0] < expandIntervalTicks) {
+            if (colorWait[0] < colorIntervalTicks) {
                 return;
             }
             colorWait[0] = 0;

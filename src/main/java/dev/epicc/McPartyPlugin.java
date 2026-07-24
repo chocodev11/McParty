@@ -106,7 +106,9 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.minigameRevealDurationTicks(),
                 config.minigameRevealIntervalMinTicks(),
                 config.minigameRevealIntervalMaxTicks(),
-                config.minigameRevealExpandIntervalTicks()
+                config.minigameRevealExpandIntervalTicks(),
+                config.minigameRevealColorSteps(),
+                config.minigameRevealColorIntervalTicks()
         );
 
         diceHats = new DiceHatService(config.diceHatScale());
@@ -116,7 +118,8 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.diceSpawnDistance(),
                 config.diceInteractSeconds(),
                 config.diceSpinIntervalTicks(),
-                config.diceDisplayScale()
+                config.diceDisplayScale(),
+                config.diceSpinScale()
         );
         pathHopMover = new PathHopMover(
                 this,
@@ -177,7 +180,8 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.diceSpawnDistance(),
                 config.diceInteractSeconds(),
                 config.diceSpinIntervalTicks(),
-                config.diceDisplayScale()
+                config.diceDisplayScale(),
+                config.diceSpinScale()
         );
         pathHopMover.reconfigure(
                 config.hopUpVelocity(),
@@ -188,7 +192,9 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.minigameRevealDurationTicks(),
                 config.minigameRevealIntervalMinTicks(),
                 config.minigameRevealIntervalMaxTicks(),
-                config.minigameRevealExpandIntervalTicks()
+                config.minigameRevealExpandIntervalTicks(),
+                config.minigameRevealColorSteps(),
+                config.minigameRevealColorIntervalTicks()
         );
         for (DummyMinigame dummy : dummyMinigames) {
             dummy.reconfigure(config.dummyDurationSeconds(), config.dummyCoinRewards());

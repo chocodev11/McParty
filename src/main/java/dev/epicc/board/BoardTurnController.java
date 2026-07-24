@@ -1,5 +1,6 @@
 package dev.epicc.board;
 
+import dev.epicc.board.dice.DiceHatService;
 import dev.epicc.board.dice.DicePresenter;
 import dev.epicc.config.MessageService;
 import dev.epicc.minigame.MinigameManager;
@@ -18,6 +19,7 @@ import java.util.UUID;
 
 /**
  * Board round loop: everyone rolls at once (private dice) → when all settled, hop in order → minigame.
+ * Dice hats appear on settle and are cleared before the minigame starts.
  */
 public final class BoardTurnController {
 
@@ -26,6 +28,7 @@ public final class BoardTurnController {
     private final MinigameManager minigameManager;
     private final Dice dice;
     private final DicePresenter dicePresenter;
+    private final DiceHatService diceHats;
     private final PathHopMover pathHopMover;
 
     private PartyInstance instance;
@@ -46,6 +49,7 @@ public final class BoardTurnController {
             MinigameManager minigameManager,
             Dice dice,
             DicePresenter dicePresenter,
+            DiceHatService diceHats,
             PathHopMover pathHopMover
     ) {
         this.plugin = plugin;
@@ -53,6 +57,7 @@ public final class BoardTurnController {
         this.minigameManager = minigameManager;
         this.dice = dice;
         this.dicePresenter = dicePresenter;
+        this.diceHats = diceHats;
         this.pathHopMover = pathHopMover;
     }
 
@@ -99,6 +104,7 @@ public final class BoardTurnController {
         if (instance != null) {
             for (PartyPlayer pp : instance.players()) {
                 pathHopMover.cancel(pp.uuid());
+                diceHats.clear(pp.uuid());
             }
         }
         minigameManager.cancelActive();
@@ -259,6 +265,8 @@ public final class BoardTurnController {
             dicePresenter.cancel(id);
         }
         pendingRollers.clear();
+        // Hats only live between settle and minigame (not during minigame / next roll wait)
+        clearPartyHats();
 
         List<Player> online = new ArrayList<>();
         for (PartyPlayer pp : instance.players()) {
@@ -290,5 +298,14 @@ public final class BoardTurnController {
                 beginRound();
             }
         });
+    }
+
+    private void clearPartyHats() {
+        if (instance == null) {
+            return;
+        }
+        for (PartyPlayer pp : instance.players()) {
+            diceHats.clear(pp.uuid());
+        }
     }
 }

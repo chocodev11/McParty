@@ -32,7 +32,15 @@ import java.util.function.IntConsumer;
  */
 public final class DicePresenter {
 
-    private static final float CUBE_HALF = 14f / 16f / 2f;
+    /**
+     * Matches resourcepack {@code dice_*.json}: element {@code from [1,0,1] to [15,14,15]}.
+     * ItemDisplay + {@code NONE} pivots on the 16px item-space center (8/16), not the cube
+     * midpoint (7/16). Bottom is at model y=0 → 8px below origin. Using 7px left the die
+     * buried by exactly 1 texture pixel.
+     */
+    private static final float MODEL_UNIT = 1f / 16f;
+    /** Entity → mesh bottom (item center at 8, cube bottom at 0). */
+    private static final float MODEL_ORIGIN_TO_BOTTOM = 8f * MODEL_UNIT;
     private static final long SETTLE_HOLD_TICKS = 20L;
     /** How far along the eye ray to search for a land surface on settle. */
     private static final double SETTLE_RAY_RANGE = 8.0;
@@ -45,7 +53,10 @@ public final class DicePresenter {
     private double spawnDistance;
     private int interactTicks;
     private int spinIntervalTicks;
+    /** Settle / on-ground size ({@code board.dice-display-scale}). */
     private float displayScale;
+    /** Spin in front of eyes ({@code board.dice-spin-scale}); usually smaller than settle. */
+    private float spinScale;
 
     private final Map<UUID, Session> byPlayer = new ConcurrentHashMap<>();
 
@@ -55,18 +66,26 @@ public final class DicePresenter {
             double spawnDistance,
             int interactSeconds,
             int spinIntervalTicks,
-            float displayScale
+            float displayScale,
+            float spinScale
     ) {
         this.plugin = plugin;
         this.hats = hats;
-        reconfigure(spawnDistance, interactSeconds, spinIntervalTicks, displayScale);
+        reconfigure(spawnDistance, interactSeconds, spinIntervalTicks, displayScale, spinScale);
     }
 
-    public void reconfigure(double spawnDistance, int interactSeconds, int spinIntervalTicks, float displayScale) {
+    public void reconfigure(
+            double spawnDistance,
+            int interactSeconds,
+            int spinIntervalTicks,
+            float displayScale,
+            float spinScale
+    ) {
         this.spawnDistance = Math.max(0.5, spawnDistance);
         this.interactTicks = Math.max(1, interactSeconds) * 20;
         this.spinIntervalTicks = Math.max(1, spinIntervalTicks);
         this.displayScale = Math.max(0.1f, displayScale);
+        this.spinScale = Math.max(0.1f, spinScale);
     }
 
     public boolean isRolling(UUID playerId) {
@@ -221,8 +240,9 @@ public final class DicePresenter {
             session.display.setRotation(landAt.getYaw(), 0f);
             session.display.setInterpolationDelay(0);
             session.display.setInterpolationDuration(landAnimTicks);
-            session.display.setTransformation(landUpright(displayScale));
-            particleAt = landAt.clone().add(0, 0.15, 0);
+            // Same scale as spin ({@link #tumble}); upright, no extra local offset
+            session.display.setTransformation(diceScale(displayScale));
+            particleAt = landAt.clone().add(0, 0.05, 0);
 
             // Private display can drop tracking after dismount — keep roller viewer
             if (player != null && player.isOnline()) {
@@ -294,9 +314,23 @@ public final class DicePresenter {
         return new Transformation(
                 new Vector3f(front),
                 new AxisAngle4f(yaw, 0f, 1f, 0f),
-                new Vector3f(displayScale, displayScale, displayScale),
+                scaleVec(spinScale),
                 new AxisAngle4f(pitch, 1f, 0f, 0f)
         );
+    }
+
+    /** Settle pose: ground size only, no rotation/translation (entity holds world pose). */
+    private static Transformation diceScale(float scale) {
+        return new Transformation(
+                new Vector3f(0f, 0f, 0f),
+                new AxisAngle4f(0f, 0f, 1f, 0f),
+                scaleVec(scale),
+                new AxisAngle4f(0f, 0f, 1f, 0f)
+        );
+    }
+
+    private static Vector3f scaleVec(float scale) {
+        return new Vector3f(scale, scale, scale);
     }
 
     private static void spawnPastelSmoke(Location at) {
@@ -364,6 +398,9 @@ public final class DicePresenter {
      * Land on the surface under the player's look ray (same aim as the spinning die).
      * Raycasts from the eyes; if a block is hit, drops from that XZ to the floor so the
      * die rests on pads/ground rather than sticking to a wall face.
+     * <p>
+     * Y: snap surface to 1/16, then lift by half model height × {@link #displayScale}
+     * so the cube sits on the pad (visual center is the entity origin).
      */
     private Location groundInFront(Player player) {
         Location eye = player.getEyeLocation();
@@ -402,23 +439,21 @@ public final class DicePresenter {
             at.setY(player.getLocation().getY());
         }
 
-        at.add(0, displayScale * CUBE_HALF, 0);
+        double surfaceY = snapModelGrid(at.getY());
+        // Origin is item-space center: lift by 8px so model y=0 sits on the pad
+        at.setY(surfaceY + displayScale * MODEL_ORIGIN_TO_BOTTOM);
         at.setYaw(player.getLocation().getYaw());
         at.setPitch(0f);
         return at;
     }
 
-    private static int spinFace(Dice dice) {
-        return dice.roll();
+    /** Snap world Y to the item-model pixel grid (1/16 block). */
+    private static double snapModelGrid(double y) {
+        return Math.round(y * 16.0) / 16.0;
     }
 
-    private static Transformation landUpright(float scale) {
-        return new Transformation(
-                new Vector3f(0f, 0f, 0f),
-                new AxisAngle4f(0f, 0f, 1f, 0f),
-                new Vector3f(scale, scale, scale),
-                new AxisAngle4f(0f, 0f, 1f, 0f)
-        );
+    private static int spinFace(Dice dice) {
+        return dice.roll();
     }
 
     private static final class Session {

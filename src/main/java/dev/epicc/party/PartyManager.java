@@ -367,6 +367,7 @@ public final class PartyManager {
                 minigames,
                 new Dice(instance.settings().diceMin(), instance.settings().diceMax()),
                 dicePresenter,
+                diceHats,
                 pathHopMover
         );
         controller.attach(instance);

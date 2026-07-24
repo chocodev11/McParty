@@ -22,6 +22,7 @@ public final class PluginConfig {
     private int diceSpinIntervalTicks;
     private double diceSpawnDistance;
     private float diceDisplayScale;
+    private float diceSpinScale;
     private float diceHatScale;
     private double hopUpVelocity;
     private double hopRiseMaxSeconds;
@@ -32,6 +33,8 @@ public final class PluginConfig {
     private int minigameRevealIntervalMinTicks;
     private int minigameRevealIntervalMaxTicks;
     private int minigameRevealExpandIntervalTicks;
+    private int minigameRevealColorSteps;
+    private int minigameRevealColorIntervalTicks;
 
     private boolean seamlessWorldChangeEnabled;
 
@@ -83,6 +86,7 @@ public final class PluginConfig {
         diceSpinIntervalTicks = c.getInt("board.dice-spin-interval-ticks", 4);
         diceSpawnDistance = c.getDouble("board.dice-spawn-distance", 2.0);
         diceDisplayScale = (float) c.getDouble("board.dice-display-scale", 1.0);
+        diceSpinScale = (float) c.getDouble("board.dice-spin-scale", 0.5);
         diceHatScale = (float) c.getDouble("board.dice-hat-scale", 0.55);
         hopUpVelocity = c.getDouble("board.hop-up-velocity", 1.70);
         hopRiseMaxSeconds = c.getDouble("board.hop-rise-max-seconds", 3.0);
@@ -98,7 +102,9 @@ public final class PluginConfig {
             minigameRevealIntervalMinTicks = c.getInt("minigame.reveal-interval-ticks", 2);
         }
         minigameRevealIntervalMaxTicks = c.getInt("minigame.reveal-interval-max-ticks", 14);
-        minigameRevealExpandIntervalTicks = c.getInt("minigame.reveal-expand-interval-ticks", 2);
+        minigameRevealExpandIntervalTicks = c.getInt("minigame.reveal-expand-interval-ticks", 4);
+        minigameRevealColorSteps = c.getInt("minigame.reveal-color-steps", 5);
+        minigameRevealColorIntervalTicks = c.getInt("minigame.reveal-color-interval-ticks", 3);
 
         seamlessWorldChangeEnabled = c.getBoolean("seamless-world-change.enabled", true);
 
@@ -141,6 +147,7 @@ public final class PluginConfig {
     public int diceSpinIntervalTicks() { return diceSpinIntervalTicks; }
     public double diceSpawnDistance() { return diceSpawnDistance; }
     public float diceDisplayScale() { return diceDisplayScale; }
+    public float diceSpinScale() { return diceSpinScale; }
     public float diceHatScale() { return diceHatScale; }
     public double hopUpVelocity() { return hopUpVelocity; }
     public double hopRiseMaxSeconds() { return hopRiseMaxSeconds; }
@@ -151,6 +158,8 @@ public final class PluginConfig {
     public int minigameRevealIntervalMinTicks() { return minigameRevealIntervalMinTicks; }
     public int minigameRevealIntervalMaxTicks() { return minigameRevealIntervalMaxTicks; }
     public int minigameRevealExpandIntervalTicks() { return minigameRevealExpandIntervalTicks; }
+    public int minigameRevealColorSteps() { return minigameRevealColorSteps; }
+    public int minigameRevealColorIntervalTicks() { return minigameRevealColorIntervalTicks; }
 
     public boolean seamlessWorldChangeEnabled() { return seamlessWorldChangeEnabled; }
 
