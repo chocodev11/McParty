@@ -161,7 +161,7 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new PathSetupListener(this, pathSetupService), this);
 
         PartyAdminCommand adminCommand = new PartyAdminCommand(
-                this, slotRegistry, pathSetupService, messages, slimeWorldService
+                this, slotRegistry, pathSetupService, messages, slimeWorldService, minigames
         );
         PluginCommand partyAdmin = getCommand("partyadmin");
         if (partyAdmin != null) {

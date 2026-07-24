@@ -263,7 +263,7 @@ public interface Minigame {
 |---------|------------|------|
 | `/party create\|join\|leave\|start\|list\|roll` | `mcparty.party` (default true) | Players |
 | `/party end [id]` | `mcparty.admin` | Force end |
-| `/partyadmin path\|slot\|reload` (alias `padmin`) | `mcparty.admin` | Board setup + config reload |
+| `/partyadmin path\|slot\|minigame\|reload` (alias `padmin`) | `mcparty.admin` | Board setup, minigame testing + config reload |
 | Bypass boundary | `mcparty.admin.bypass` | Ops |
 
 Admin board setup (path builder):

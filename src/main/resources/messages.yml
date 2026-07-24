@@ -81,8 +81,15 @@ admin:
   path-slime-usage: "{prefix}<red>Usage: /partyadmin path slime <name> <slime-template>"
   path-slime-missing: "{prefix}<red>Slime template '<template>' not found in the slime worlds folder."
   path-slime-set: "{prefix}<green>Path '<name>' slime template set to '<template>'."
+  minigame-usage: "<aqua>/partyadmin minigame <minigame> [player]"
+  minigame-not-found: "{prefix}<red>Minigame '<id>' not found."
+  player-not-found: "{prefix}<red>Player '<name>' not found or offline."
+  minigame-player-required: "{prefix}<red>You must specify a player when running from console."
+  minigame-testing: "{prefix}<green>Testing minigame '<name>' solo with player <player>..."
+  minigame-test-done: "{prefix}<green>Minigame test completed for <player>."
   help-path: "<aqua>/partyadmin path create <name> | undo | end | remove <name> | slime <name> <template>"
   help-slot: "<aqua>/partyadmin slot list|delete"
+  help-minigame: "<aqua>/partyadmin minigame <minigame> [player]"
   help-reload: "<aqua>/partyadmin reload"
 
 path:

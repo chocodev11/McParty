@@ -69,6 +69,7 @@ public final class HotPotatoMinigame implements Minigame, Listener {
     private NamespacedKey potatoKey;
 
     private final Map<UUID, PlayerStateSnapshot> snapshots = new HashMap<>();
+    private final Map<UUID, Location> initialLocations = new HashMap<>();
     private final Set<UUID> matchPlayers = new HashSet<>();
     private final Set<UUID> alivePlayers = new HashSet<>();
     private final List<UUID> eliminationOrder = new ArrayList<>();
@@ -77,6 +78,7 @@ public final class HotPotatoMinigame implements Minigame, Listener {
     private int bombTimerTicks;
     private BukkitTask task;
     private World loadedSlimeWorld;
+    private UUID loadedWorldInstanceId;
     private Item activeGroundPotato;
     private Projectile activeThrownPotato;
 
@@ -118,13 +120,14 @@ public final class HotPotatoMinigame implements Minigame, Listener {
         alivePlayers.clear();
         eliminationOrder.clear();
         snapshots.clear();
+        initialLocations.clear();
         loadedSlimeWorld = null;
+        loadedWorldInstanceId = null;
         activeGroundPotato = null;
         activeThrownPotato = null;
 
         List<Player> players = new ArrayList<>(context.onlinePlayers());
-        if (players.size() < 2) {
-            // Not enough players
+        if (players.isEmpty()) {
             finishWithDefaultResult(players);
             return;
         }
@@ -132,6 +135,7 @@ public final class HotPotatoMinigame implements Minigame, Listener {
         for (Player p : players) {
             matchPlayers.add(p.getUniqueId());
             alivePlayers.add(p.getUniqueId());
+            initialLocations.put(p.getUniqueId(), p.getLocation());
             snapshots.put(p.getUniqueId(), PlayerStateSnapshot.capture(p));
             PlayerStateSnapshot.preparePhase(p);
         }
@@ -142,7 +146,8 @@ public final class HotPotatoMinigame implements Minigame, Listener {
         // Check if slime world can be loaded
         PartyInstance instance = context.instance();
         if (slimeWorldService != null && slimeWorldService.isReady() && slimeTemplate != null && !slimeTemplate.isBlank()) {
-            Optional<World> worldOpt = slimeWorldService.loadForInstance(instance.id(), slimeTemplate);
+            loadedWorldInstanceId = instance != null ? instance.id() : UUID.randomUUID();
+            Optional<World> worldOpt = slimeWorldService.loadForInstance(loadedWorldInstanceId, slimeTemplate);
             if (worldOpt.isPresent()) {
                 loadedSlimeWorld = worldOpt.get();
                 Location spawn = loadedSlimeWorld.getSpawnLocation();
@@ -468,16 +473,25 @@ public final class HotPotatoMinigame implements Minigame, Listener {
         for (UUID id : matchPlayers) {
             Player p = Bukkit.getPlayer(id);
             if (p != null && p.isOnline()) {
+                PlayerStateSnapshot snapshot = snapshots.get(id);
                 PlayerStateSnapshot.preparePhase(p);
-                if (loadedSlimeWorld != null && returnLocation != null) {
-                    p.teleport(returnLocation);
+                if (snapshot != null) {
+                    snapshot.restore(p);
+                }
+                if (loadedSlimeWorld != null) {
+                    if (returnLocation != null) {
+                        p.teleport(returnLocation);
+                    } else if (initialLocations.containsKey(id)) {
+                        p.teleport(initialLocations.get(id));
+                    }
                 }
             }
         }
 
-        if (loadedSlimeWorld != null && instance != null && slimeWorldService != null) {
-            slimeWorldService.unloadForInstance(instance.id());
+        if (loadedSlimeWorld != null && loadedWorldInstanceId != null && slimeWorldService != null) {
+            slimeWorldService.unloadForInstance(loadedWorldInstanceId);
             loadedSlimeWorld = null;
+            loadedWorldInstanceId = null;
         }
 
         if (doneCallback != null) {
@@ -533,17 +547,26 @@ public final class HotPotatoMinigame implements Minigame, Listener {
         for (UUID id : matchPlayers) {
             Player p = Bukkit.getPlayer(id);
             if (p != null && p.isOnline()) {
+                PlayerStateSnapshot snapshot = snapshots.get(id);
                 PlayerStateSnapshot.preparePhase(p);
+                if (snapshot != null) {
+                    snapshot.restore(p);
+                }
+                if (loadedSlimeWorld != null && initialLocations.containsKey(id)) {
+                    p.teleport(initialLocations.get(id));
+                }
             }
         }
 
-        if (loadedSlimeWorld != null && context != null && context.instance() != null && slimeWorldService != null) {
-            slimeWorldService.unloadForInstance(context.instance().id());
+        if (loadedSlimeWorld != null && loadedWorldInstanceId != null && slimeWorldService != null) {
+            slimeWorldService.unloadForInstance(loadedWorldInstanceId);
             loadedSlimeWorld = null;
+            loadedWorldInstanceId = null;
         }
 
         matchPlayers.clear();
         alivePlayers.clear();
         snapshots.clear();
+        initialLocations.clear();
     }
 }

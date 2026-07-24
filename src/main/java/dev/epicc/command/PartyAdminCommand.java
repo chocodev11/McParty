@@ -5,8 +5,11 @@ import dev.epicc.board.BoardSlot;
 import dev.epicc.board.BoardSlotRegistry;
 import dev.epicc.board.setup.PathSetupService;
 import dev.epicc.config.MessageService;
+import dev.epicc.minigame.Minigame;
+import dev.epicc.minigame.MinigameManager;
 import dev.epicc.slime.SlimeWorldService;
 import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -28,19 +31,22 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
     private final PathSetupService pathSetup;
     private final MessageService messages;
     private final SlimeWorldService slime;
+    private final MinigameManager minigames;
 
     public PartyAdminCommand(
             McPartyPlugin plugin,
             BoardSlotRegistry slots,
             PathSetupService pathSetup,
             MessageService messages,
-            SlimeWorldService slime
+            SlimeWorldService slime,
+            MinigameManager minigames
     ) {
         this.plugin = plugin;
         this.slots = slots;
         this.pathSetup = pathSetup;
         this.messages = messages;
         this.slime = slime;
+        this.minigames = minigames;
     }
 
     @Override
@@ -57,22 +63,61 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             return true;
         }
 
-        if (!(sender instanceof Player player)) {
-            messages.send(sender, "general.players-only-except-reload");
-            return true;
-        }
         if (args.length == 0) {
-            help(player);
+            help(sender);
             return true;
         }
 
         String group = args[0].toLowerCase(Locale.ROOT);
+        if (group.equals("minigame") || group.equals("mg")) {
+            handleMinigame(sender, args);
+            return true;
+        }
+
+        if (!(sender instanceof Player player)) {
+            messages.send(sender, "general.players-only-except-reload");
+            return true;
+        }
+
         switch (group) {
             case "slot" -> handleSlot(player, args);
             case "path" -> handlePath(player, args);
             default -> help(player);
         }
         return true;
+    }
+
+    private void handleMinigame(CommandSender sender, String[] args) {
+        if (args.length < 2) {
+            messages.send(sender, "admin.minigame-usage");
+            return;
+        }
+        String minigameId = args[1];
+        Optional<Minigame> minigameOpt = minigames.registry().get(minigameId);
+        if (minigameOpt.isEmpty()) {
+            messages.send(sender, "admin.minigame-not-found", "id", minigameId);
+            return;
+        }
+
+        Player target;
+        if (args.length >= 3) {
+            target = Bukkit.getPlayer(args[2]);
+            if (target == null || !target.isOnline()) {
+                messages.send(sender, "admin.player-not-found", "name", args[2]);
+                return;
+            }
+        } else if (sender instanceof Player player) {
+            target = player;
+        } else {
+            messages.send(sender, "admin.minigame-player-required");
+            return;
+        }
+
+        Minigame mg = minigameOpt.get();
+        messages.send(sender, "admin.minigame-testing", "name", mg.displayName(), "player", target.getName());
+        minigames.runSpecific(mg, List.of(target), result -> {
+            messages.send(sender, "admin.minigame-test-done", "player", target.getName());
+        });
     }
 
     private void handleSlot(Player player, String[] args) {
@@ -175,23 +220,30 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         err.ifPresent(player::sendMessage);
     }
 
-    private void help(Player player) {
-        messages.send(player, "admin.help-path");
-        messages.send(player, "admin.help-slot");
-        messages.send(player, "admin.help-reload");
+    private void help(CommandSender sender) {
+        messages.send(sender, "admin.help-path");
+        messages.send(sender, "admin.help-slot");
+        messages.send(sender, "admin.help-minigame");
+        messages.send(sender, "admin.help-reload");
     }
 
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filter(List.of("slot", "path", "reload"), args[0]);
+            return filter(List.of("slot", "path", "minigame", "reload"), args[0]);
         }
         if (args.length == 2) {
-            return switch (args[0].toLowerCase(Locale.ROOT)) {
-                case "slot" -> filter(List.of("list", "delete"), args[1]);
-                case "path" -> filter(List.of("create", "undo", "end", "remove", "slime"), args[1]);
-                default -> List.of();
-            };
+            String g = args[0].toLowerCase(Locale.ROOT);
+            if (g.equals("slot")) {
+                return filter(List.of("list", "delete"), args[1]);
+            }
+            if (g.equals("path")) {
+                return filter(List.of("create", "undo", "end", "remove", "slime"), args[1]);
+            }
+            if (g.equals("minigame") || g.equals("mg")) {
+                return filter(minigames.registry().ids(), args[1]);
+            }
+            return List.of();
         }
         if (args.length == 3) {
             String g = args[0].toLowerCase(Locale.ROOT);
@@ -201,7 +253,10 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
                 List<String> ids = slots.all().stream().map(BoardSlot::id).collect(Collectors.toCollection(ArrayList::new));
                 return filter(ids, args[2]);
             }
-            // path create <name> — free-type name, no suggestions
+            if (g.equals("minigame") || g.equals("mg")) {
+                List<String> names = Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
+                return filter(names, args[2]);
+            }
             return List.of();
         }
         if (args.length == 4) {

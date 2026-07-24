@@ -71,12 +71,22 @@ public final class MinigameManager {
      * Pick a random minigame, run title reveal (no teleport), then start it in place.
      */
     public void runRandom(PartyInstance instance, List<Player> players, Consumer<MinigameResult> done) {
+        runMinigame(registry.pickRandom(), instance, players, done);
+    }
+
+    /**
+     * Run a specific minigame (e.g. for admin testing).
+     */
+    public void runSpecific(Minigame minigame, List<Player> players, Consumer<MinigameResult> done) {
+        runMinigame(minigame, null, players, done);
+    }
+
+    public void runMinigame(Minigame minigame, PartyInstance instance, List<Player> players, Consumer<MinigameResult> done) {
         cancelActive();
-        Minigame picked = registry.pickRandom();
         List<Player> online = List.copyOf(players);
 
         if (revealDurationTicks <= 0 || online.isEmpty()) {
-            startNow(picked, instance, online, done);
+            startNow(minigame, instance, online, done);
             return;
         }
 
@@ -90,9 +100,9 @@ public final class MinigameManager {
                 revealColorSteps,
                 revealColorIntervalTicks
         );
-        reveal.start(online, picked, registry.displayNames(), () -> {
+        reveal.start(online, minigame, registry.displayNames(), () -> {
             reveal = null;
-            if (instance == null) {
+            if (instance != null && instance.state() == dev.epicc.party.PartyState.CLEANUP) {
                 return;
             }
             List<Player> stillOnline = online.stream().filter(Player::isOnline).toList();
@@ -100,7 +110,7 @@ public final class MinigameManager {
                 done.accept(new MinigameResult());
                 return;
             }
-            startNow(picked, instance, stillOnline, done);
+            startNow(minigame, instance, stillOnline, done);
         });
     }
 
