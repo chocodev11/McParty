@@ -45,6 +45,12 @@ minigame:
   reveal-color-steps: 5
   reveal-color-interval-ticks: 3
 
+  hot_potato:
+    slime-template: hot_potato_arena
+    bomb-seconds: 20
+    throw-velocity: 0.9
+    max-cycles: 10
+
 # Suppress dirt "Loading terrain…" on party world teleports (same env + height).
 # Requires PacketEvents plugin on the server. Fail-open if missing.
 seamless-world-change:

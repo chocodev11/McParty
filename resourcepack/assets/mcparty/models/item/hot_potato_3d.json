@@ -1,0 +1,71 @@
+{
+	"format_version": "1.21.11",
+	"credit": "McParty 3D Hot Potato Model",
+	"textures": {
+		"0": "mcparty:item/hot_potato_3d",
+		"particle": "mcparty:item/hot_potato_3d"
+	},
+	"elements": [
+		{
+			"name": "potato_core",
+			"from": [4, 4, 3],
+			"to": [12, 11, 13],
+			"faces": {
+				"north": {"uv": [3, 2, 11, 9], "texture": "#0"},
+				"east": {"uv": [3, 3, 13, 10], "texture": "#0"},
+				"south": {"uv": [3, 2, 11, 9], "texture": "#0"},
+				"west": {"uv": [3, 3, 13, 10], "texture": "#0"},
+				"up": {"uv": [2, 3, 10, 13], "texture": "#0"},
+				"down": {"uv": [2, 3, 10, 13], "texture": "#0"}
+			}
+		},
+		{
+			"name": "potato_bump",
+			"from": [5, 5, 2],
+			"to": [11, 10, 14],
+			"faces": {
+				"north": {"uv": [3, 3, 9, 8], "texture": "#0"},
+				"east": {"uv": [2, 4, 14, 9], "texture": "#0"},
+				"south": {"uv": [3, 3, 9, 8], "texture": "#0"},
+				"west": {"uv": [2, 4, 14, 8], "texture": "#0"},
+				"up": {"uv": [3, 2, 9, 14], "texture": "#0"},
+				"down": {"uv": [3, 2, 9, 14], "texture": "#0"}
+			}
+		}
+	],
+	"display": {
+		"thirdperson_righthand": {
+			"rotation": [0, 45, 0],
+			"translation": [0, 2.5, 0],
+			"scale": [0.5, 0.5, 0.5]
+		},
+		"thirdperson_lefthand": {
+			"rotation": [0, 45, 0],
+			"translation": [0, 2.5, 0],
+			"scale": [0.5, 0.5, 0.5]
+		},
+		"firstperson_righthand": {
+			"rotation": [0, 45, 0],
+			"translation": [0, 2.5, 0],
+			"scale": [0.5, 0.5, 0.5]
+		},
+		"firstperson_lefthand": {
+			"rotation": [0, 45, 0],
+			"translation": [0, 2.5, 0],
+			"scale": [0.5, 0.5, 0.5]
+		},
+		"ground": {
+			"translation": [0, 2, 0],
+			"scale": [0.5, 0.5, 0.5]
+		},
+		"head": {
+			"rotation": [0, -180, 0],
+			"translation": [0, 13, 0],
+			"scale": [0.8, 0.8, 0.8]
+		},
+		"fixed": {
+			"rotation": [0, -180, 0],
+			"scale": [0.6, 0.6, 0.6]
+		}
+	}
+}

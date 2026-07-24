@@ -36,6 +36,11 @@ public final class PluginConfig {
     private int minigameRevealColorSteps;
     private int minigameRevealColorIntervalTicks;
 
+    private String hotPotatoSlimeTemplate;
+    private int hotPotatoBombSeconds;
+    private double hotPotatoThrowVelocity;
+    private int hotPotatoMaxCycles;
+
     private boolean seamlessWorldChangeEnabled;
 
     private boolean resourcePackEnabled;
@@ -106,6 +111,11 @@ public final class PluginConfig {
         minigameRevealColorSteps = c.getInt("minigame.reveal-color-steps", 5);
         minigameRevealColorIntervalTicks = c.getInt("minigame.reveal-color-interval-ticks", 3);
 
+        hotPotatoSlimeTemplate = c.getString("minigame.hot_potato.slime-template", "hot_potato_arena");
+        hotPotatoBombSeconds = c.getInt("minigame.hot_potato.bomb-seconds", 20);
+        hotPotatoThrowVelocity = c.getDouble("minigame.hot_potato.throw-velocity", 0.9);
+        hotPotatoMaxCycles = c.getInt("minigame.hot_potato.max-cycles", 10);
+
         seamlessWorldChangeEnabled = c.getBoolean("seamless-world-change.enabled", true);
 
         resourcePackEnabled = c.getBoolean("resource-pack.enabled", true);
@@ -160,6 +170,11 @@ public final class PluginConfig {
     public int minigameRevealExpandIntervalTicks() { return minigameRevealExpandIntervalTicks; }
     public int minigameRevealColorSteps() { return minigameRevealColorSteps; }
     public int minigameRevealColorIntervalTicks() { return minigameRevealColorIntervalTicks; }
+
+    public String hotPotatoSlimeTemplate() { return hotPotatoSlimeTemplate; }
+    public int hotPotatoBombSeconds() { return hotPotatoBombSeconds; }
+    public double hotPotatoThrowVelocity() { return hotPotatoThrowVelocity; }
+    public int hotPotatoMaxCycles() { return hotPotatoMaxCycles; }
 
     public boolean seamlessWorldChangeEnabled() { return seamlessWorldChangeEnabled; }
 

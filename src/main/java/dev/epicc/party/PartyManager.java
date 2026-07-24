@@ -11,6 +11,7 @@ import dev.epicc.board.dice.DicePresenter;
 import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.minigame.MinigameManager;
+import dev.epicc.minigame.PlayerStateSnapshot;
 import dev.epicc.player.PlayerSessionService;
 import dev.epicc.resourcepack.ResourcePackService;
 import dev.epicc.seamless.SeamlessWorldChangeService;
@@ -356,6 +357,7 @@ public final class PartyManager {
         for (PartyPlayer pp : instance.players()) {
             Player p = plugin.getServer().getPlayer(pp.uuid());
             if (p != null && p.isOnline()) {
+                PlayerStateSnapshot.preparePhase(p);
                 seamless.teleport(p, scatterAround(spawn, 4.0));
                 p.showTitle(startTitle);
             }

@@ -58,6 +58,10 @@ minigame:
   # Title after spin lands (name expands on subtitle)
   reveal-ready-title: "<yellow>Get ready!"
   selected: "{prefix}<light_purple>Minigame: <name>"
+  hot-potato-started: "{prefix}<gold>Hot Potato! Throw the potato before it explodes!"
+  hot-potato-holding: "<red><bold>BOMB TICKING: <seconds>s</bold>"
+  hot-potato-exploded: "{prefix}<red><player> exploded!"
+  hot-potato-passed: "{prefix}<yellow><from> threw the potato to <to>!"
 
 admin:
   reload-ok: "{prefix}<green>Config reloaded (resource pack restarted). Slime/seamless need a server restart to change."

@@ -13,6 +13,7 @@ import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.containment.BoundaryListener;
 import dev.epicc.minigame.DummyMinigame;
+import dev.epicc.minigame.HotPotatoMinigame;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.minigame.MinigameRegistry;
 import dev.epicc.party.PartyManager;
@@ -99,6 +100,16 @@ public final class McPartyPlugin extends JavaPlugin {
         for (int i = 1; i < dummyMinigames.size(); i++) {
             minigameRegistry.register(dummyMinigames.get(i));
         }
+
+        HotPotatoMinigame hotPotato = new HotPotatoMinigame(
+                messages,
+                slimeWorldService,
+                config.hotPotatoBombSeconds(),
+                config.hotPotatoThrowVelocity(),
+                config.hotPotatoSlimeTemplate(),
+                config.dummyCoinRewards()
+        );
+        minigameRegistry.register(hotPotato);
         minigames = new MinigameManager(
                 this,
                 messages,
