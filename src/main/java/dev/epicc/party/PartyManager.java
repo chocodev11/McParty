@@ -29,9 +29,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
@@ -53,6 +55,9 @@ public final class PartyManager {
     private final ResourcePackService resourcePacks;
     private final Map<UUID, BoardTurnController> controllers = new ConcurrentHashMap<>();
     private final Map<UUID, BukkitTask> countdowns = new ConcurrentHashMap<>();
+    private final Map<UUID, Boolean> worldsReady = new ConcurrentHashMap<>();
+    private final Map<UUID, Boolean> countdownFinished = new ConcurrentHashMap<>();
+
 
     public PartyManager(
             JavaPlugin plugin,
@@ -218,67 +223,103 @@ public final class PartyManager {
         }
 
         instance.setState(PartyState.STARTING);
-        instance.broadcast(messages.get("party.loading-world"));
 
-        if (slime.isReady()) {
-            startWithSlime(instance, templateSlot);
-        } else {
-            // Fallback: use the permanent slot world (no ASP)
-            instance.setSlot(templateSlot);
-            beginCountdown(instance);
-        }
+        // 1. Countdown timer (5..4..3..2..1) starts IMMEDIATELY on countdown start
+        beginCountdown(instance);
+
+        // 2. Preloading of board world + minigame worlds starts in parallel on countdown start
+        startWorldPreload(instance, templateSlot);
+
         return Optional.empty();
     }
 
-    private void startWithSlime(PartyInstance instance, BoardSlot templateSlot) {
+    private void startWorldPreload(PartyInstance instance, BoardSlot templateSlot) {
         final UUID instanceId = instance.id();
-        final String slimeTemplate = templateSlot.slimeTemplate();
+        worldsReady.put(instanceId, false);
+
+        if (!slime.isReady()) {
+            instance.setSlot(templateSlot);
+            worldsReady.put(instanceId, true);
+            if (Boolean.TRUE.equals(countdownFinished.get(instanceId))) {
+                beginPlaying(instance);
+            }
+            return;
+        }
+
+        final String boardTemplate = templateSlot.slimeTemplate();
+
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            Optional<SlimeWorld> clone = slime.prepareClone(instanceId, slimeTemplate);
+            Optional<SlimeWorld> boardClone = slime.prepareClone(instanceId, boardTemplate);
+
             plugin.getServer().getScheduler().runTask(plugin, () -> {
                 if (instance.state() != PartyState.STARTING) {
                     templateSlot.release();
+                    slime.unloadForInstance(instanceId);
+                    worldsReady.remove(instanceId);
+                    countdownFinished.remove(instanceId);
                     return;
                 }
-                if (clone.isEmpty()) {
+
+                if (boardClone.isEmpty()) {
                     instance.broadcast(messages.get("party.slime-load-failed"));
                     instance.setState(PartyState.WAITING);
                     templateSlot.release();
+                    cancelCountdown(instanceId);
+                    worldsReady.remove(instanceId);
+                    countdownFinished.remove(instanceId);
                     return;
                 }
 
-                Optional<World> world = slime.loadClone(instanceId, clone.get());
-                if (world.isEmpty()) {
+                Optional<World> boardWorld = slime.loadClone(instanceId, boardTemplate, boardClone.get());
+                if (boardWorld.isEmpty()) {
                     instance.broadcast(messages.get("party.slime-register-failed"));
                     instance.setState(PartyState.WAITING);
                     templateSlot.release();
+                    cancelCountdown(instanceId);
+                    worldsReady.remove(instanceId);
+                    countdownFinished.remove(instanceId);
                     return;
                 }
 
-                // Keep template claimed; use a runtime slot bound to the clone world
-                BoardSlot runtime = templateSlot.forWorld(world.get());
+                BoardSlot runtime = templateSlot.forWorld(boardWorld.get());
                 runtime.claim(instanceId);
                 instance.setSlot(runtime);
-                beginCountdown(instance);
+                worldsReady.put(instanceId, true);
+
+                if (Boolean.TRUE.equals(countdownFinished.get(instanceId))) {
+                    beginPlaying(instance);
+                }
             });
         });
     }
 
+
     private void beginCountdown(PartyInstance instance) {
+        final UUID instanceId = instance.id();
+        countdownFinished.put(instanceId, false);
         int countdown = config.startCountdownSeconds();
         Title.Times times = Title.Times.times(Duration.ZERO, Duration.ofMillis(1100), Duration.ofMillis(200));
+
         BukkitTask task = plugin.getServer().getScheduler().runTaskTimer(plugin, new Runnable() {
             int left = countdown;
 
             @Override
             public void run() {
                 if (instance.state() != PartyState.STARTING) {
-                    cancelCountdown(instance.id());
+                    cancelCountdown(instanceId);
                     return;
                 }
                 if (left <= 0) {
-                    cancelCountdown(instance.id());
-                    beginPlaying(instance);
+                    countdownFinished.put(instanceId, true);
+                    cancelCountdown(instanceId);
+
+                    // On countdown end: if worlds are ready, teleport players to board spawn and start!
+                    if (Boolean.TRUE.equals(worldsReady.get(instanceId))) {
+                        beginPlaying(instance);
+                    } else {
+                        // World load is still in progress; load task will trigger beginPlaying upon finish
+                        instance.broadcast(messages.get("party.loading-world"));
+                    }
                     return;
                 }
                 Title title = Title.title(
@@ -295,8 +336,9 @@ public final class PartyManager {
                 left--;
             }
         }, 0L, 20L);
-        countdowns.put(instance.id(), task);
+        countdowns.put(instanceId, task);
     }
+
 
     public Optional<Component> forceEnd(Player admin, String shortId) {
         PartyInstance instance;
@@ -426,7 +468,10 @@ public final class PartyManager {
 
     private void cleanup(PartyInstance instance) {
         cancelCountdown(instance.id());
+        worldsReady.remove(instance.id());
+        countdownFinished.remove(instance.id());
         BoardTurnController controller = controllers.remove(instance.id());
+
         if (controller != null) {
             controller.stop();
         }

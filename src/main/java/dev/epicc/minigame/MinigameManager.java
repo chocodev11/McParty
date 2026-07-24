@@ -1,11 +1,18 @@
 package dev.epicc.minigame;
 
+import com.infernalsuite.asp.api.world.SlimeWorld;
 import dev.epicc.config.MessageService;
 import dev.epicc.party.PartyInstance;
+import dev.epicc.slime.SlimeWorldService;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
 public final class MinigameManager {
@@ -13,6 +20,7 @@ public final class MinigameManager {
     private final JavaPlugin plugin;
     private final MessageService messages;
     private final MinigameRegistry registry;
+    private final SlimeWorldService slime;
     private int revealDurationTicks;
     private int revealIntervalMinTicks;
     private int revealIntervalMaxTicks;
@@ -27,6 +35,7 @@ public final class MinigameManager {
             JavaPlugin plugin,
             MessageService messages,
             MinigameRegistry registry,
+            SlimeWorldService slime,
             int revealDurationTicks,
             int revealIntervalMinTicks,
             int revealIntervalMaxTicks,
@@ -37,6 +46,7 @@ public final class MinigameManager {
         this.plugin = plugin;
         this.messages = messages;
         this.registry = registry;
+        this.slime = slime;
         reconfigure(
                 revealDurationTicks,
                 revealIntervalMinTicks,
@@ -67,6 +77,19 @@ public final class MinigameManager {
         return registry;
     }
 
+    /** Gather all ASP slime template names declared by registered minigames. */
+    public Set<String> getSlimeTemplates() {
+        Set<String> templates = new HashSet<>();
+        for (Minigame mg : registry.all()) {
+            mg.slimeTemplate().ifPresent(t -> {
+                if (!t.isBlank()) {
+                    templates.add(t.trim());
+                }
+            });
+        }
+        return templates;
+    }
+
     /**
      * Pick a random minigame, run title reveal (no teleport), then start it in place.
      */
@@ -85,8 +108,37 @@ public final class MinigameManager {
         cancelActive();
         List<Player> online = List.copyOf(players);
 
-        if (revealDurationTicks <= 0 || online.isEmpty()) {
-            startNow(minigame, instance, online, done);
+        if (online.isEmpty()) {
+            done.accept(new MinigameResult());
+            return;
+        }
+
+        final AtomicBoolean minigameWorldReady = new AtomicBoolean(true);
+        final AtomicBoolean revealFinished = new AtomicBoolean(false);
+
+        String template = minigame.slimeTemplate().orElse(null);
+        if (slime != null && slime.isReady() && template != null && !template.isBlank()) {
+            minigameWorldReady.set(false);
+            final UUID instanceId = instance != null ? instance.id() : UUID.randomUUID();
+            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+                Optional<SlimeWorld> clone = slime.prepareClone(instanceId, template);
+                plugin.getServer().getScheduler().runTask(plugin, () -> {
+                    if (clone.isPresent()) {
+                        slime.loadClone(instanceId, template, clone.get());
+                    }
+                    minigameWorldReady.set(true);
+                    if (revealFinished.get()) {
+                        proceedToStart(minigame, instance, online, done);
+                    }
+                });
+            });
+        }
+
+        if (revealDurationTicks <= 0) {
+            revealFinished.set(true);
+            if (minigameWorldReady.get()) {
+                proceedToStart(minigame, instance, online, done);
+            }
             return;
         }
 
@@ -102,17 +154,25 @@ public final class MinigameManager {
         );
         reveal.start(online, minigame, registry.displayNames(), () -> {
             reveal = null;
-            if (instance != null && instance.state() == dev.epicc.party.PartyState.CLEANUP) {
-                return;
+            revealFinished.set(true);
+            if (minigameWorldReady.get()) {
+                proceedToStart(minigame, instance, online, done);
             }
-            List<Player> stillOnline = online.stream().filter(Player::isOnline).toList();
-            if (stillOnline.isEmpty()) {
-                done.accept(new MinigameResult());
-                return;
-            }
-            startNow(minigame, instance, stillOnline, done);
         });
     }
+
+    private void proceedToStart(Minigame minigame, PartyInstance instance, List<Player> online, Consumer<MinigameResult> done) {
+        if (instance != null && instance.state() == dev.epicc.party.PartyState.CLEANUP) {
+            return;
+        }
+        List<Player> stillOnline = online.stream().filter(Player::isOnline).toList();
+        if (stillOnline.isEmpty()) {
+            done.accept(new MinigameResult());
+            return;
+        }
+        startNow(minigame, instance, stillOnline, done);
+    }
+
 
     public void cancelActive() {
         if (reveal != null) {

@@ -15,7 +15,7 @@ import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Minigame pick reveal (name on subtitle; no fade-in, yes fade-out):
- * 1) Spin: title "???", subtitle cycles names (fast → slow → stop)
+ * 1) Spin: title "???", subtitle cycles names (slow → fast → stop)
  * 2) Expand: title "Get ready!", subtitle grows middle → sides
  * 3) Tint: full subtitle white → yellow
  */
@@ -106,10 +106,11 @@ final class MinigameRevealAnimator {
                 }
                 if (spinTick[0] >= nextSwapAt[0]) {
                     double progress = (double) spinTick[0] / spinDurationTicks;
-                    double eased = progress * progress;
+                    double eased = (1.0 - progress) * (1.0 - progress);
                     int interval = intervalMinTicks
                             + (int) Math.round((intervalMaxTicks - intervalMinTicks) * eased);
                     interval = Math.max(1, interval);
+
 
                     boolean nearEnd = spinTick[0] + interval >= spinDurationTicks || progress >= 0.85;
                     if (nearEnd) {

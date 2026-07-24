@@ -109,6 +109,11 @@ public final class HotPotatoMinigame implements Minigame, Listener {
     }
 
     @Override
+    public Optional<String> slimeTemplate() {
+        return Optional.ofNullable(slimeTemplate).filter(s -> !s.isBlank());
+    }
+
+    @Override
     public void start(MinigameContext context, Consumer<MinigameResult> done) {
         cancel();
 
@@ -143,11 +148,11 @@ public final class HotPotatoMinigame implements Minigame, Listener {
         // Register listener
         context.plugin().getServer().getPluginManager().registerEvents(this, context.plugin());
 
-        // Check if slime world can be loaded
+        // Check if slime world can be loaded/retrieved
         PartyInstance instance = context.instance();
         if (slimeWorldService != null && slimeWorldService.isReady() && slimeTemplate != null && !slimeTemplate.isBlank()) {
             loadedWorldInstanceId = instance != null ? instance.id() : UUID.randomUUID();
-            Optional<World> worldOpt = slimeWorldService.loadForInstance(loadedWorldInstanceId, slimeTemplate);
+            Optional<World> worldOpt = slimeWorldService.getOrLoadWorld(loadedWorldInstanceId, slimeTemplate);
             if (worldOpt.isPresent()) {
                 loadedSlimeWorld = worldOpt.get();
                 Location spawn = loadedSlimeWorld.getSpawnLocation();
@@ -156,6 +161,7 @@ public final class HotPotatoMinigame implements Minigame, Listener {
                 }
             }
         }
+
 
         // Select initial holder
         currentHolder = players.get(ThreadLocalRandom.current().nextInt(players.size())).getUniqueId();
@@ -488,11 +494,12 @@ public final class HotPotatoMinigame implements Minigame, Listener {
             }
         }
 
-        if (loadedSlimeWorld != null && loadedWorldInstanceId != null && slimeWorldService != null) {
+        if (loadedSlimeWorld != null && loadedWorldInstanceId != null && slimeWorldService != null && (context == null || context.instance() == null)) {
             slimeWorldService.unloadForInstance(loadedWorldInstanceId);
             loadedSlimeWorld = null;
             loadedWorldInstanceId = null;
         }
+
 
         if (doneCallback != null) {
             doneCallback.accept(result);

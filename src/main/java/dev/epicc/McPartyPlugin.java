@@ -114,6 +114,7 @@ public final class McPartyPlugin extends JavaPlugin {
                 this,
                 messages,
                 minigameRegistry,
+                slimeWorldService,
                 config.minigameRevealDurationTicks(),
                 config.minigameRevealIntervalMinTicks(),
                 config.minigameRevealIntervalMaxTicks(),
@@ -121,6 +122,7 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.minigameRevealColorSteps(),
                 config.minigameRevealColorIntervalTicks()
         );
+
 
         diceHats = new DiceHatService(config.diceHatScale());
         dicePresenter = new DicePresenter(
