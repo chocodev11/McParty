@@ -12,7 +12,7 @@ board:
   # Visual dice (ItemDisplay). Needs resource pack mcparty:dice_1..6
   # Stops only on click or this timeout (everyone rolls each round)
   dice-interact-seconds: 10
-  # Transform step while spinning (4 = 5 steps/sec, steady tumble)
+  # Face-texture shuffle interval while the die tumbles at a fixed smooth rate
   dice-spin-interval-ticks: 4
   dice-spawn-distance: 2.0
   # Settle / world size (cube ~14/16 tall; 1.0 = 1:1 on ItemDisplay NONE)

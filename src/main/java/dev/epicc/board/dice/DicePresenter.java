@@ -44,9 +44,9 @@ public final class DicePresenter {
     private static final long SETTLE_HOLD_TICKS = 20L;
     /** How far along the eye ray to search for a land surface on settle. */
     private static final double SETTLE_RAY_RANGE = 8.0;
-    /** Steady tumble per spin step (radians) — consistent speed, not random jumps. */
-    private static final float SPIN_YAW_STEP = (float) (Math.PI / 3.0);
-    private static final float SPIN_PITCH_STEP = (float) (Math.PI / 4.0);
+    /** Steady per-tick tumble (radians) — 60° yaw and 45° pitch every four ticks. */
+    private static final float SPIN_YAW_PER_TICK = (float) (Math.PI / 12.0);
+    private static final float SPIN_PITCH_PER_TICK = (float) (Math.PI / 16.0);
 
     private final JavaPlugin plugin;
     private final DiceHatService hats;
@@ -115,7 +115,7 @@ public final class DicePresenter {
             d.setBillboard(Display.Billboard.FIXED);
             // NONE so only our transformation scale controls size (FIXED adds item-frame shrink)
             d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
-            d.setInterpolationDuration(0);
+            d.setInterpolationDuration(1);
             d.setTeleportDuration(0);
             // Entity yaw/pitch stay 0 — "in front" is pure translation from player look (no setRotation lag)
             d.setTransformation(tumble(frontOffset(player), 0f, 0f));
@@ -137,7 +137,7 @@ public final class DicePresenter {
         session.display = display;
         byPlayer.put(player.getUniqueId(), session);
 
-        // Every tick: remount + translation in front of look (snappy, no entity yaw sync)
+        // Update every tick so the client can interpolate a continuous, fixed-rate tumble.
         session.faceTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (session.settled || session.display == null || !session.display.isValid()) {
                 return;
@@ -153,24 +153,16 @@ public final class DicePresenter {
             rolling.showEntity(plugin, session.display);
             session.display.setRotation(0f, 0f);
             session.display.setInterpolationDelay(0);
-            session.display.setInterpolationDuration(0);
+            session.spinYaw += SPIN_YAW_PER_TICK;
+            session.spinPitch += SPIN_PITCH_PER_TICK;
+            session.spinTicks++;
             session.display.setTransformation(
                     tumble(frontOffset(rolling), session.spinYaw, session.spinPitch)
             );
-        }, 0L, 1L);
-
-        // Tumble / face texture only (angles applied by faceTask)
-        session.spinTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-            if (session.settled || session.display == null || !session.display.isValid()) {
-                return;
-            }
-            session.spinYaw += SPIN_YAW_STEP;
-            session.spinPitch += SPIN_PITCH_STEP;
-            session.spinStep++;
-            if (session.spinStep % 2 == 0) {
+            if (session.spinTicks % (spinIntervalTicks * 2) == 0) {
                 session.display.setItemStack(DiceItems.face(spinFace(dice)));
             }
-        }, 0L, spinIntervalTicks);
+        }, 1L, 1L);
 
         session.timeoutTask = plugin.getServer().getScheduler().runTaskLater(
                 plugin, () -> settle(session), interactTicks
@@ -380,10 +372,6 @@ public final class DicePresenter {
             session.faceTask.cancel();
             session.faceTask = null;
         }
-        if (session.spinTask != null) {
-            session.spinTask.cancel();
-            session.spinTask = null;
-        }
         if (session.timeoutTask != null) {
             session.timeoutTask.cancel();
             session.timeoutTask = null;
@@ -462,12 +450,11 @@ public final class DicePresenter {
         final IntConsumer onSettled;
         ItemDisplay display;
         BukkitTask faceTask;
-        BukkitTask spinTask;
         BukkitTask timeoutTask;
         BukkitTask settleTask;
         float spinYaw;
         float spinPitch;
-        int spinStep;
+        int spinTicks;
         boolean settled;
         boolean aborted;
 
