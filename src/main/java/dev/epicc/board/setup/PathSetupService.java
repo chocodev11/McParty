@@ -87,7 +87,7 @@ public final class PathSetupService {
                     cy + 1.0,
                     cz + 0.5,
                     player.getLocation().getYaw(),
-                    0f
+                    player.getLocation().getPitch()
             );
             session.setSpawn(spawn);
             session.markPrimary(blockLoc);
