@@ -21,7 +21,6 @@ public final class MinigameManager {
     private final MessageService messages;
     private final MinigameRegistry registry;
     private final SlimeWorldService slime;
-    private dev.epicc.party.PartyManager partyManager;
     private int revealDurationTicks;
     private int revealIntervalMinTicks;
     private int revealIntervalMaxTicks;
@@ -32,9 +31,6 @@ public final class MinigameManager {
     private Minigame active;
     private MinigameRevealAnimator reveal;
 
-    public void setPartyManager(dev.epicc.party.PartyManager partyManager) {
-        this.partyManager = partyManager;
-    }
 
     public MinigameManager(
             JavaPlugin plugin,
@@ -98,18 +94,18 @@ public final class MinigameManager {
     /**
      * Pick a random minigame, run title reveal (no teleport), then start it in place.
      */
-    public void runRandom(PartyInstance instance, List<Player> players, Consumer<MinigameResult> done) {
-        runMinigame(registry.pickRandom(), instance, players, done);
+    public void runRandom(PartyInstance instance, List<Player> players, Runnable onMinigameReady, Consumer<MinigameResult> done) {
+        runMinigame(registry.pickRandom(), instance, players, onMinigameReady, done);
     }
 
     /**
      * Run a specific minigame (e.g. for admin testing).
      */
     public void runSpecific(Minigame minigame, List<Player> players, Consumer<MinigameResult> done) {
-        runMinigame(minigame, null, players, done);
+        runMinigame(minigame, null, players, () -> {}, done);
     }
 
-    public void runMinigame(Minigame minigame, PartyInstance instance, List<Player> players, Consumer<MinigameResult> done) {
+    public void runMinigame(Minigame minigame, PartyInstance instance, List<Player> players, Runnable onMinigameReady, Consumer<MinigameResult> done) {
         cancelActive();
         List<Player> online = List.copyOf(players);
 
@@ -125,24 +121,19 @@ public final class MinigameManager {
         if (slime != null && slime.isReady() && template != null && !template.isBlank()) {
             minigameWorldReady.set(false);
             final UUID instanceId = instance != null ? instance.id() : UUID.randomUUID();
-            plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-                Optional<SlimeWorld> clone = slime.prepareClone(instanceId, template);
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    if (clone.isPresent()) {
-                        slime.loadClone(instanceId, template, clone.get());
-                    }
-                    minigameWorldReady.set(true);
-                    if (revealFinished.get()) {
-                        proceedToStart(minigame, instance, online, done);
-                    }
-                });
+            
+            slime.loadCloneAsync(instanceId, template).thenAccept(cloneOpt -> {
+                minigameWorldReady.set(true);
+                if (revealFinished.get()) {
+                    proceedToStart(minigame, instance, online, onMinigameReady, done);
+                }
             });
         }
 
         if (revealDurationTicks <= 0) {
             revealFinished.set(true);
             if (minigameWorldReady.get()) {
-                proceedToStart(minigame, instance, online, done);
+                proceedToStart(minigame, instance, online, onMinigameReady, done);
             }
             return;
         }
@@ -161,12 +152,12 @@ public final class MinigameManager {
             reveal = null;
             revealFinished.set(true);
             if (minigameWorldReady.get()) {
-                proceedToStart(minigame, instance, online, done);
+                proceedToStart(minigame, instance, online, onMinigameReady, done);
             }
         });
     }
 
-    private void proceedToStart(Minigame minigame, PartyInstance instance, List<Player> online, Consumer<MinigameResult> done) {
+    private void proceedToStart(Minigame minigame, PartyInstance instance, List<Player> online, Runnable onMinigameReady, Consumer<MinigameResult> done) {
         if (instance != null && instance.state() == dev.epicc.party.PartyState.CLEANUP) {
             return;
         }
@@ -175,7 +166,7 @@ public final class MinigameManager {
             done.accept(new MinigameResult());
             return;
         }
-        startNow(minigame, instance, stillOnline, done);
+        startNow(minigame, instance, stillOnline, onMinigameReady, done);
     }
 
 
@@ -194,12 +185,13 @@ public final class MinigameManager {
             Minigame minigame,
             PartyInstance instance,
             List<Player> players,
+            Runnable onMinigameReady,
             Consumer<MinigameResult> done
     ) {
         active = minigame;
         MinigameContext ctx = new MinigameContext(plugin, instance, players, () -> {
-            if (partyManager != null && instance != null) {
-                partyManager.hibernateBoardWorld(instance);
+            if (onMinigameReady != null) {
+                onMinigameReady.run();
             }
         });
         minigame.start(ctx, result -> {

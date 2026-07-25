@@ -146,7 +146,6 @@ public final class McPartyPlugin extends JavaPlugin {
                 this, config, messages, store, sessions, slotRegistry, minigames, slimeWorldService, seamless,
                 dicePresenter, diceHats, pathHopMover, resourcePackService
         );
-        minigames.setPartyManager(partyManager);
 
         getServer().getPluginManager().registerEvents(new BoundaryListener(partyManager, pathHopMover), this);
         getServer().getPluginManager().registerEvents(new DiceClickListener(dicePresenter), this);

@@ -23,7 +23,6 @@ import java.util.UUID;
  */
 public final class BoardTurnController {
 
-    private final dev.epicc.party.PartyManager partyManager;
     private final JavaPlugin plugin;
     private final MessageService messages;
     private final MinigameManager minigameManager;
@@ -37,6 +36,9 @@ public final class BoardTurnController {
     private boolean inMinigame;
     private boolean moving;
 
+    private java.util.function.Consumer<dev.epicc.minigame.MinigameResult> onRoundEnd;
+    private Runnable onMinigameReady;
+
     /** Players still expected to finish their roll this round. */
     private final Map<UUID, PartyPlayer> pendingRollers = new LinkedHashMap<>();
     /** Settled face per player this round (before hops). */
@@ -45,7 +47,6 @@ public final class BoardTurnController {
     private int moveIndex;
 
     public BoardTurnController(
-            dev.epicc.party.PartyManager partyManager,
             JavaPlugin plugin,
             MessageService messages,
             MinigameManager minigameManager,
@@ -54,7 +55,6 @@ public final class BoardTurnController {
             DiceHatService diceHats,
             PathHopMover pathHopMover
     ) {
-        this.partyManager = partyManager;
         this.plugin = plugin;
         this.messages = messages;
         this.minigameManager = minigameManager;
@@ -64,8 +64,10 @@ public final class BoardTurnController {
         this.pathHopMover = pathHopMover;
     }
 
-    public void attach(PartyInstance instance) {
+    public void attach(PartyInstance instance, java.util.function.Consumer<dev.epicc.minigame.MinigameResult> onRoundEnd, Runnable onMinigameReady) {
         this.instance = instance;
+        this.onRoundEnd = onRoundEnd;
+        this.onMinigameReady = onMinigameReady;
         this.waitingForRoll = false;
         this.inMinigame = false;
         this.moving = false;
@@ -115,9 +117,10 @@ public final class BoardTurnController {
         inMinigame = false;
         moving = false;
         instance = null;
+        onRoundEnd = null;
     }
 
-    private void beginRound() {
+    public void beginRound() {
         if (instance == null || instance.state() != PartyState.PLAYING) {
             return;
         }
@@ -285,24 +288,14 @@ public final class BoardTurnController {
         }
 
         instance.broadcast(messages.get("board.round-complete"));
-        minigameManager.runRandom(instance, online, result -> {
+        minigameManager.runRandom(instance, online, onMinigameReady, result -> {
             if (instance == null) {
                 return;
             }
-            partyManager.awakenBoardWorld(instance, () -> {
-                if (instance == null) return;
-                result.coinRewards().forEach((uuid, coins) ->
-                        instance.player(uuid).ifPresent(pp -> pp.addCoins(coins))
-                );
-                instance.incrementRound();
-                inMinigame = false;
-
-                if (instance.round() >= instance.settings().maxTurns()) {
-                    instance.requestEnd("Max turns reached");
-                } else {
-                    beginRound();
-                }
-            });
+            inMinigame = false;
+            if (onRoundEnd != null) {
+                onRoundEnd.accept(result);
+            }
         });
     }
 

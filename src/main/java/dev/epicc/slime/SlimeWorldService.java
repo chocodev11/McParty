@@ -27,6 +27,7 @@ import java.util.Optional;
 import java.util.Set;
 
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
@@ -189,6 +190,33 @@ public final class SlimeWorldService {
             return Optional.empty();
         }
         return loadClone(instanceId, templateName, clone.get());
+    }
+
+    /**
+     * Read template asynchronously, then load on the main thread, returning a Future.
+     */
+    public CompletableFuture<Optional<World>> loadCloneAsync(UUID instanceId, String templateName) {
+        CompletableFuture<Optional<World>> future = new CompletableFuture<>();
+        if (!isReady()) {
+            future.complete(Optional.empty());
+            return future;
+        }
+        Optional<World> existing = getLoadedWorld(instanceId, templateName);
+        if (existing.isPresent()) {
+            future.complete(existing);
+            return future;
+        }
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            Optional<SlimeWorld> clone = prepareClone(instanceId, templateName);
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (clone.isEmpty()) {
+                    future.complete(Optional.empty());
+                } else {
+                    future.complete(loadClone(instanceId, templateName, clone.get()));
+                }
+            });
+        });
+        return future;
     }
 
     /**

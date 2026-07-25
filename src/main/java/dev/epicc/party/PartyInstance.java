@@ -3,7 +3,9 @@ package dev.epicc.party;
 import dev.epicc.board.BoardSlot;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
+import org.bukkit.World;
 import org.bukkit.entity.Player;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -12,6 +14,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Consumer;
 
 public final class PartyInstance {
@@ -24,6 +27,8 @@ public final class PartyInstance {
     private BoardSlot slot;
     private int round;
     private Consumer<PartyInstance> endRequestHandler;
+    private BukkitTask countdownTask;
+    private CompletableFuture<Optional<World>> worldLoadFuture;
 
     public PartyInstance(UUID id, UUID hostId, PartySettings settings) {
         this.id = id;
@@ -48,6 +53,33 @@ public final class PartyInstance {
 
     public void setEndRequestHandler(Consumer<PartyInstance> handler) {
         this.endRequestHandler = handler;
+    }
+
+    public void setCountdownTask(BukkitTask task) {
+        this.countdownTask = task;
+    }
+
+    public BukkitTask countdownTask() {
+        return countdownTask;
+    }
+
+    public void setWorldLoadFuture(CompletableFuture<Optional<World>> future) {
+        this.worldLoadFuture = future;
+    }
+
+    public CompletableFuture<Optional<World>> worldLoadFuture() {
+        return worldLoadFuture;
+    }
+
+    public void cancelPendingTasks() {
+        if (countdownTask != null) {
+            countdownTask.cancel();
+            countdownTask = null;
+        }
+        if (worldLoadFuture != null) {
+            worldLoadFuture.cancel(false);
+            worldLoadFuture = null;
+        }
     }
 
     public void requestEnd(String reason) {
