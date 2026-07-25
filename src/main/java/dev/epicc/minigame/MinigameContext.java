@@ -14,16 +14,24 @@ public final class MinigameContext {
     private final JavaPlugin plugin;
     private final PartyInstance instance;
     private final List<Player> onlinePlayers;
+    private final Runnable hibernateBoardCallback;
 
-    public MinigameContext(JavaPlugin plugin, PartyInstance instance, List<Player> onlinePlayers) {
+    public MinigameContext(JavaPlugin plugin, PartyInstance instance, List<Player> onlinePlayers, Runnable hibernateBoardCallback) {
         this.plugin = plugin;
         this.instance = instance;
         this.onlinePlayers = List.copyOf(onlinePlayers);
+        this.hibernateBoardCallback = hibernateBoardCallback;
     }
 
     public JavaPlugin plugin() { return plugin; }
     public PartyInstance instance() { return instance; }
     public List<Player> onlinePlayers() { return onlinePlayers; }
+    
+    public void hibernateBoard() {
+        if (hibernateBoardCallback != null) {
+            hibernateBoardCallback.run();
+        }
+    }
 
     public List<PartyPlayer> partyPlayers() {
         return onlinePlayers.stream()

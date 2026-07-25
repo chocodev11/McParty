@@ -159,6 +159,7 @@ public final class HotPotatoMinigame implements Minigame, Listener {
                 for (Player p : players) {
                     p.teleport(spawn);
                 }
+                context.hibernateBoard();
             }
         }
 
@@ -484,7 +485,7 @@ public final class HotPotatoMinigame implements Minigame, Listener {
                 if (snapshot != null) {
                     snapshot.restore(p);
                 }
-                if (loadedSlimeWorld != null) {
+                if (loadedSlimeWorld != null && (context == null || context.instance() == null)) {
                     if (returnLocation != null) {
                         p.teleport(returnLocation);
                     } else if (initialLocations.containsKey(id)) {
@@ -495,7 +496,7 @@ public final class HotPotatoMinigame implements Minigame, Listener {
         }
 
         if (loadedSlimeWorld != null && loadedWorldInstanceId != null && slimeWorldService != null && (context == null || context.instance() == null)) {
-            slimeWorldService.unloadForInstance(loadedWorldInstanceId);
+            slimeWorldService.unloadWorldForInstance(loadedWorldInstanceId, loadedSlimeWorld);
             loadedSlimeWorld = null;
             loadedWorldInstanceId = null;
         }
@@ -559,14 +560,14 @@ public final class HotPotatoMinigame implements Minigame, Listener {
                 if (snapshot != null) {
                     snapshot.restore(p);
                 }
-                if (loadedSlimeWorld != null && initialLocations.containsKey(id)) {
+                if (loadedSlimeWorld != null && initialLocations.containsKey(id) && (context == null || context.instance() == null)) {
                     p.teleport(initialLocations.get(id));
                 }
             }
         }
 
-        if (loadedSlimeWorld != null && loadedWorldInstanceId != null && slimeWorldService != null) {
-            slimeWorldService.unloadForInstance(loadedWorldInstanceId);
+        if (loadedSlimeWorld != null && loadedWorldInstanceId != null && slimeWorldService != null && (context == null || context.instance() == null)) {
+            slimeWorldService.unloadWorldForInstance(loadedWorldInstanceId, loadedSlimeWorld);
             loadedSlimeWorld = null;
             loadedWorldInstanceId = null;
         }

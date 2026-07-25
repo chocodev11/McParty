@@ -161,6 +161,14 @@ public final class PartyManager {
                 "max", Integer.toString(instance.settings().maxPlayers())
         ));
         offerResourcePack(player);
+
+        if (instance.playerCount() >= instance.settings().maxPlayers()) {
+            Player host = plugin.getServer().getPlayer(instance.hostId());
+            if (host != null && host.isOnline()) {
+                start(host);
+            }
+        }
+
         return Optional.empty();
     }
 
@@ -369,6 +377,49 @@ public final class PartyManager {
         return Optional.empty();
     }
 
+    public void hibernateBoardWorld(PartyInstance instance) {
+        if (instance.slot() != null && instance.slot().world() != null) {
+            slime.unloadWorldForInstance(instance.id(), instance.slot().world());
+        }
+    }
+
+    public void awakenBoardWorld(PartyInstance instance, Runnable onReady) {
+        final UUID instanceId = instance.id();
+        BoardSlot templateSlot = slots.get(instance.slot().id()).orElse(null);
+        if (templateSlot == null || !slime.isReady()) {
+            if (onReady != null) onReady.run();
+            return;
+        }
+
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            Optional<SlimeWorld> boardClone = slime.prepareClone(instanceId, templateSlot.slimeTemplate());
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (instance.state() == PartyState.CLEANUP) {
+                    slime.unloadForInstance(instanceId);
+                    return;
+                }
+                if (boardClone.isPresent()) {
+                    Optional<World> newWorld = slime.loadClone(instanceId, templateSlot.slimeTemplate(), boardClone.get());
+                    if (newWorld.isPresent()) {
+                        instance.setSlot(templateSlot.forWorld(newWorld.get()));
+                        for (PartyPlayer pp : instance.players()) {
+                            Player p = plugin.getServer().getPlayer(pp.uuid());
+                            if (p != null && p.isOnline()) {
+                                int maxIndex = Math.max(0, instance.slot().path().size() - 1);
+                                int index = Math.min(pp.boardIndex(), maxIndex);
+                                p.teleport(instance.slot().path().get(index));
+                            }
+                        }
+                        if (onReady != null) onReady.run();
+                        return;
+                    }
+                }
+                instance.broadcast(messages.get("party.slime-load-failed"));
+                endInternal(instance);
+            });
+        });
+    }
+
     public void shutdown() {
         for (UUID id : new ArrayList<>(store.all().stream().map(PartyInstance::id).toList())) {
             store.get(id).ifPresent(this::cleanup);
@@ -405,7 +456,13 @@ public final class PartyManager {
             }
         }
 
+        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            Optional<World> lobbyOpt = slime.getLoadedWorld(instance.id(), config.lobbySlimeTemplate());
+            lobbyOpt.ifPresent(lobbyWorld -> slime.unloadWorldForInstance(instance.id(), lobbyWorld));
+        }, 20L); // wait 1 second to ensure teleports complete
+
         BoardTurnController controller = new BoardTurnController(
+                this,
                 plugin,
                 messages,
                 minigames,
@@ -466,7 +523,7 @@ public final class PartyManager {
         }
     }
 
-    private void cleanup(PartyInstance instance) {
+    public void cleanup(PartyInstance instance) {
         cancelCountdown(instance.id());
         worldsReady.remove(instance.id());
         countdownFinished.remove(instance.id());

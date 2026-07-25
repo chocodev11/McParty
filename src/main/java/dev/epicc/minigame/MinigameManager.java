@@ -21,6 +21,7 @@ public final class MinigameManager {
     private final MessageService messages;
     private final MinigameRegistry registry;
     private final SlimeWorldService slime;
+    private dev.epicc.party.PartyManager partyManager;
     private int revealDurationTicks;
     private int revealIntervalMinTicks;
     private int revealIntervalMaxTicks;
@@ -30,6 +31,10 @@ public final class MinigameManager {
 
     private Minigame active;
     private MinigameRevealAnimator reveal;
+
+    public void setPartyManager(dev.epicc.party.PartyManager partyManager) {
+        this.partyManager = partyManager;
+    }
 
     public MinigameManager(
             JavaPlugin plugin,
@@ -192,7 +197,11 @@ public final class MinigameManager {
             Consumer<MinigameResult> done
     ) {
         active = minigame;
-        MinigameContext ctx = new MinigameContext(plugin, instance, players);
+        MinigameContext ctx = new MinigameContext(plugin, instance, players, () -> {
+            if (partyManager != null && instance != null) {
+                partyManager.hibernateBoardWorld(instance);
+            }
+        });
         minigame.start(ctx, result -> {
             active = null;
             done.accept(result);

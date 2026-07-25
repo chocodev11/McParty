@@ -65,6 +65,19 @@ public final class PluginConfig {
     private boolean slimeAllowAnimals;
     private boolean slimePvp;
 
+    private String lobbySlimeTemplate;
+    private double lobbySpawnX;
+    private double lobbySpawnY;
+    private double lobbySpawnZ;
+    private float lobbySpawnYaw;
+    private float lobbySpawnPitch;
+    private int lobbyBoundMinX;
+    private int lobbyBoundMinY;
+    private int lobbyBoundMinZ;
+    private int lobbyBoundMaxX;
+    private int lobbyBoundMaxY;
+    private int lobbyBoundMaxZ;
+
     public PluginConfig(JavaPlugin plugin) {
         this.plugin = plugin;
         plugin.saveDefaultConfig();
@@ -139,6 +152,19 @@ public final class PluginConfig {
         slimeAllowMonsters = c.getBoolean("slime.allow-monsters", false);
         slimeAllowAnimals = c.getBoolean("slime.allow-animals", false);
         slimePvp = c.getBoolean("slime.pvp", true);
+
+        lobbySlimeTemplate = c.getString("lobby.slime-template", "lobby_template");
+        lobbySpawnX = c.getDouble("lobby.spawn.x", 0.5);
+        lobbySpawnY = c.getDouble("lobby.spawn.y", 64.0);
+        lobbySpawnZ = c.getDouble("lobby.spawn.z", 0.5);
+        lobbySpawnYaw = (float) c.getDouble("lobby.spawn.yaw", 0.0);
+        lobbySpawnPitch = (float) c.getDouble("lobby.spawn.pitch", 0.0);
+        lobbyBoundMinX = c.getInt("lobby.boundary.minX", -50);
+        lobbyBoundMinY = c.getInt("lobby.boundary.minY", 0);
+        lobbyBoundMinZ = c.getInt("lobby.boundary.minZ", -50);
+        lobbyBoundMaxX = c.getInt("lobby.boundary.maxX", 50);
+        lobbyBoundMaxY = c.getInt("lobby.boundary.maxY", 256);
+        lobbyBoundMaxZ = c.getInt("lobby.boundary.maxZ", 50);
     }
 
     private static String nullToEmpty(String s) {
@@ -199,4 +225,17 @@ public final class PluginConfig {
     public boolean slimeAllowMonsters() { return slimeAllowMonsters; }
     public boolean slimeAllowAnimals() { return slimeAllowAnimals; }
     public boolean slimePvp() { return slimePvp; }
+
+    public String lobbySlimeTemplate() { return lobbySlimeTemplate; }
+    public double lobbySpawnX() { return lobbySpawnX; }
+    public double lobbySpawnY() { return lobbySpawnY; }
+    public double lobbySpawnZ() { return lobbySpawnZ; }
+    public float lobbySpawnYaw() { return lobbySpawnYaw; }
+    public float lobbySpawnPitch() { return lobbySpawnPitch; }
+    public int lobbyBoundMinX() { return lobbyBoundMinX; }
+    public int lobbyBoundMinY() { return lobbyBoundMinY; }
+    public int lobbyBoundMinZ() { return lobbyBoundMinZ; }
+    public int lobbyBoundMaxX() { return lobbyBoundMaxX; }
+    public int lobbyBoundMaxY() { return lobbyBoundMaxY; }
+    public int lobbyBoundMaxZ() { return lobbyBoundMaxZ; }
 }

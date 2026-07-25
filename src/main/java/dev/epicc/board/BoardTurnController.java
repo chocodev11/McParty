@@ -23,6 +23,7 @@ import java.util.UUID;
  */
 public final class BoardTurnController {
 
+    private final dev.epicc.party.PartyManager partyManager;
     private final JavaPlugin plugin;
     private final MessageService messages;
     private final MinigameManager minigameManager;
@@ -44,6 +45,7 @@ public final class BoardTurnController {
     private int moveIndex;
 
     public BoardTurnController(
+            dev.epicc.party.PartyManager partyManager,
             JavaPlugin plugin,
             MessageService messages,
             MinigameManager minigameManager,
@@ -52,6 +54,7 @@ public final class BoardTurnController {
             DiceHatService diceHats,
             PathHopMover pathHopMover
     ) {
+        this.partyManager = partyManager;
         this.plugin = plugin;
         this.messages = messages;
         this.minigameManager = minigameManager;
@@ -286,17 +289,20 @@ public final class BoardTurnController {
             if (instance == null) {
                 return;
             }
-            result.coinRewards().forEach((uuid, coins) ->
-                    instance.player(uuid).ifPresent(pp -> pp.addCoins(coins))
-            );
-            instance.incrementRound();
-            inMinigame = false;
+            partyManager.awakenBoardWorld(instance, () -> {
+                if (instance == null) return;
+                result.coinRewards().forEach((uuid, coins) ->
+                        instance.player(uuid).ifPresent(pp -> pp.addCoins(coins))
+                );
+                instance.incrementRound();
+                inMinigame = false;
 
-            if (instance.round() >= instance.settings().maxTurns()) {
-                instance.requestEnd("Max turns reached");
-            } else {
-                beginRound();
-            }
+                if (instance.round() >= instance.settings().maxTurns()) {
+                    instance.requestEnd("Max turns reached");
+                } else {
+                    beginRound();
+                }
+            });
         });
     }
 

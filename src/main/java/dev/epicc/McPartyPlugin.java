@@ -16,6 +16,7 @@ import dev.epicc.minigame.DummyMinigame;
 import dev.epicc.minigame.HotPotatoMinigame;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.minigame.MinigameRegistry;
+import dev.epicc.party.LobbyMatchmaker;
 import dev.epicc.party.PartyManager;
 import dev.epicc.player.PlayerSessionService;
 import dev.epicc.resourcepack.ResourcePackListener;
@@ -145,12 +146,14 @@ public final class McPartyPlugin extends JavaPlugin {
                 this, config, messages, store, sessions, slotRegistry, minigames, slimeWorldService, seamless,
                 dicePresenter, diceHats, pathHopMover, resourcePackService
         );
+        minigames.setPartyManager(partyManager);
 
         getServer().getPluginManager().registerEvents(new BoundaryListener(partyManager, pathHopMover), this);
         getServer().getPluginManager().registerEvents(new DiceClickListener(dicePresenter), this);
         getServer().getPluginManager().registerEvents(pathHopMover, this);
         getServer().getPluginManager().registerEvents(new SlimeFallDamageListener(slimeWorldService), this);
         getServer().getPluginManager().registerEvents(new ResourcePackListener(resourcePackService), this);
+        getServer().getPluginManager().registerEvents(new LobbyMatchmaker(this, partyManager, config, messages, slimeWorldService, seamless, sessions), this);
 
         PartyCommand partyCommand = new PartyCommand(partyManager, messages);
         PluginCommand party = getCommand("party");

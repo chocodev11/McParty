@@ -247,8 +247,32 @@ public final class SlimeWorldService {
     }
 
     /**
-     * Teleport any remaining players out, then unload without saving.
+     * Teleport any remaining players out of a specific world, then unload that world without saving.
      */
+    public void unloadWorldForInstance(UUID instanceId, World world) {
+        if (world == null) {
+            return;
+        }
+        String worldName = world.getName();
+        if (instanceId != null) {
+            Map<String, World> map = templateWorlds.get(instanceId);
+            if (map != null) {
+                map.values().removeIf(w -> w.getName().equals(worldName));
+                if (map.isEmpty()) {
+                    templateWorlds.remove(instanceId);
+                }
+            }
+            Set<String> set = instanceWorlds.get(instanceId);
+            if (set != null) {
+                set.remove(worldName);
+                if (set.isEmpty()) {
+                    instanceWorlds.remove(instanceId);
+                }
+            }
+        }
+        unloadWorld(worldName);
+    }
+
     public void unloadForInstance(UUID instanceId) {
         templateWorlds.remove(instanceId);
         Set<String> worlds = instanceWorlds.remove(instanceId);

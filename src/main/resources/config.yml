@@ -99,3 +99,19 @@ slime:
   allow-monsters: false
   allow-animals: false
   pvp: true
+
+lobby:
+  slime-template: lobby_template
+  spawn:
+    x: 0.5
+    y: 64.0
+    z: 0.5
+    yaw: 0.0
+    pitch: 0.0
+  boundary:
+    minX: -50
+    minY: 0
+    minZ: -50
+    maxX: 50
+    maxY: 256
+    maxZ: 50
