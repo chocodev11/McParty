@@ -102,15 +102,14 @@ public final class McPartyPlugin extends JavaPlugin {
             minigameRegistry.register(dummyMinigames.get(i));
         }
 
-        HotPotatoMinigame hotPotato = new HotPotatoMinigame(
-                messages,
-                slimeWorldService,
-                config.hotPotatoBombSeconds(),
-                config.hotPotatoThrowVelocity(),
-                config.hotPotatoSlimeTemplate(),
-                config.dummyCoinRewards()
-        );
-        minigameRegistry.register(hotPotato);
+        if (config.hotPotatoArena().isValid()) {
+            minigameRegistry.register(new HotPotatoMinigame(
+                    messages, config.hotPotatoBombSeconds(), config.hotPotatoThrowVelocity(),
+                    config.hotPotatoArena(), config.dummyCoinRewards()
+            ));
+        } else {
+            getLogger().severe("Hot Potato is disabled: minigame.hot_potato.arena requires a template, spawn, and valid boundary.");
+        }
         minigames = new MinigameManager(
                 this,
                 messages,
@@ -213,6 +212,15 @@ public final class McPartyPlugin extends JavaPlugin {
         );
         for (DummyMinigame dummy : dummyMinigames) {
             dummy.reconfigure(config.dummyDurationSeconds(), config.dummyCoinRewards());
+        }
+        minigames.registry().unregister("hot_potato");
+        if (config.hotPotatoArena().isValid()) {
+            minigames.registry().register(new HotPotatoMinigame(
+                    messages, config.hotPotatoBombSeconds(), config.hotPotatoThrowVelocity(),
+                    config.hotPotatoArena(), config.dummyCoinRewards()
+            ));
+        } else {
+            getLogger().severe("Hot Potato remains disabled: minigame.hot_potato.arena is invalid or missing.");
         }
 
         resourcePackService.reload();

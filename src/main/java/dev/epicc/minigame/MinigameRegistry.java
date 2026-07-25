@@ -22,6 +22,10 @@ public final class MinigameRegistry {
         byId.put(minigame.id().toLowerCase(), minigame);
     }
 
+    public void unregister(String id) {
+        if (id != null) byId.remove(id.toLowerCase());
+    }
+
     public Optional<Minigame> get(String id) {
         if (id == null) {
             return Optional.empty();

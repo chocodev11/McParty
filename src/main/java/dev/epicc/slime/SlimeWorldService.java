@@ -274,12 +274,15 @@ public final class SlimeWorldService {
         return loadClone(instanceId, "", clone);
     }
 
-    /**
-     * Teleport any remaining players out of a specific world, then unload that world without saving.
-     */
-    public void unloadWorldForInstance(UUID instanceId, World world) {
+    /** Callers must evacuate players before unloading a managed clone. */
+    public boolean unloadWorldForInstance(UUID instanceId, World world) {
         if (world == null) {
-            return;
+            return true;
+        }
+        if (!world.getPlayers().isEmpty()) {
+            plugin.getLogger().warning("Refusing to unload slime world '" + world.getName()
+                    + "' while players remain; caller must evacuate them first.");
+            return false;
         }
         String worldName = world.getName();
         if (instanceId != null) {
@@ -298,17 +301,18 @@ public final class SlimeWorldService {
                 }
             }
         }
-        unloadWorld(worldName);
+        return unloadWorld(worldName);
     }
 
+    /** Callers must evacuate every party player before this method is called. */
     public void unloadForInstance(UUID instanceId) {
-        templateWorlds.remove(instanceId);
-        Set<String> worlds = instanceWorlds.remove(instanceId);
+        Set<String> worlds = instanceWorlds.get(instanceId);
         if (worlds == null || worlds.isEmpty()) {
             return;
         }
         for (String worldName : new ArrayList<>(worlds)) {
-            unloadWorld(worldName);
+            World world = Bukkit.getWorld(worldName);
+            if (world != null) unloadWorldForInstance(instanceId, world);
         }
     }
 
@@ -319,15 +323,10 @@ public final class SlimeWorldService {
     }
 
 
-    private void unloadWorld(String worldName) {
+    private boolean unloadWorld(String worldName) {
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
-            return;
-        }
-
-        Location fallback = fallbackLocation(world);
-        for (Player player : world.getPlayers()) {
-            seamless.teleport(player, fallback);
+            return true;
         }
 
         boolean ok = Bukkit.unloadWorld(world, false);
@@ -336,15 +335,7 @@ public final class SlimeWorldService {
         } else {
             plugin.getLogger().warning("Could not unload slime world '" + worldName + "'");
         }
-    }
-
-    private Location fallbackLocation(World leaving) {
-        for (World w : Bukkit.getWorlds()) {
-            if (w != leaving) {
-                return w.getSpawnLocation();
-            }
-        }
-        return leaving.getSpawnLocation();
+        return ok;
     }
 
     private SlimePropertyMap defaultProperties() {

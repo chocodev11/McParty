@@ -139,7 +139,7 @@ Persistent data at runtime:
 4. `SlimeWorldService` (ASP + FileLoader)
 5. `SeamlessWorldChangeService` (PacketEvents hook if present)
 6. `ResourcePackService` (local HTTP or external URL; optional)
-7. `MinigameManager` (+ `DummyMinigame`)
+7. `MinigameManager` (registry/config) + per-controller `MinigameRunner`
 8. `PartyManager`
 9. `BoundaryListener`, resource-pack listener, commands
 
@@ -162,6 +162,9 @@ PartyInstance
   ├── Map of PartyPlayer
   ├── BoardSlot (runtime; may be remapped to slime clone world)
   └── endRequestHandler → PartyManager.endInternal
+
+BoardTurnController
+  └── MinigameRunner (one mutable active minigame session per party)
 ```
 
 ### Party state machine
@@ -191,14 +194,14 @@ WAITING → STARTING → PLAYING → ENDING → CLEANUP
 
 1. Validate host, `canStart()`, state WAITING.
 2. `slots.claimFree(instanceId)` — needs a **ready** free slot (spawn + path + boundary).
-3. State → STARTING.
-4. If `slime.isReady()`:
+3. State → STARTING, then run the countdown.
+4. After countdown, if `slime.isReady()`:
    - Resolve template from `slot.slimeTemplate()` (else config default)
    - Async: `prepareClone(instanceId, template)` (`readWorld` read-only + `clone`)
    - Sync: `loadClone` (`asp.loadWorld` — **main thread only**)
    - `templateSlot.forWorld(cloneWorld)` → runtime slot with same coords
 5. Else: use permanent setup-world slot (no clone).
-6. Countdown → `beginPlaying` (teleport spawn, attach `BoardTurnController`).
+6. After the board is ready → `beginPlaying` (teleport spawn, attach `BoardTurnController`).
 
 **Board turns** (`BoardTurnController` + `board/dice/*`)
 
@@ -206,7 +209,7 @@ WAITING → STARTING → PLAYING → ENDING → CLEANUP
 2. Spin until **that player clicks** (or `/party roll`) or **timeout** (`board.dice-interact-seconds`, default 5s). No settle from being hit by others.
 3. On settle: land upright, set **public** dice hat (`DiceHatService`), hold **1 second**, then callback. When **all** rollers have settled → hop phase.
 4. Hops in party order: `PathHopMover` upward velocity → at apex (`vy ≤ 0`) TP to target XZ at that Y → fall (fall damage cancelled).
-5. After hops → `MinigameManager.runRandom` (reveal titles → start, no teleport) → coin rewards → next round.
+5. After hops → controller-local `MinigameRunner` reveals the definition, loads any isolated arena clone, then starts a fresh session → coin rewards → next round.
 6. After `maxTurns` rounds → `instance.requestEnd` → podium → cleanup.
 7. Custom look: resource pack `resourcepack/` models `mcparty:dice_1`…`dice_6` (`DiceItems`), prompted by `ResourcePackService`.
 
@@ -221,13 +224,17 @@ WAITING → STARTING → PLAYING → ENDING → CLEANUP
 
 **Cleanup**
 
-- Clear sessions, release template slot (by id in registry), `slime.unloadForInstance` (teleports players out, `unloadWorld(..., false)`), remove from store.
+- Lifecycle has guarded start tokens plus one-time end/cleanup markers. Players are first moved to
+  configured `slime.fallback`; then sessions are cleared, exclusive fallback slot claims released,
+  and `slime.unloadForInstance` unloads only empty worlds.
 
 ### Board slots vs slime worlds
 
 - **Board slot** (in `slots.yml`): one path + spawn + bounds + optional **`slime-template`** (ASP file basename; empty → config default until generated). Setup world name is only where the path was built.
 - **Runtime slot**: `BoardSlot.forWorld(World)` rebinds the **same coordinates** onto the party's slime clone of that template.
-- Claiming uses the **registry** slot; cleanup releases via `slots.get(id)`. Multiple free slots = concurrent capacity (each can point at different templates, or the same template if you want more capacity on one map).
+- With ASP ready, board definitions are reusable: each party clones the selected template without a
+  registry claim. With slime disabled/fallback worlds, acquisition remains exclusive and is released
+  at cleanup. `slots.yml` is unchanged and backward-compatible.
 
 Admin setup:
 
@@ -247,15 +254,21 @@ Admin setup:
 ```java
 public interface Minigame {
     String id();
+    MinigameSession createSession();
+}
+
+public interface MinigameSession {
     void start(MinigameContext context, Consumer<MinigameResult> done);
     void cancel();
 }
 ```
 
-- `MinigameRegistry` holds games; `pickRandom()` selects one (only `DummyMinigame` registered today).
-- After each board round: **reveal** (title roulette, config ticks) → then `start()` **in place** (no minigame teleport).
-- `MinigameManager` owns reveal + one `active` minigame; `cancelActive()` aborts both.
-- New minigames: implement `Minigame` (+ `displayName()`), `registry.register(...)` in bootstrap; do not put game logic in `PartyManager`.
+- `MinigameRegistry` holds immutable game definitions; `pickRandom()` selects one.
+- Arena-dependent games expose `MinigameArenaSpec` (template, spawn, mandatory AABB). The runner
+  loads the arena clone while `PartyManager` owns permit-protected board↔arena transitions; sessions
+  receive an optional runtime `MinigameArena` and never manage worlds themselves.
+- Each `BoardTurnController` owns a `MinigameRunner`, which creates one fresh `MinigameSession` for its party and cancels only that session.
+- New minigames: implement `Minigame` (+ `displayName()` and `createSession()`), `registry.register(...)` in bootstrap; do not put game logic in `PartyManager`.
 
 ### Commands & permissions
 

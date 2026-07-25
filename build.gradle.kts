@@ -49,6 +49,9 @@ dependencies {
     implementation("com.infernalsuite.asp:file-loader:4.2.0-SNAPSHOT")
     // Soft-depend at runtime (plugin.yml); not shaded
     compileOnly("com.github.retrooper:packetevents-spigot:2.7.0")
+    testImplementation(platform("org.junit:junit-bom:5.11.4"))
+    testImplementation("org.junit.jupiter:junit-jupiter")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
 tasks {
@@ -80,6 +83,10 @@ tasks {
     compileJava {
         options.encoding = "UTF-8"
         options.release.set(25)
+    }
+
+    test {
+        useJUnitPlatform()
     }
 }
 

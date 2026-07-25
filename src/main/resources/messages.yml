@@ -20,6 +20,7 @@ party:
   not-in: "{prefix}<red>You are not in a party."
   left-self: "{prefix}<gray>You left the party."
   left-broadcast: "{prefix}<gray><player> left."
+  host-transferred: "{prefix}<yellow><player> is now the party host."
   only-host-start: "{prefix}<red>Only the host can start."
   need-players: "{prefix}<red>Need at least <min> players."
   already-starting: "{prefix}<red>Party already starting/started."

@@ -15,7 +15,7 @@ public final class BoardSlot {
     private final SlotBoundary boundary;
     private final BoardPath path;
     private Location spawn;
-    private UUID claimedBy;
+    private final BoardSlotLease lease = new BoardSlotLease();
 
     public BoardSlot(
             String id,
@@ -39,7 +39,7 @@ public final class BoardSlot {
     public SlotBoundary boundary() { return boundary; }
     public BoardPath path() { return path; }
     public Location spawn() { return spawn != null ? spawn.clone() : null; }
-    public UUID claimedBy() { return claimedBy; }
+    public UUID claimedBy() { return lease.holder(); }
 
     public void setSpawn(Location spawn) {
         this.spawn = spawn != null ? spawn.clone() : null;
@@ -50,19 +50,15 @@ public final class BoardSlot {
     }
 
     public boolean isFree() {
-        return claimedBy == null;
+        return lease.isFree();
     }
 
     public boolean claim(UUID instanceId) {
-        if (claimedBy != null) {
-            return false;
-        }
-        claimedBy = instanceId;
-        return true;
+        return lease.acquire(instanceId, true);
     }
 
     public void release() {
-        claimedBy = null;
+        lease.clear();
     }
 
     public boolean isReady() {

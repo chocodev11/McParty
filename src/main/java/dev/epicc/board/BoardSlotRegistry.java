@@ -188,13 +188,26 @@ public final class BoardSlotRegistry {
         return slots.values();
     }
 
-    public Optional<BoardSlot> claimFree(java.util.UUID instanceId) {
+    /**
+     * ASP clones reuse a board definition; permanent fallback worlds require an exclusive claim.
+     */
+    public Optional<BoardSlot> acquire(java.util.UUID instanceId, boolean exclusive) {
         for (BoardSlot slot : slots.values()) {
-            if (slot.isFree() && slot.isReady() && slot.claim(instanceId)) {
+            if (!slot.isReady()) {
+                continue;
+            }
+            if ((!exclusive || slot.isFree()) && slot.claim(instanceId)) {
+                if (!exclusive) slot.release();
                 return Optional.of(slot);
             }
         }
         return Optional.empty();
+    }
+
+    public void release(java.util.UUID instanceId, String slotId) {
+        get(slotId).ifPresent(slot -> {
+            if (instanceId.equals(slot.claimedBy())) slot.release();
+        });
     }
 
     public void releaseAll() {

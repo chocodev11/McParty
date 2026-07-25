@@ -1,6 +1,5 @@
 package dev.epicc.party;
 
-import com.infernalsuite.asp.api.world.SlimeWorld;
 import dev.epicc.board.BoardSlot;
 import dev.epicc.board.BoardSlotRegistry;
 import dev.epicc.board.BoardTurnController;
@@ -11,6 +10,8 @@ import dev.epicc.board.dice.DicePresenter;
 import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.minigame.MinigameManager;
+import dev.epicc.minigame.ArenaTransitions;
+import dev.epicc.minigame.MinigameArena;
 import dev.epicc.minigame.PlayerStateSnapshot;
 import dev.epicc.player.PlayerSessionService;
 import dev.epicc.resourcepack.ResourcePackService;
@@ -53,6 +54,7 @@ public final class PartyManager {
     private final DiceHatService diceHats;
     private final PathHopMover pathHopMover;
     private final ResourcePackService resourcePacks;
+    private final PartyTransitionService transitions;
     private final Map<UUID, BoardTurnController> controllers = new ConcurrentHashMap<>();
 
 
@@ -84,6 +86,7 @@ public final class PartyManager {
         this.diceHats = diceHats;
         this.pathHopMover = pathHopMover;
         this.resourcePacks = resourcePacks;
+        this.transitions = new PartyTransitionService(plugin, seamless);
     }
 
     public JavaPlugin plugin() {
@@ -96,6 +99,10 @@ public final class PartyManager {
 
     public Optional<PartyInstance> instanceOf(UUID playerId) {
         return sessions.instanceOf(playerId).flatMap(store::get);
+    }
+
+    public boolean consumeTransitionPermit(Player player, Location destination) {
+        return transitions.consumeIfAllowed(player, destination);
     }
 
     public Collection<PartyInstance> all() {
@@ -181,6 +188,12 @@ public final class PartyManager {
             return silent ? Optional.empty() : Optional.of(messages.get("party.not-in"));
         }
         PartyInstance instance = opt.get();
+        if (instance.state() != PartyState.WAITING && player.isOnline()) {
+            Location fallback = fallbackLocation();
+            transitions.permit(player, fallback);
+            seamless.teleport(player, fallback);
+        }
+        transitions.clear(player.getUniqueId());
         sessions.unbind(player.getUniqueId());
         instance.removePlayer(player.getUniqueId());
 
@@ -195,6 +208,11 @@ public final class PartyManager {
         }
 
         if (instance.state() == PartyState.WAITING) {
+            if (instance.transferHostIf(player.getUniqueId())) {
+                instance.player(instance.hostId()).ifPresent(newHost -> instance.broadcast(
+                        messages.get("party.host-transferred", "player", newHost.name())
+                ));
+            }
             return Optional.empty();
         }
 
@@ -222,23 +240,25 @@ public final class PartyManager {
             return Optional.of(messages.get("party.already-starting"));
         }
 
-        BoardSlot templateSlot = slots.claimFree(instance.id()).orElse(null);
+        boolean exclusive = !slime.isReady();
+        BoardSlot templateSlot = slots.acquire(instance.id(), exclusive).orElse(null);
         if (templateSlot == null) {
             return Optional.of(messages.get("party.no-board-slot"));
         }
 
-        instance.setState(PartyState.STARTING);
-        beginCountdown(instance, templateSlot);
+        long token = instance.beginStarting();
+        if (token < 0) return Optional.of(messages.get("party.already-starting"));
+        beginCountdown(instance, templateSlot, token);
 
         return Optional.empty();
     }
 
-    private void loadBoardWorld(PartyInstance instance, BoardSlot templateSlot) {
+    private void loadBoardWorld(PartyInstance instance, BoardSlot templateSlot, long token) {
         final UUID instanceId = instance.id();
 
         if (!slime.isReady()) {
             instance.setSlot(templateSlot);
-            beginPlaying(instance);
+            beginPlaying(instance, token);
             return;
         }
 
@@ -247,28 +267,26 @@ public final class PartyManager {
         java.util.concurrent.CompletableFuture<Optional<World>> future = slime.loadCloneAsync(instanceId, boardTemplate);
         instance.setWorldLoadFuture(future);
         future.thenAccept(boardWorldOpt -> {
-            if (instance.state() != PartyState.STARTING) {
-                templateSlot.release();
-                slime.unloadForInstance(instanceId);
+            if (!instance.isStarting(token)) {
+                boardWorldOpt.ifPresent(world -> slime.unloadWorldForInstance(instanceId, world));
                 return;
             }
 
             if (boardWorldOpt.isEmpty()) {
                 instance.broadcast(messages.get("party.slime-load-failed"));
-                instance.setState(PartyState.WAITING);
-                templateSlot.release();
+                instance.failStart(token);
+                slots.release(instance.id(), templateSlot.id());
                 instance.cancelPendingTasks();
                 return;
             }
 
             BoardSlot runtime = templateSlot.forWorld(boardWorldOpt.get());
-            runtime.claim(instanceId);
             instance.setSlot(runtime);
-            beginPlaying(instance);
+            beginPlaying(instance, token);
         });
     }
 
-    private void beginCountdown(PartyInstance instance, BoardSlot templateSlot) {
+    private void beginCountdown(PartyInstance instance, BoardSlot templateSlot, long token) {
         int countdown = config.startCountdownSeconds();
         Title.Times times = Title.Times.times(Duration.ZERO, Duration.ofMillis(1100), Duration.ofMillis(200));
 
@@ -277,7 +295,7 @@ public final class PartyManager {
 
             @Override
             public void run() {
-                if (instance.state() != PartyState.STARTING) {
+                if (!instance.isStarting(token)) {
                     instance.cancelPendingTasks();
                     return;
                 }
@@ -286,7 +304,7 @@ public final class PartyManager {
                         instance.countdownTask().cancel();
                         instance.setCountdownTask(null);
                     }
-                    loadBoardWorld(instance, templateSlot);
+                    loadBoardWorld(instance, templateSlot, token);
                     return;
                 }
                 Title title = Title.title(
@@ -336,42 +354,6 @@ public final class PartyManager {
         return Optional.empty();
     }
 
-    public void hibernateBoardWorld(PartyInstance instance) {
-        if (instance.slot() != null && instance.slot().world() != null) {
-            slime.unloadWorldForInstance(instance.id(), instance.slot().world());
-        }
-    }
-
-    public void awakenBoardWorld(PartyInstance instance, Runnable onReady) {
-        BoardSlot templateSlot = slots.get(instance.slot().id()).orElse(null);
-        if (templateSlot == null || !slime.isReady()) {
-            if (onReady != null) onReady.run();
-            return;
-        }
-
-        slime.loadCloneAsync(instance.id(), templateSlot.slimeTemplate()).thenAccept(newWorldOpt -> {
-            if (instance.state() == PartyState.CLEANUP) {
-                slime.unloadForInstance(instance.id());
-                return;
-            }
-            if (newWorldOpt.isPresent()) {
-                instance.setSlot(templateSlot.forWorld(newWorldOpt.get()));
-                for (PartyPlayer pp : instance.players()) {
-                    Player p = plugin.getServer().getPlayer(pp.uuid());
-                    if (p != null && p.isOnline()) {
-                        int maxIndex = Math.max(0, instance.slot().path().size() - 1);
-                        int index = Math.min(pp.boardIndex(), maxIndex);
-                        p.teleport(instance.slot().path().get(index));
-                    }
-                }
-                if (onReady != null) onReady.run();
-            } else {
-                instance.broadcast(messages.get("party.slime-load-failed"));
-                endInternal(instance);
-            }
-        });
-    }
-
     public void shutdown() {
         for (UUID id : new ArrayList<>(store.all().stream().map(PartyInstance::id).toList())) {
             store.get(id).ifPresent(this::cleanup);
@@ -385,7 +367,8 @@ public final class PartyManager {
         slime.unloadAll();
     }
 
-    private void beginPlaying(PartyInstance instance) {
+    private void beginPlaying(PartyInstance instance, long token) {
+        if (!instance.beginPlaying(token)) return;
         BoardSlot slot = instance.slot();
         if (slot == null || !slot.isReady()) {
             instance.broadcast(messages.get("party.slot-invalid"));
@@ -398,15 +381,18 @@ public final class PartyManager {
                 messages.get("party.start-subtitle"),
                 Title.Times.times(Duration.ofMillis(200), Duration.ofSeconds(2), Duration.ofMillis(400))
         );
-        Location spawn = slot.spawn();
+        PartyPlayArea boardArea = new PartyPlayArea(slot.world(), slot.spawn(), slot.boundary());
+        instance.setBoardPlayArea(boardArea);
+        List<Player> online = new ArrayList<>();
         for (PartyPlayer pp : instance.players()) {
             Player p = plugin.getServer().getPlayer(pp.uuid());
             if (p != null && p.isOnline()) {
                 PlayerStateSnapshot.preparePhase(p);
-                seamless.teleport(p, scatterAround(spawn, 4.0));
+                online.add(p);
                 p.showTitle(startTitle);
             }
         }
+        transitions.transition(online, boardArea);
 
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             Optional<World> lobbyOpt = slime.getLoadedWorld(instance.id(), config.lobbySlimeTemplate());
@@ -423,28 +409,21 @@ public final class PartyManager {
                 pathHopMover
         );
         controller.attach(instance, result -> {
-            awakenBoardWorld(instance, () -> {
-                if (instance.state() == PartyState.CLEANUP || instance.state() == PartyState.ENDING) return;
-                result.coinRewards().forEach((uuid, coins) ->
-                        instance.player(uuid).ifPresent(pp -> pp.addCoins(coins))
-                );
-                instance.incrementRound();
-                if (instance.round() >= instance.settings().maxTurns()) {
-                    instance.requestEnd("Max turns reached");
-                } else {
-                    BoardTurnController c = controllers.get(instance.id());
-                    if (c != null) {
-                        c.beginRound();
-                    }
-                }
-            });
-        }, () -> hibernateBoardWorld(instance));
+            if (instance.state() != PartyState.PLAYING) return;
+            result.coinRewards().forEach((uuid, coins) -> instance.player(uuid).ifPresent(pp -> pp.addCoins(coins)));
+            instance.incrementRound();
+            if (instance.round() >= instance.settings().maxTurns()) instance.requestEnd("Max turns reached");
+            else Optional.ofNullable(controllers.get(instance.id())).ifPresent(BoardTurnController::beginRound);
+        }, new ArenaTransitions(
+                arena -> enterArena(instance, arena),
+                () -> exitArena(instance)
+        ));
         controllers.put(instance.id(), controller);
         // Delay first dice: private ItemDisplay passengers often fail same-tick as slime/world TP
         // (spawn = "first slot", no pad — later rounds on pads already have client tracking).
         final UUID instanceId = instance.id();
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            if (instance.state() != PartyState.STARTING) {
+            if (instance.state() != PartyState.PLAYING) {
                 return;
             }
             BoardTurnController live = controllers.get(instanceId);
@@ -456,19 +435,13 @@ public final class PartyManager {
     }
 
     private void endInternal(PartyInstance instance) {
-        if (instance.state() == PartyState.CLEANUP || instance.state() == PartyState.ENDING) {
-            // still run cleanup if ending mid-way twice
-        }
+        if (!instance.beginEnding()) return;
         instance.cancelPendingTasks();
         BoardTurnController controller = controllers.remove(instance.id());
         if (controller != null) {
             controller.stop();
         }
-        minigames.cancelActive();
-
-        instance.setState(PartyState.ENDING);
         announcePodium(instance);
-        instance.setState(PartyState.CLEANUP);
         cleanup(instance);
     }
 
@@ -491,6 +464,7 @@ public final class PartyManager {
     }
 
     public void cleanup(PartyInstance instance) {
+        if (!instance.beginCleanup()) return;
         instance.cancelPendingTasks();
         BoardTurnController controller = controllers.remove(instance.id());
 
@@ -502,20 +476,59 @@ public final class PartyManager {
             dicePresenter.cancel(pp.uuid());
             diceHats.clear(pp.uuid());
             pathHopMover.cancel(pp.uuid());
+            transitions.clear(pp.uuid());
+            Player player = plugin.getServer().getPlayer(pp.uuid());
+            if (player != null && player.isOnline()) {
+                Location fallback = fallbackLocation();
+                transitions.permit(player, fallback);
+                seamless.teleport(player, fallback);
+            }
         }
 
         sessions.clearInstance(instance.id());
 
-        // Unload slime clone (teleports remaining players out)
+        // Players were explicitly evacuated to the configured persistent fallback above.
         slime.unloadForInstance(instance.id());
 
         if (instance.slot() != null) {
             // Release the template slot (runtime copy may not be in the registry)
-            slots.get(instance.slot().id()).ifPresent(BoardSlot::release);
-            instance.slot().release();
+            slots.release(instance.id(), instance.slot().id());
             instance.setSlot(null);
         }
+        instance.clearPlayAreas();
         store.remove(instance.id());
+    }
+
+    private void enterArena(PartyInstance instance, MinigameArena arena) {
+        if (instance.state() != PartyState.PLAYING) return;
+        List<Player> players = onlinePlayers(instance);
+        instance.setActivePlayArea(arena.playArea());
+        transitions.transition(players, arena.playArea());
+    }
+
+    private void exitArena(PartyInstance instance) {
+        PartyPlayArea board = instance.boardPlayArea();
+        if (board == null || instance.state() != PartyState.PLAYING) return;
+        instance.setActivePlayArea(board);
+        transitions.transition(onlinePlayers(instance), board);
+    }
+
+    private List<Player> onlinePlayers(PartyInstance instance) {
+        List<Player> players = new ArrayList<>();
+        for (PartyPlayer pp : instance.players()) {
+            Player player = plugin.getServer().getPlayer(pp.uuid());
+            if (player != null && player.isOnline()) players.add(player);
+        }
+        return players;
+    }
+
+    private Location fallbackLocation() {
+        World world = plugin.getServer().getWorld(config.fallbackWorld());
+        if (world == null) {
+            plugin.getLogger().severe("Configured slime.fallback.world is unavailable: " + config.fallbackWorld());
+            return plugin.getServer().getWorlds().getFirst().getSpawnLocation();
+        }
+        return new Location(world, config.fallbackX(), config.fallbackY(), config.fallbackZ(), config.fallbackYaw(), config.fallbackPitch());
     }
 
 

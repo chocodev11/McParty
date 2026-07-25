@@ -1,6 +1,5 @@
 package dev.epicc.containment;
 
-import dev.epicc.board.BoardSlot;
 import dev.epicc.board.PathHopMover;
 import dev.epicc.party.PartyInstance;
 import dev.epicc.party.PartyManager;
@@ -33,7 +32,8 @@ public final class BoundaryListener implements Listener {
             return;
         }
         // ignore look-only
-        if (from.getBlockX() == to.getBlockX()
+        if (from.getWorld() == to.getWorld()
+                && from.getBlockX() == to.getBlockX()
                 && from.getBlockY() == to.getBlockY()
                 && from.getBlockZ() == to.getBlockZ()) {
             return;
@@ -49,7 +49,7 @@ public final class BoundaryListener implements Listener {
         }
 
         PartyInstance instance = partyManager.instanceOf(player.getUniqueId()).orElse(null);
-        if (instance == null || instance.slot() == null) {
+        if (instance == null || instance.activePlayArea() == null) {
             return;
         }
         if (instance.state() != PartyState.STARTING
@@ -58,7 +58,10 @@ public final class BoundaryListener implements Listener {
             return;
         }
 
-        SlotBoundary boundary = instance.slot().boundary();
+        if (event instanceof PlayerTeleportEvent && partyManager.consumeTransitionPermit(player, to)) {
+            return;
+        }
+        SlotBoundary boundary = instance.activePlayArea().boundary();
         if (boundary.isInside(to)) {
             return;
         }
@@ -74,11 +77,10 @@ public final class BoundaryListener implements Listener {
     public void onRespawn(PlayerRespawnEvent event) {
         Player player = event.getPlayer();
         partyManager.instanceOf(player.getUniqueId()).ifPresent(instance -> {
-            BoardSlot slot = instance.slot();
-            if (slot == null) {
+            if (instance.activePlayArea() == null) {
                 return;
             }
-            Location spawn = slot.spawn();
+            Location spawn = instance.activePlayArea().spawn();
             if (spawn != null) {
                 event.setRespawnLocation(spawn);
             }

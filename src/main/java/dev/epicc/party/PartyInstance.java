@@ -20,15 +20,17 @@ import java.util.function.Consumer;
 public final class PartyInstance {
 
     private final UUID id;
-    private final UUID hostId;
+    private UUID hostId;
     private final PartySettings settings;
-    private final Map<UUID, PartyPlayer> players = new LinkedHashMap<>();
-    private PartyState state = PartyState.WAITING;
+    private final LinkedHashMap<UUID, PartyPlayer> players = new LinkedHashMap<>();
+    private final PartyLifecycle lifecycle = new PartyLifecycle();
     private BoardSlot slot;
     private int round;
     private Consumer<PartyInstance> endRequestHandler;
     private BukkitTask countdownTask;
     private CompletableFuture<Optional<World>> worldLoadFuture;
+    private PartyPlayArea boardPlayArea;
+    private PartyPlayArea activePlayArea;
 
     public PartyInstance(UUID id, UUID hostId, PartySettings settings) {
         this.id = id;
@@ -39,17 +41,27 @@ public final class PartyInstance {
     public UUID id() { return id; }
     public UUID hostId() { return hostId; }
     public PartySettings settings() { return settings; }
-    public PartyState state() { return state; }
+    public PartyState state() { return lifecycle.state(); }
+    public long operationToken() { return lifecycle.operationToken(); }
     public BoardSlot slot() { return slot; }
     public int round() { return round; }
 
-    public void setState(PartyState state) {
-        this.state = state;
-    }
+    public long beginStarting() { return lifecycle.beginStarting(); }
+    public boolean isStarting(long token) { return lifecycle.isStarting(token); }
+    public boolean failStart(long token) { return lifecycle.failStart(token); }
+    public boolean beginPlaying(long token) { return lifecycle.beginPlaying(token); }
+    public boolean beginEnding() { return lifecycle.beginEnding(); }
+    public boolean beginCleanup() { return lifecycle.beginCleanup(); }
 
     public void setSlot(BoardSlot slot) {
         this.slot = slot;
     }
+
+    public PartyPlayArea boardPlayArea() { return boardPlayArea; }
+    public PartyPlayArea activePlayArea() { return activePlayArea; }
+    public void setBoardPlayArea(PartyPlayArea playArea) { this.boardPlayArea = playArea; this.activePlayArea = playArea; }
+    public void setActivePlayArea(PartyPlayArea playArea) { this.activePlayArea = playArea; }
+    public void clearPlayAreas() { boardPlayArea = null; activePlayArea = null; }
 
     public void setEndRequestHandler(Consumer<PartyInstance> handler) {
         this.endRequestHandler = handler;
@@ -93,7 +105,7 @@ public final class PartyInstance {
     }
 
     public boolean addPlayer(PartyPlayer player) {
-        if (state != PartyState.WAITING) {
+        if (state() != PartyState.WAITING) {
             return false;
         }
         if (players.size() >= settings.maxPlayers()) {
@@ -110,6 +122,14 @@ public final class PartyInstance {
         return players.remove(uuid) != null;
     }
 
+    public boolean transferHostIf(UUID departingHost) {
+        if (!hostId.equals(departingHost) || state() != PartyState.WAITING || players.isEmpty()) return false;
+        UUID replacement = PartyHostSelector.firstRemaining(players);
+        if (replacement == null) return false;
+        hostId = replacement;
+        return true;
+    }
+
     public Optional<PartyPlayer> player(UUID uuid) {
         return Optional.ofNullable(players.get(uuid));
     }
@@ -123,7 +143,7 @@ public final class PartyInstance {
     }
 
     public boolean canStart() {
-        return state == PartyState.WAITING && players.size() >= settings.minPlayers();
+        return state() == PartyState.WAITING && players.size() >= settings.minPlayers();
     }
 
     public boolean isHost(UUID uuid) {

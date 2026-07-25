@@ -1,8 +1,6 @@
 package dev.epicc.minigame;
 
 import dev.epicc.config.MessageService;
-import dev.epicc.party.PartyInstance;
-import dev.epicc.slime.SlimeWorldService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.format.NamedTextColor;
 import net.kyori.adventure.text.format.TextDecoration;
@@ -55,13 +53,12 @@ import java.util.function.Consumer;
  * Players throw the potato short distances to pass it around before the bomb explodes.
  * Melee attacks do not pass the potato.
  */
-public final class HotPotatoMinigame implements Minigame, Listener {
+public final class HotPotatoMinigame implements Minigame, MinigameSession, Listener {
 
     private final MessageService messages;
-    private final SlimeWorldService slimeWorldService;
     private final int defaultBombSeconds;
     private final double throwVelocity;
-    private final String slimeTemplate;
+    private final MinigameArenaSpec arenaSpec;
     private final List<Integer> coinRewards;
 
     private MinigameContext context;
@@ -77,24 +74,20 @@ public final class HotPotatoMinigame implements Minigame, Listener {
     private UUID currentHolder;
     private int bombTimerTicks;
     private BukkitTask task;
-    private World loadedSlimeWorld;
-    private UUID loadedWorldInstanceId;
     private Item activeGroundPotato;
     private Projectile activeThrownPotato;
 
     public HotPotatoMinigame(
             MessageService messages,
-            SlimeWorldService slimeWorldService,
             int bombSeconds,
             double throwVelocity,
-            String slimeTemplate,
+            MinigameArenaSpec arenaSpec,
             List<Integer> coinRewards
     ) {
         this.messages = messages;
-        this.slimeWorldService = slimeWorldService;
         this.defaultBombSeconds = Math.max(5, bombSeconds);
         this.throwVelocity = Math.max(0.3, throwVelocity);
-        this.slimeTemplate = slimeTemplate;
+        this.arenaSpec = arenaSpec;
         this.coinRewards = coinRewards == null || coinRewards.isEmpty() ? List.of(10, 7, 5, 3) : coinRewards;
     }
 
@@ -109,8 +102,19 @@ public final class HotPotatoMinigame implements Minigame, Listener {
     }
 
     @Override
-    public Optional<String> slimeTemplate() {
-        return Optional.ofNullable(slimeTemplate).filter(s -> !s.isBlank());
+    public Optional<MinigameArenaSpec> arenaSpec() {
+        return Optional.ofNullable(arenaSpec);
+    }
+
+    @Override
+    public MinigameSession createSession() {
+        return new HotPotatoMinigame(
+                messages,
+                defaultBombSeconds,
+                throwVelocity,
+                arenaSpec,
+                coinRewards
+        );
     }
 
     @Override
@@ -126,8 +130,6 @@ public final class HotPotatoMinigame implements Minigame, Listener {
         eliminationOrder.clear();
         snapshots.clear();
         initialLocations.clear();
-        loadedSlimeWorld = null;
-        loadedWorldInstanceId = null;
         activeGroundPotato = null;
         activeThrownPotato = null;
 
@@ -147,22 +149,6 @@ public final class HotPotatoMinigame implements Minigame, Listener {
 
         // Register listener
         context.plugin().getServer().getPluginManager().registerEvents(this, context.plugin());
-
-        // Check if slime world can be loaded/retrieved
-        PartyInstance instance = context.instance();
-        if (slimeWorldService != null && slimeWorldService.isReady() && slimeTemplate != null && !slimeTemplate.isBlank()) {
-            loadedWorldInstanceId = instance != null ? instance.id() : UUID.randomUUID();
-            Optional<World> worldOpt = slimeWorldService.getOrLoadWorld(loadedWorldInstanceId, slimeTemplate);
-            if (worldOpt.isPresent()) {
-                loadedSlimeWorld = worldOpt.get();
-                Location spawn = loadedSlimeWorld.getSpawnLocation();
-                for (Player p : players) {
-                    p.teleport(spawn);
-                }
-                context.hibernateBoard();
-            }
-        }
-
 
         // Select initial holder
         currentHolder = players.get(ThreadLocalRandom.current().nextInt(players.size())).getUniqueId();
@@ -473,10 +459,6 @@ public final class HotPotatoMinigame implements Minigame, Listener {
             result.setCoins(id, coins);
         }
 
-        // Restore player states & teleport back to board if using slime world
-        PartyInstance instance = context != null ? context.instance() : null;
-        Location returnLocation = instance != null ? instance.slot().spawn() : null;
-
         for (UUID id : matchPlayers) {
             Player p = Bukkit.getPlayer(id);
             if (p != null && p.isOnline()) {
@@ -485,20 +467,7 @@ public final class HotPotatoMinigame implements Minigame, Listener {
                 if (snapshot != null) {
                     snapshot.restore(p);
                 }
-                if (loadedSlimeWorld != null && (context == null || context.instance() == null)) {
-                    if (returnLocation != null) {
-                        p.teleport(returnLocation);
-                    } else if (initialLocations.containsKey(id)) {
-                        p.teleport(initialLocations.get(id));
-                    }
-                }
             }
-        }
-
-        if (loadedSlimeWorld != null && loadedWorldInstanceId != null && slimeWorldService != null && (context == null || context.instance() == null)) {
-            slimeWorldService.unloadWorldForInstance(loadedWorldInstanceId, loadedSlimeWorld);
-            loadedSlimeWorld = null;
-            loadedWorldInstanceId = null;
         }
 
 
@@ -560,16 +529,7 @@ public final class HotPotatoMinigame implements Minigame, Listener {
                 if (snapshot != null) {
                     snapshot.restore(p);
                 }
-                if (loadedSlimeWorld != null && initialLocations.containsKey(id) && (context == null || context.instance() == null)) {
-                    p.teleport(initialLocations.get(id));
-                }
             }
-        }
-
-        if (loadedSlimeWorld != null && loadedWorldInstanceId != null && slimeWorldService != null && (context == null || context.instance() == null)) {
-            slimeWorldService.unloadWorldForInstance(loadedWorldInstanceId, loadedSlimeWorld);
-            loadedSlimeWorld = null;
-            loadedWorldInstanceId = null;
         }
 
         matchPlayers.clear();

@@ -4,6 +4,8 @@ import dev.epicc.board.dice.DiceHatService;
 import dev.epicc.board.dice.DicePresenter;
 import dev.epicc.config.MessageService;
 import dev.epicc.minigame.MinigameManager;
+import dev.epicc.minigame.MinigameRunner;
+import dev.epicc.minigame.ArenaTransitions;
 import dev.epicc.party.PartyInstance;
 import dev.epicc.party.PartyPlayer;
 import dev.epicc.party.PartyState;
@@ -25,7 +27,7 @@ public final class BoardTurnController {
 
     private final JavaPlugin plugin;
     private final MessageService messages;
-    private final MinigameManager minigameManager;
+    private final MinigameRunner minigameRunner;
     private final Dice dice;
     private final DicePresenter dicePresenter;
     private final DiceHatService diceHats;
@@ -37,7 +39,7 @@ public final class BoardTurnController {
     private boolean moving;
 
     private java.util.function.Consumer<dev.epicc.minigame.MinigameResult> onRoundEnd;
-    private Runnable onMinigameReady;
+    private ArenaTransitions arenaTransitions;
 
     /** Players still expected to finish their roll this round. */
     private final Map<UUID, PartyPlayer> pendingRollers = new LinkedHashMap<>();
@@ -57,17 +59,18 @@ public final class BoardTurnController {
     ) {
         this.plugin = plugin;
         this.messages = messages;
-        this.minigameManager = minigameManager;
+        this.minigameRunner = minigameManager.createRunner();
         this.dice = dice;
         this.dicePresenter = dicePresenter;
         this.diceHats = diceHats;
         this.pathHopMover = pathHopMover;
     }
 
-    public void attach(PartyInstance instance, java.util.function.Consumer<dev.epicc.minigame.MinigameResult> onRoundEnd, Runnable onMinigameReady) {
+    public void attach(PartyInstance instance, java.util.function.Consumer<dev.epicc.minigame.MinigameResult> onRoundEnd,
+                       ArenaTransitions arenaTransitions) {
         this.instance = instance;
         this.onRoundEnd = onRoundEnd;
-        this.onMinigameReady = onMinigameReady;
+        this.arenaTransitions = arenaTransitions;
         this.waitingForRoll = false;
         this.inMinigame = false;
         this.moving = false;
@@ -81,7 +84,6 @@ public final class BoardTurnController {
         if (instance == null) {
             return;
         }
-        instance.setState(PartyState.PLAYING);
         beginRound();
     }
 
@@ -112,7 +114,7 @@ public final class BoardTurnController {
                 diceHats.clear(pp.uuid());
             }
         }
-        minigameManager.cancelActive();
+        minigameRunner.cancel();
         waitingForRoll = false;
         inMinigame = false;
         moving = false;
@@ -288,7 +290,7 @@ public final class BoardTurnController {
         }
 
         instance.broadcast(messages.get("board.round-complete"));
-        minigameManager.runRandom(instance, online, onMinigameReady, result -> {
+        minigameRunner.runRandom(instance, online, arenaTransitions, result -> {
             if (instance == null) {
                 return;
             }

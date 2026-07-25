@@ -14,7 +14,7 @@ import java.util.function.Consumer;
  * Placeholder minigame used for board rounds and reveal-animation testing.
  * Multiple instances can be registered with different ids / display names.
  */
-public final class DummyMinigame implements Minigame {
+public final class DummyMinigame implements Minigame, MinigameSession {
 
     private final MessageService messages;
     private final String id;
@@ -49,6 +49,11 @@ public final class DummyMinigame implements Minigame {
     @Override
     public String displayName() {
         return displayName;
+    }
+
+    @Override
+    public MinigameSession createSession() {
+        return new DummyMinigame(messages, id, displayName, durationSeconds, coinRewards);
     }
 
     @Override

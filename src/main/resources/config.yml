@@ -50,6 +50,22 @@ minigame:
     bomb-seconds: 20
     throw-velocity: 0.9
     max-cycles: 10
+    # Template-relative arena definition. Invalid/missing values disable only Hot Potato.
+    arena:
+      template: hot_potato_arena
+      spawn:
+        x: 0.5
+        y: 64.0
+        z: 0.5
+        yaw: 0.0
+        pitch: 0.0
+      boundary:
+        minX: -50
+        minY: 0
+        minZ: -50
+        maxX: 50
+        maxY: 256
+        maxZ: 50
 
 # Suppress dirt "Loading terrain…" on party world teleports (same env + height).
 # Requires PacketEvents plugin on the server. Fail-open if missing.
@@ -99,6 +115,14 @@ slime:
   allow-monsters: false
   allow-animals: false
   pvp: true
+  # Persistent safe destination used before any party clone is unloaded.
+  fallback:
+    world: world
+    x: 0.5
+    y: 64.0
+    z: 0.5
+    yaw: 0.0
+    pitch: 0.0
 
 lobby:
   slime-template: lobby_template

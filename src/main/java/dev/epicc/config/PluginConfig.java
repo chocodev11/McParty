@@ -1,5 +1,6 @@
 package dev.epicc.config;
 
+import dev.epicc.minigame.MinigameArenaSpec;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -40,6 +41,7 @@ public final class PluginConfig {
     private int hotPotatoBombSeconds;
     private double hotPotatoThrowVelocity;
     private int hotPotatoMaxCycles;
+    private MinigameArenaSpec hotPotatoArena;
 
     private boolean seamlessWorldChangeEnabled;
 
@@ -64,6 +66,9 @@ public final class PluginConfig {
     private boolean slimeAllowMonsters;
     private boolean slimeAllowAnimals;
     private boolean slimePvp;
+    private String fallbackWorld;
+    private double fallbackX, fallbackY, fallbackZ;
+    private float fallbackYaw, fallbackPitch;
 
     private String lobbySlimeTemplate;
     private double lobbySpawnX;
@@ -128,6 +133,20 @@ public final class PluginConfig {
         hotPotatoBombSeconds = c.getInt("minigame.hot_potato.bomb-seconds", 20);
         hotPotatoThrowVelocity = c.getDouble("minigame.hot_potato.throw-velocity", 0.9);
         hotPotatoMaxCycles = c.getInt("minigame.hot_potato.max-cycles", 10);
+        hotPotatoArena = new MinigameArenaSpec(
+                c.getString("minigame.hot_potato.arena.template", hotPotatoSlimeTemplate),
+                c.getDouble("minigame.hot_potato.arena.spawn.x", Double.NaN),
+                c.getDouble("minigame.hot_potato.arena.spawn.y", Double.NaN),
+                c.getDouble("minigame.hot_potato.arena.spawn.z", Double.NaN),
+                (float) c.getDouble("minigame.hot_potato.arena.spawn.yaw", 0),
+                (float) c.getDouble("minigame.hot_potato.arena.spawn.pitch", 0),
+                c.getInt("minigame.hot_potato.arena.boundary.minX", Integer.MAX_VALUE),
+                c.getInt("minigame.hot_potato.arena.boundary.minY", Integer.MAX_VALUE),
+                c.getInt("minigame.hot_potato.arena.boundary.minZ", Integer.MAX_VALUE),
+                c.getInt("minigame.hot_potato.arena.boundary.maxX", Integer.MIN_VALUE),
+                c.getInt("minigame.hot_potato.arena.boundary.maxY", Integer.MIN_VALUE),
+                c.getInt("minigame.hot_potato.arena.boundary.maxZ", Integer.MIN_VALUE)
+        );
 
         seamlessWorldChangeEnabled = c.getBoolean("seamless-world-change.enabled", true);
 
@@ -152,6 +171,12 @@ public final class PluginConfig {
         slimeAllowMonsters = c.getBoolean("slime.allow-monsters", false);
         slimeAllowAnimals = c.getBoolean("slime.allow-animals", false);
         slimePvp = c.getBoolean("slime.pvp", true);
+        fallbackWorld = c.getString("slime.fallback.world", "world");
+        fallbackX = c.getDouble("slime.fallback.x", 0.5);
+        fallbackY = c.getDouble("slime.fallback.y", 64.0);
+        fallbackZ = c.getDouble("slime.fallback.z", 0.5);
+        fallbackYaw = (float) c.getDouble("slime.fallback.yaw", 0.0);
+        fallbackPitch = (float) c.getDouble("slime.fallback.pitch", 0.0);
 
         lobbySlimeTemplate = c.getString("lobby.slime-template", "lobby_template");
         lobbySpawnX = c.getDouble("lobby.spawn.x", 0.5);
@@ -201,6 +226,7 @@ public final class PluginConfig {
     public int hotPotatoBombSeconds() { return hotPotatoBombSeconds; }
     public double hotPotatoThrowVelocity() { return hotPotatoThrowVelocity; }
     public int hotPotatoMaxCycles() { return hotPotatoMaxCycles; }
+    public MinigameArenaSpec hotPotatoArena() { return hotPotatoArena; }
 
     public boolean seamlessWorldChangeEnabled() { return seamlessWorldChangeEnabled; }
 
@@ -225,6 +251,12 @@ public final class PluginConfig {
     public boolean slimeAllowMonsters() { return slimeAllowMonsters; }
     public boolean slimeAllowAnimals() { return slimeAllowAnimals; }
     public boolean slimePvp() { return slimePvp; }
+    public String fallbackWorld() { return fallbackWorld; }
+    public double fallbackX() { return fallbackX; }
+    public double fallbackY() { return fallbackY; }
+    public double fallbackZ() { return fallbackZ; }
+    public float fallbackYaw() { return fallbackYaw; }
+    public float fallbackPitch() { return fallbackPitch; }
 
     public String lobbySlimeTemplate() { return lobbySlimeTemplate; }
     public double lobbySpawnX() { return lobbySpawnX; }
