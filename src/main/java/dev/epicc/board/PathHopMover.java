@@ -29,6 +29,7 @@ public final class PathHopMover implements Listener {
 
     private final Map<UUID, Hop> hops = new ConcurrentHashMap<>();
     private final Set<UUID> fallImmune = ConcurrentHashMap.newKeySet();
+    private BukkitTask globalTask;
 
     public PathHopMover(
             JavaPlugin plugin,
@@ -75,7 +76,9 @@ public final class PathHopMover implements Listener {
         // Single upward impulse — gravity brings vy down to ≤ 0 at the apex
         player.setVelocity(new Vector(0, upVelocity, 0));
 
-        hop.task = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> tick(hop), 1L, 1L);
+        if (globalTask == null || globalTask.isCancelled()) {
+            globalTask = plugin.getServer().getScheduler().runTaskTimer(plugin, this::tickAll, 1L, 1L);
+        }
     }
 
     /** Abort hop without running {@code onDone} (party end / replace). */
@@ -83,10 +86,6 @@ public final class PathHopMover implements Listener {
         Hop hop = hops.remove(playerId);
         if (hop == null) {
             return;
-        }
-        if (hop.task != null) {
-            hop.task.cancel();
-            hop.task = null;
         }
         fallImmune.remove(playerId);
         Player p = plugin.getServer().getPlayer(playerId);
@@ -96,10 +95,27 @@ public final class PathHopMover implements Listener {
     }
 
     public void cancelAll() {
+        if (globalTask != null) {
+            globalTask.cancel();
+            globalTask = null;
+        }
         for (UUID id : new java.util.ArrayList<>(hops.keySet())) {
             cancel(id);
         }
         fallImmune.clear();
+    }
+
+    private void tickAll() {
+        if (hops.isEmpty()) {
+            if (globalTask != null) {
+                globalTask.cancel();
+                globalTask = null;
+            }
+            return;
+        }
+        for (Hop hop : hops.values()) {
+            tick(hop);
+        }
     }
 
     private void tick(Hop hop) {
@@ -151,10 +167,6 @@ public final class PathHopMover implements Listener {
     }
 
     private void finish(Hop hop, boolean runCallback) {
-        if (hop.task != null) {
-            hop.task.cancel();
-            hop.task = null;
-        }
         hops.remove(hop.playerId, hop);
 
         Player p = plugin.getServer().getPlayer(hop.playerId);
@@ -236,7 +248,6 @@ public final class PathHopMover implements Listener {
         final float savedWalkSpeed;
         Phase phase = Phase.RISE;
         int tick;
-        BukkitTask task;
 
         Hop(UUID playerId, Location land, Runnable onDone, float savedWalkSpeed) {
             this.playerId = playerId;
