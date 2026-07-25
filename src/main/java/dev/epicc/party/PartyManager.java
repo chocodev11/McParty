@@ -228,28 +228,24 @@ public final class PartyManager {
         }
 
         instance.setState(PartyState.STARTING);
-
-        // 1. Countdown timer (5..4..3..2..1) starts IMMEDIATELY on countdown start
-        beginCountdown(instance);
-
-        // 2. Preloading of board world + minigame worlds starts in parallel on countdown start
-        startWorldPreload(instance, templateSlot);
+        beginCountdown(instance, templateSlot);
 
         return Optional.empty();
     }
 
-    private void startWorldPreload(PartyInstance instance, BoardSlot templateSlot) {
+    private void loadBoardWorld(PartyInstance instance, BoardSlot templateSlot) {
         final UUID instanceId = instance.id();
 
         if (!slime.isReady()) {
             instance.setSlot(templateSlot);
-            instance.setWorldLoadFuture(java.util.concurrent.CompletableFuture.completedFuture(Optional.empty()));
+            beginPlaying(instance);
             return;
         }
 
         final String boardTemplate = templateSlot.slimeTemplate();
-        
+        instance.broadcast(messages.get("party.loading-world"));
         java.util.concurrent.CompletableFuture<Optional<World>> future = slime.loadCloneAsync(instanceId, boardTemplate);
+        instance.setWorldLoadFuture(future);
         future.thenAccept(boardWorldOpt -> {
             if (instance.state() != PartyState.STARTING) {
                 templateSlot.release();
@@ -268,17 +264,13 @@ public final class PartyManager {
             BoardSlot runtime = templateSlot.forWorld(boardWorldOpt.get());
             runtime.claim(instanceId);
             instance.setSlot(runtime);
+            beginPlaying(instance);
         });
-
-        instance.setWorldLoadFuture(future);
     }
 
-
-    private void beginCountdown(PartyInstance instance) {
+    private void beginCountdown(PartyInstance instance, BoardSlot templateSlot) {
         int countdown = config.startCountdownSeconds();
         Title.Times times = Title.Times.times(Duration.ZERO, Duration.ofMillis(1100), Duration.ofMillis(200));
-
-        java.util.concurrent.CompletableFuture<Void> countdownFuture = new java.util.concurrent.CompletableFuture<>();
 
         BukkitTask task = plugin.getServer().getScheduler().runTaskTimer(plugin, new Runnable() {
             int left = countdown;
@@ -286,19 +278,15 @@ public final class PartyManager {
             @Override
             public void run() {
                 if (instance.state() != PartyState.STARTING) {
-                    countdownFuture.complete(null);
                     instance.cancelPendingTasks();
                     return;
                 }
                 if (left <= 0) {
-                    countdownFuture.complete(null);
                     if (instance.countdownTask() != null) {
                         instance.countdownTask().cancel();
                         instance.setCountdownTask(null);
                     }
-                    if (instance.worldLoadFuture() != null && !instance.worldLoadFuture().isDone()) {
-                        instance.broadcast(messages.get("party.loading-world"));
-                    }
+                    loadBoardWorld(instance, templateSlot);
                     return;
                 }
                 Title title = Title.title(
@@ -316,15 +304,6 @@ public final class PartyManager {
             }
         }, 0L, 20L);
         instance.setCountdownTask(task);
-
-        java.util.concurrent.CompletableFuture.allOf(countdownFuture, instance.worldLoadFuture() != null ? instance.worldLoadFuture() : java.util.concurrent.CompletableFuture.completedFuture(null))
-            .thenRun(() -> {
-                plugin.getServer().getScheduler().runTask(plugin, () -> {
-                    if (instance.state() == PartyState.STARTING && instance.slot() != null && (instance.slot().world() != null || !slime.isReady())) {
-                        beginPlaying(instance);
-                    }
-                });
-            });
     }
 
 
