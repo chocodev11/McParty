@@ -22,6 +22,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class PathHopMover implements Listener {
 
+    private static final double TARGET_HEIGHT_OFFSET = 15.0;
+
     private final JavaPlugin plugin;
     private double upVelocity;
     private int riseMaxTicks;
@@ -142,8 +144,8 @@ public final class PathHopMover implements Listener {
                 return;
             }
 
-            // Apex: still mid-air — face the pad + snap XZ over target at this Y (look happens here, not on ground)
-            double peakY = player.getLocation().getY();
+            // Teleport over the next path point, 15 blocks above its configured Y, then fall.
+            double peakY = hop.land.getY() + TARGET_HEIGHT_OFFSET;
             hop.phase = Phase.FALL;
             hop.tick = 0;
 

@@ -21,7 +21,7 @@ board:
   dice-spin-scale: 0.7
   # Public hat above head (larger than the old 0.35)
   dice-hat-scale: 0.8
-  # Path hop: upward velocity → when vy≤0 keep that Y, TP to target XZ, then fall
+  # Path hop: upward velocity → when vy≤0 TP to target XZ at its configured Y + 15, then fall
   # ~1.70 ≈ 15-block apex under vanilla living gravity/drag
   hop-up-velocity: 1.70
   hop-rise-max-seconds: 3
