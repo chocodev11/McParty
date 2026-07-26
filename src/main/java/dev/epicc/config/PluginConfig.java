@@ -1,6 +1,7 @@
 package dev.epicc.config;
 
 import dev.epicc.minigame.MinigameArenaSpec;
+import dev.epicc.minigame.MinigameRevealSettings;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -30,12 +31,7 @@ public final class PluginConfig {
     private double hopFallMaxSeconds;
     private int dummyDurationSeconds;
     private List<Integer> dummyCoinRewards;
-    private int minigameRevealDurationTicks;
-    private int minigameRevealIntervalMinTicks;
-    private int minigameRevealIntervalMaxTicks;
-    private int minigameRevealExpandIntervalTicks;
-    private int minigameRevealColorSteps;
-    private int minigameRevealColorIntervalTicks;
+    private MinigameRevealSettings minigameReveal;
 
     private String hotPotatoSlimeTemplate;
     private int hotPotatoBombSeconds;
@@ -118,16 +114,19 @@ public final class PluginConfig {
         dummyDurationSeconds = c.getInt("minigame.dummy-duration-seconds", 5);
         List<Integer> rewards = c.getIntegerList("minigame.dummy-coin-rewards");
         dummyCoinRewards = rewards.isEmpty() ? List.of(10, 7, 5, 3) : new ArrayList<>(rewards);
-        minigameRevealDurationTicks = c.getInt("minigame.reveal-duration-ticks", 60);
-        minigameRevealIntervalMinTicks = c.getInt("minigame.reveal-interval-min-ticks", 2);
+        int revealIntervalMin = c.getInt("minigame.reveal-interval-min-ticks", 2);
         // Legacy key fallback if min not set in older configs
         if (!c.isSet("minigame.reveal-interval-min-ticks") && c.isSet("minigame.reveal-interval-ticks")) {
-            minigameRevealIntervalMinTicks = c.getInt("minigame.reveal-interval-ticks", 2);
+            revealIntervalMin = c.getInt("minigame.reveal-interval-ticks", 2);
         }
-        minigameRevealIntervalMaxTicks = c.getInt("minigame.reveal-interval-max-ticks", 14);
-        minigameRevealExpandIntervalTicks = c.getInt("minigame.reveal-expand-interval-ticks", 4);
-        minigameRevealColorSteps = c.getInt("minigame.reveal-color-steps", 5);
-        minigameRevealColorIntervalTicks = c.getInt("minigame.reveal-color-interval-ticks", 3);
+        minigameReveal = new MinigameRevealSettings(
+                c.getInt("minigame.reveal-duration-ticks", 60),
+                revealIntervalMin,
+                c.getInt("minigame.reveal-interval-max-ticks", 14),
+                c.getInt("minigame.reveal-expand-interval-ticks", 4),
+                c.getInt("minigame.reveal-color-steps", 5),
+                c.getInt("minigame.reveal-color-interval-ticks", 3)
+        );
 
         hotPotatoSlimeTemplate = c.getString("minigame.hot_potato.slime-template", "hot_potato_arena");
         hotPotatoBombSeconds = c.getInt("minigame.hot_potato.bomb-seconds", 20);
@@ -215,12 +214,7 @@ public final class PluginConfig {
     public double hopFallMaxSeconds() { return hopFallMaxSeconds; }
     public int dummyDurationSeconds() { return dummyDurationSeconds; }
     public List<Integer> dummyCoinRewards() { return dummyCoinRewards; }
-    public int minigameRevealDurationTicks() { return minigameRevealDurationTicks; }
-    public int minigameRevealIntervalMinTicks() { return minigameRevealIntervalMinTicks; }
-    public int minigameRevealIntervalMaxTicks() { return minigameRevealIntervalMaxTicks; }
-    public int minigameRevealExpandIntervalTicks() { return minigameRevealExpandIntervalTicks; }
-    public int minigameRevealColorSteps() { return minigameRevealColorSteps; }
-    public int minigameRevealColorIntervalTicks() { return minigameRevealColorIntervalTicks; }
+    public MinigameRevealSettings minigameReveal() { return minigameReveal; }
 
     public String hotPotatoSlimeTemplate() { return hotPotatoSlimeTemplate; }
     public int hotPotatoBombSeconds() { return hotPotatoBombSeconds; }

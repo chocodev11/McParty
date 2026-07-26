@@ -2,7 +2,6 @@ package dev.epicc.minigame;
 
 import dev.epicc.config.MessageService;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -16,21 +15,13 @@ import java.util.function.Consumer;
  */
 public final class DummyMinigame implements Minigame, MinigameSession {
 
-    private final MessageService messages;
     private final String id;
     private final String displayName;
     private int durationSeconds;
     private List<Integer> coinRewards;
-    private BukkitTask task;
+    private MatchScope scope;
 
-    public DummyMinigame(
-            MessageService messages,
-            String id,
-            String displayName,
-            int durationSeconds,
-            List<Integer> coinRewards
-    ) {
-        this.messages = messages;
+    public DummyMinigame(String id, String displayName, int durationSeconds, List<Integer> coinRewards) {
         this.id = id;
         this.displayName = displayName;
         reconfigure(durationSeconds, coinRewards);
@@ -53,18 +44,17 @@ public final class DummyMinigame implements Minigame, MinigameSession {
 
     @Override
     public MinigameSession createSession() {
-        return new DummyMinigame(messages, id, displayName, durationSeconds, coinRewards);
+        return new DummyMinigame(id, displayName, durationSeconds, coinRewards);
     }
 
     @Override
     public void start(MinigameContext context, Consumer<MinigameResult> done) {
-        cancel();
-        for (Player player : context.onlinePlayers()) {
-            messages.send(player, "minigame.dummy-started", "name", displayName);
-        }
+        MessageService messages = context.messages();
+        this.scope = MatchScope.open(context, MatchListener.NONE, done);
+        scope.broadcast("minigame.dummy-started", MessageService.ph("name", displayName));
 
-        task = context.plugin().getServer().getScheduler().runTaskLater(context.plugin(), () -> {
-            List<Player> players = new ArrayList<>(context.onlinePlayers());
+        scope.later(durationSeconds * 20L, () -> {
+            List<Player> players = new ArrayList<>(scope.onlinePlayers());
             Collections.shuffle(players, ThreadLocalRandom.current());
             MinigameResult result = new MinigameResult();
             for (int i = 0; i < players.size(); i++) {
@@ -80,15 +70,14 @@ public final class DummyMinigame implements Minigame, MinigameSession {
                         "coins", Integer.toString(coins)
                 );
             }
-            done.accept(result);
-        }, durationSeconds * 20L);
+            scope.finish(result);
+        });
     }
 
     @Override
     public void cancel() {
-        if (task != null) {
-            task.cancel();
-            task = null;
+        if (scope != null) {
+            scope.close();
         }
     }
 }

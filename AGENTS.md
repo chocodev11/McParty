@@ -101,7 +101,7 @@ src/main/java/dev/epicc/
   command/                    # /party, /partyadmin
   config/PluginConfig.java    # Typed config from config.yml
   containment/                # Slot boundary clamp (move/teleport)
-  minigame/                   # Minigame interface + dummy + manager
+  minigame/                   # Minigame SPI, shared match engines, dummy + hot potato, manager
   party/                      # PartyInstance, PartyManager, state, settings
   player/PlayerSessionService.java  # player UUID → party UUID
   slime/SlimeWorldService.java      # ASP load / clone / unload
@@ -139,9 +139,9 @@ Persistent data at runtime:
 4. `SlimeWorldService` (ASP + FileLoader)
 5. `SeamlessWorldChangeService` (PacketEvents hook if present)
 6. `ResourcePackService` (local HTTP or external URL; optional)
-7. `MinigameManager` (registry/config) + per-controller `MinigameRunner`
+7. `MinigameEventBus` (one shared listener for every session) + `MinigameManager` (registry/config) + per-controller `MinigameRunner`
 8. `PartyManager`
-9. `BoundaryListener`, resource-pack listener, commands
+9. `MinigameEventBus`, `BoundaryListener`, resource-pack listener, commands
 
 `onDisable`: `partyManager.shutdown()` → unload slime worlds → stop resource-pack HTTP → save slots.
 
@@ -268,7 +268,28 @@ public interface MinigameSession {
   loads the arena clone while `PartyManager` owns permit-protected board↔arena transitions; sessions
   receive an optional runtime `MinigameArena` and never manage worlds themselves.
 - Each `BoardTurnController` owns a `MinigameRunner`, which creates one fresh `MinigameSession` for its party and cancels only that session.
-- New minigames: implement `Minigame` (+ `displayName()` and `createSession()`), `registry.register(...)` in bootstrap; do not put game logic in `PartyManager`.
+
+#### Shared match engines — use these, do not re-implement
+
+| Type | Owns |
+|------|------|
+| `MatchScope` | Player roster, `PlayerStateSnapshot` capture/restore, scheduled tasks, damage protection, spectator switch, **one-shot** completion |
+| `EliminationTracker` | Alive set, elimination order → placements + coins (last alive = 1st) |
+| `MinigameEventBus` | **The only** Bukkit listener for minigames; routes events by player to the owning scope |
+| `MatchListener` | Per-session gameplay hooks the bus dispatches to (`MatchListener.NONE` when a game needs none) |
+
+Rules:
+
+- **Never call `registerEvents` from a session.** One handler per event type serves every concurrent
+  party; a listener per session multiplies handler calls by the number of running matches.
+  Need an event the bus does not route yet? Add a hook to `MatchListener` **and** a handler to
+  `MinigameEventBus` — do not register separately.
+- `scope.finish(result)` closes and reports exactly once; `scope.close()` closes without reporting
+  (that is what `MinigameSession.cancel()` should call). Both restore every player.
+- Schedule through `scope.repeating(...)` / `scope.later(...)` so tasks die with the match.
+- Block-modifying games (Spleef, Floor is Lava, Color Chaos) still need a `BlockChangeJournal`
+  (pos → old `BlockData`, batched restore, `setBlockData(..., false)`). Not written yet — build it
+  as a shared engine alongside the first such game, not inside it.
 
 ### Commands & permissions
 
@@ -387,11 +408,40 @@ Match existing style; do not reformat unrelated code.
 
 ### Add a real minigame
 
-1. Implement `Minigame` under `minigame/`.
-2. Register/select in `MinigameManager` (replace or branch from `runDummy`).
-3. Start from `BoardTurnController` after a full turn round (or new triggers).
-4. Return `MinigameResult` with coin/star deltas; apply to `PartyPlayer` on the main thread.
-5. Ensure `cancel()` is safe if party ends mid-minigame.
+1. One class under `minigame/` implementing `Minigame` (definition: `id()`, `displayName()`,
+   optional `arenaSpec()`, `createSession()`) plus `MinigameSession` and, if it needs events,
+   `MatchListener`. `createSession()` must return a **fresh** instance — never `this`.
+2. In `start(context, done)`: open a `MatchScope`, build an `EliminationTracker` (or a score map),
+   then schedule through the scope. Do not capture snapshots or register listeners by hand.
+3. `registry.register(...)` in `McPartyPlugin` bootstrap **and** in `reloadPluginConfig()` if the
+   game reads config (unregister the old id first, as `hot_potato` does).
+4. `cancel()` → `scope.close()`. End of match → `scope.finish(tracker.result())`.
+5. Arena-backed games declare `MinigameArenaSpec`; the runner loads/unloads the clone.
+
+Skeleton — `HotPotatoMinigame` is the reference implementation:
+
+```java
+public final class ExampleMinigame implements Minigame, MinigameSession, MatchListener {
+    private MatchScope scope;
+    private EliminationTracker elimination;
+
+    @Override public MinigameSession createSession() { return new ExampleMinigame(/* config */); }
+
+    @Override public void start(MinigameContext context, Consumer<MinigameResult> done) {
+        this.scope = MatchScope.open(context, this, done);
+        this.elimination = new EliminationTracker(scope.playerIds(), coinRewards);
+        scope.protectFromDamage();
+        scope.repeating(1L, 1L, this::tick);
+    }
+
+    @Override public void onQuit(Player player) {
+        elimination.eliminate(player.getUniqueId());
+        if (elimination.aliveCount() <= 1) scope.finish(elimination.result());
+    }
+
+    @Override public void cancel() { if (scope != null) scope.close(); }
+}
+```
 
 ### Change world load timing
 
@@ -456,6 +506,8 @@ Prefer incremental features that fit the current single-process, in-memory desig
 | `InstanceStore` | Party persistence (memory) |
 | `PlayerSessionService` | Membership index |
 | `Minigame` / `MinigameManager` | Minigame SPI |
+| `MatchScope` / `EliminationTracker` | Shared match lifetime + survival ranking |
+| `MinigameEventBus` / `MatchListener` | Single routed listener for all sessions |
 | `PluginConfig` | Typed settings |
 | `MessageService` | `messages.yml` MiniMessage lookup + placeholders |
 | `ResourcePackService` | Dice pack host + prompt |

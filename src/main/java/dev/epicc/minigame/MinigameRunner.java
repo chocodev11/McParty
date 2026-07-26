@@ -42,14 +42,12 @@ public final class MinigameRunner {
         if (!loadArena(definition, instance, runGeneration, arenaReady, revealFinished, online, transitions, done)) {
             return; // arena unusable — done already accepted, must not also start the reveal
         }
-        if (manager.revealDurationTicks() <= 0) {
+        if (manager.reveal().skip()) {
             revealFinished.set(true);
             if (arenaReady.get()) startIfCurrent(definition, instance, runGeneration, online, transitions, done);
             return;
         }
-        reveal = new MinigameRevealAnimator(manager.plugin(), manager.messages(), manager.revealDurationTicks(),
-                manager.revealIntervalMinTicks(), manager.revealIntervalMaxTicks(), manager.revealExpandIntervalTicks(),
-                manager.revealColorSteps(), manager.revealColorIntervalTicks());
+        reveal = new MinigameRevealAnimator(manager.plugin(), manager.messages(), manager.reveal());
         reveal.start(online, definition, manager.registry().displayNames(), () -> {
             if (!isCurrent(runGeneration)) return;
             reveal = null;
@@ -106,7 +104,10 @@ public final class MinigameRunner {
         if (arena != null) transitions.enter().accept(arena);
         MinigameSession session = definition.createSession();
         active = session;
-        session.start(new MinigameContext(manager.plugin(), instance, stillOnline, arena), result -> {
+        MinigameContext context = new MinigameContext(
+                manager.plugin(), manager.messages(), manager.events(), instance, stillOnline, arena
+        );
+        session.start(context, result -> {
             if (!isCurrent(runGeneration) || active != session) return;
             active = null;
             finish(runGeneration, transitions, done, result);

@@ -14,6 +14,7 @@ import dev.epicc.config.PluginConfig;
 import dev.epicc.containment.BoundaryListener;
 import dev.epicc.minigame.DummyMinigame;
 import dev.epicc.minigame.HotPotatoMinigame;
+import dev.epicc.minigame.MinigameEventBus;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.minigame.MinigameRegistry;
 import dev.epicc.party.LobbyMatchmaker;
@@ -43,6 +44,7 @@ public final class McPartyPlugin extends JavaPlugin {
     private DiceHatService diceHats;
     private PathHopMover pathHopMover;
     private MinigameManager minigames;
+    private MinigameEventBus minigameEvents;
     private final List<DummyMinigame> dummyMinigames = new ArrayList<>();
     private SlimeWorldService slimeWorldService;
 
@@ -86,7 +88,6 @@ public final class McPartyPlugin extends JavaPlugin {
         DummyMinigame firstDummy = null;
         for (String[] def : dummyDefs) {
             DummyMinigame dummy = new DummyMinigame(
-                    messages,
                     def[0],
                     def[1],
                     config.dummyDurationSeconds(),
@@ -104,23 +105,20 @@ public final class McPartyPlugin extends JavaPlugin {
 
         if (config.hotPotatoArena().isValid()) {
             minigameRegistry.register(new HotPotatoMinigame(
-                    messages, config.hotPotatoBombSeconds(), config.hotPotatoThrowVelocity(),
+                    config.hotPotatoBombSeconds(), config.hotPotatoThrowVelocity(),
                     config.hotPotatoArena(), config.dummyCoinRewards()
             ));
         } else {
             getLogger().severe("Hot Potato is disabled: minigame.hot_potato.arena requires a template, spawn, and valid boundary.");
         }
+        minigameEvents = new MinigameEventBus();
         minigames = new MinigameManager(
                 this,
                 messages,
                 minigameRegistry,
                 slimeWorldService,
-                config.minigameRevealDurationTicks(),
-                config.minigameRevealIntervalMinTicks(),
-                config.minigameRevealIntervalMaxTicks(),
-                config.minigameRevealExpandIntervalTicks(),
-                config.minigameRevealColorSteps(),
-                config.minigameRevealColorIntervalTicks()
+                minigameEvents,
+                config.minigameReveal()
         );
 
 
@@ -146,6 +144,8 @@ public final class McPartyPlugin extends JavaPlugin {
                 dicePresenter, diceHats, pathHopMover, resourcePackService
         );
 
+        // One shared listener for every running minigame session (see MinigameEventBus)
+        getServer().getPluginManager().registerEvents(minigameEvents, this);
         getServer().getPluginManager().registerEvents(new BoundaryListener(partyManager, pathHopMover), this);
         getServer().getPluginManager().registerEvents(new DiceClickListener(dicePresenter), this);
         getServer().getPluginManager().registerEvents(pathHopMover, this);
@@ -202,21 +202,14 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.hopRiseMaxSeconds(),
                 config.hopFallMaxSeconds()
         );
-        minigames.reconfigure(
-                config.minigameRevealDurationTicks(),
-                config.minigameRevealIntervalMinTicks(),
-                config.minigameRevealIntervalMaxTicks(),
-                config.minigameRevealExpandIntervalTicks(),
-                config.minigameRevealColorSteps(),
-                config.minigameRevealColorIntervalTicks()
-        );
+        minigames.reconfigure(config.minigameReveal());
         for (DummyMinigame dummy : dummyMinigames) {
             dummy.reconfigure(config.dummyDurationSeconds(), config.dummyCoinRewards());
         }
         minigames.registry().unregister("hot_potato");
         if (config.hotPotatoArena().isValid()) {
             minigames.registry().register(new HotPotatoMinigame(
-                    messages, config.hotPotatoBombSeconds(), config.hotPotatoThrowVelocity(),
+                    config.hotPotatoBombSeconds(), config.hotPotatoThrowVelocity(),
                     config.hotPotatoArena(), config.dummyCoinRewards()
             ));
         } else {

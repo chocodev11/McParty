@@ -49,24 +49,15 @@ final class MinigameRevealAnimator {
 
     private enum Phase { SPIN, EXPAND, COLOR }
 
-    MinigameRevealAnimator(
-            JavaPlugin plugin,
-            MessageService messages,
-            int spinDurationTicks,
-            int intervalMinTicks,
-            int intervalMaxTicks,
-            int expandIntervalTicks,
-            int colorSteps,
-            int colorIntervalTicks
-    ) {
+    MinigameRevealAnimator(JavaPlugin plugin, MessageService messages, MinigameRevealSettings settings) {
         this.plugin = plugin;
         this.messages = messages;
-        this.spinDurationTicks = Math.max(1, spinDurationTicks);
-        this.intervalMinTicks = Math.max(1, intervalMinTicks);
-        this.intervalMaxTicks = Math.max(this.intervalMinTicks, intervalMaxTicks);
-        this.expandIntervalTicks = Math.max(1, expandIntervalTicks);
-        this.colorSteps = Math.max(1, colorSteps);
-        this.colorIntervalTicks = Math.max(1, colorIntervalTicks);
+        this.spinDurationTicks = Math.max(1, settings.durationTicks());
+        this.intervalMinTicks = settings.intervalMinTicks();
+        this.intervalMaxTicks = settings.intervalMaxTicks();
+        this.expandIntervalTicks = settings.expandIntervalTicks();
+        this.colorSteps = settings.colorSteps();
+        this.colorIntervalTicks = settings.colorIntervalTicks();
     }
 
     void start(List<Player> players, Minigame picked, List<String> poolNames, Runnable onDone) {

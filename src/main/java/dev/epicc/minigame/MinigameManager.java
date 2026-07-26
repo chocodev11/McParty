@@ -18,53 +18,27 @@ public final class MinigameManager {
     private final MessageService messages;
     private final MinigameRegistry registry;
     private final SlimeWorldService slime;
-    private int revealDurationTicks;
-    private int revealIntervalMinTicks;
-    private int revealIntervalMaxTicks;
-    private int revealExpandIntervalTicks;
-    private int revealColorSteps;
-    private int revealColorIntervalTicks;
+    private final MinigameEventBus events;
+    private MinigameRevealSettings reveal;
 
     public MinigameManager(
             JavaPlugin plugin,
             MessageService messages,
             MinigameRegistry registry,
             SlimeWorldService slime,
-            int revealDurationTicks,
-            int revealIntervalMinTicks,
-            int revealIntervalMaxTicks,
-            int revealExpandIntervalTicks,
-            int revealColorSteps,
-            int revealColorIntervalTicks
+            MinigameEventBus events,
+            MinigameRevealSettings reveal
     ) {
         this.plugin = plugin;
         this.messages = messages;
         this.registry = registry;
         this.slime = slime;
-        reconfigure(
-                revealDurationTicks,
-                revealIntervalMinTicks,
-                revealIntervalMaxTicks,
-                revealExpandIntervalTicks,
-                revealColorSteps,
-                revealColorIntervalTicks
-        );
+        this.events = events;
+        this.reveal = reveal;
     }
 
-    public void reconfigure(
-            int revealDurationTicks,
-            int revealIntervalMinTicks,
-            int revealIntervalMaxTicks,
-            int revealExpandIntervalTicks,
-            int revealColorSteps,
-            int revealColorIntervalTicks
-    ) {
-        this.revealDurationTicks = revealDurationTicks;
-        this.revealIntervalMinTicks = revealIntervalMinTicks;
-        this.revealIntervalMaxTicks = revealIntervalMaxTicks;
-        this.revealExpandIntervalTicks = revealExpandIntervalTicks;
-        this.revealColorSteps = revealColorSteps;
-        this.revealColorIntervalTicks = revealColorIntervalTicks;
+    public void reconfigure(MinigameRevealSettings reveal) {
+        this.reveal = reveal;
     }
 
     public MinigameRegistry registry() {
@@ -88,31 +62,15 @@ public final class MinigameManager {
         return messages;
     }
 
+    MinigameEventBus events() {
+        return events;
+    }
+
     SlimeWorldService slime() {
         return slime;
     }
 
-    int revealDurationTicks() {
-        return revealDurationTicks;
-    }
-
-    int revealIntervalMinTicks() {
-        return revealIntervalMinTicks;
-    }
-
-    int revealIntervalMaxTicks() {
-        return revealIntervalMaxTicks;
-    }
-
-    int revealExpandIntervalTicks() {
-        return revealExpandIntervalTicks;
-    }
-
-    int revealColorSteps() {
-        return revealColorSteps;
-    }
-
-    int revealColorIntervalTicks() {
-        return revealColorIntervalTicks;
+    MinigameRevealSettings reveal() {
+        return reveal;
     }
 }
