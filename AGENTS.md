@@ -114,6 +114,7 @@ src/main/resources/
   config.yml
 
 resourcepack/                 # Dice models (bundled into jar; extracted for local mode)
+datapack/                     # `mcparty:mcparty_sky` biome (NOT bundled; copied into the level world by hand)
 ```
 
 Persistent data at runtime:
@@ -349,6 +350,16 @@ Config keys under `slime:` — see `config.yml` and `PluginConfig`.
 - Keep `compileOnly` for `api`; only shade loader artifacts that are not on the server.
 - Prefer InfernalSuite snapshots/releases repos already in `build.gradle.kts`.
 - Do not invent a second world lifecycle; reuse `instanceWorlds` mapping.
+
+### Board sky color
+
+Datapacks are registry-wide, so a biome defined in `<level-name>/datapacks/`
+resolves inside slime worlds too. `datapack/` holds `mcparty:mcparty_sky`
+(`minecraft:visual/sky_color` = `#70dbff`). Paint the template world with
+`/fillbiome` **before** exporting the `.slime` — the biome is stored in the
+slime file, so clones inherit it for free. Do not repaint at world load;
+`World#setBiome` is per 4×4×4 cell and would cost tens of thousands of calls
+per party.
 
 ---
 
