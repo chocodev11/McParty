@@ -30,14 +30,11 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ThreadLocalRandom;
 
 public final class PartyManager {
 
@@ -188,14 +185,21 @@ public final class PartyManager {
             return silent ? Optional.empty() : Optional.of(messages.get("party.not-in"));
         }
         PartyInstance instance = opt.get();
+        UUID playerId = player.getUniqueId();
+        // Drop this player's board visuals without stalling the round: a pending roll is
+        // settled (not cancelled) and an active hop still fires its callback.
+        dicePresenter.trySettle(player);
+        pathHopMover.release(playerId);
+        diceHats.clear(playerId);
+
         if (instance.state() != PartyState.WAITING && player.isOnline()) {
             Location fallback = fallbackLocation();
             transitions.permit(player, fallback);
             seamless.teleport(player, fallback);
         }
-        transitions.clear(player.getUniqueId());
-        sessions.unbind(player.getUniqueId());
-        instance.removePlayer(player.getUniqueId());
+        transitions.clear(playerId);
+        sessions.unbind(playerId);
+        instance.removePlayer(playerId);
 
         if (!silent) {
             messages.send(player, "party.left-self");
@@ -547,23 +551,5 @@ public final class PartyManager {
         return store.all().stream()
                 .filter(i -> i.shortId().equalsIgnoreCase(lower) || i.id().toString().startsWith(lower))
                 .findFirst();
-    }
-
-    /** Random horizontal offset within {@code radius} blocks of center (same Y/yaw/pitch). */
-    private static Location scatterAround(Location center, double radius) {
-        if (center == null || center.getWorld() == null) {
-            return center;
-        }
-        ThreadLocalRandom rng = ThreadLocalRandom.current();
-        double angle = rng.nextDouble() * Math.PI * 2.0;
-        double dist = Math.sqrt(rng.nextDouble()) * radius;
-        return new Location(
-                center.getWorld(),
-                center.getX() + Math.cos(angle) * dist,
-                center.getY(),
-                center.getZ() + Math.sin(angle) * dist,
-                center.getYaw(),
-                center.getPitch()
-        );
     }
 }

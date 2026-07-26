@@ -33,10 +33,6 @@ public final class MinigameRegistry {
         return Optional.ofNullable(byId.get(id.toLowerCase()));
     }
 
-    public Minigame fallback() {
-        return fallback;
-    }
-
     public Collection<Minigame> all() {
         return List.copyOf(byId.values());
     }

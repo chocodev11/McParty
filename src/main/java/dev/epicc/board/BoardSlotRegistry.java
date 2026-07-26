@@ -13,10 +13,12 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.logging.Level;
 
 public final class BoardSlotRegistry {
@@ -189,15 +191,26 @@ public final class BoardSlotRegistry {
     }
 
     /**
-     * ASP clones reuse a board definition; permanent fallback worlds require an exclusive claim.
+     * ASP clones reuse a board definition (no claim needed, board picked at random);
+     * permanent fallback worlds require an exclusive claim.
      */
     public Optional<BoardSlot> acquire(java.util.UUID instanceId, boolean exclusive) {
+        List<BoardSlot> candidates = new ArrayList<>();
         for (BoardSlot slot : slots.values()) {
-            if (!slot.isReady()) {
+            if (!slot.isReady() || (exclusive && !slot.isFree())) {
                 continue;
             }
-            if ((!exclusive || slot.isFree()) && slot.claim(instanceId)) {
-                if (!exclusive) slot.release();
+            candidates.add(slot);
+        }
+        if (candidates.isEmpty()) {
+            return Optional.empty();
+        }
+        if (!exclusive) {
+            return Optional.of(candidates.get(ThreadLocalRandom.current().nextInt(candidates.size())));
+        }
+        Collections.shuffle(candidates, ThreadLocalRandom.current());
+        for (BoardSlot slot : candidates) {
+            if (slot.claim(instanceId)) {
                 return Optional.of(slot);
             }
         }

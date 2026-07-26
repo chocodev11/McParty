@@ -136,14 +136,6 @@ public final class SlimeWorldService {
         return names;
     }
 
-    public Optional<String> worldOf(UUID instanceId) {
-        Set<String> worlds = instanceWorlds.get(instanceId);
-        if (worlds != null && !worlds.isEmpty()) {
-            return Optional.of(worlds.iterator().next());
-        }
-        return Optional.empty();
-    }
-
     /** True if this Bukkit world is a live per-party slime clone managed by this service. */
     public boolean isInstanceWorld(World world) {
         if (world == null || instanceWorlds.isEmpty()) {
@@ -166,14 +158,6 @@ public final class SlimeWorldService {
             }
         }
         return Optional.empty();
-    }
-
-    public Optional<World> getOrLoadWorld(UUID instanceId, String templateName) {
-        Optional<World> loaded = getLoadedWorld(instanceId, templateName);
-        if (loaded.isPresent()) {
-            return loaded;
-        }
-        return loadForInstance(instanceId, templateName);
     }
 
     /**

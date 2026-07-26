@@ -12,7 +12,6 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
-import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Snowball;
@@ -66,7 +65,6 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Liste
     private NamespacedKey potatoKey;
 
     private final Map<UUID, PlayerStateSnapshot> snapshots = new HashMap<>();
-    private final Map<UUID, Location> initialLocations = new HashMap<>();
     private final Set<UUID> matchPlayers = new HashSet<>();
     private final Set<UUID> alivePlayers = new HashSet<>();
     private final List<UUID> eliminationOrder = new ArrayList<>();
@@ -74,8 +72,9 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Liste
     private UUID currentHolder;
     private int bombTimerTicks;
     private BukkitTask task;
-    private Item activeGroundPotato;
     private Projectile activeThrownPotato;
+    /** Potato is mid-flight: nobody holds the item until the projectile resolves. */
+    private boolean potatoInFlight;
 
     public HotPotatoMinigame(
             MessageService messages,
@@ -129,9 +128,8 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Liste
         alivePlayers.clear();
         eliminationOrder.clear();
         snapshots.clear();
-        initialLocations.clear();
-        activeGroundPotato = null;
         activeThrownPotato = null;
+        potatoInFlight = false;
 
         List<Player> players = new ArrayList<>(context.onlinePlayers());
         if (players.isEmpty()) {
@@ -142,7 +140,6 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Liste
         for (Player p : players) {
             matchPlayers.add(p.getUniqueId());
             alivePlayers.add(p.getUniqueId());
-            initialLocations.put(p.getUniqueId(), p.getLocation());
             snapshots.put(p.getUniqueId(), PlayerStateSnapshot.capture(p));
             PlayerStateSnapshot.preparePhase(p);
         }
@@ -171,6 +168,16 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Liste
             }
 
             bombTimerTicks--;
+
+            // Projectile died without a hit event (despawn / world unload) — give the potato back
+            if (potatoInFlight && (activeThrownPotato == null || !activeThrownPotato.isValid())) {
+                activeThrownPotato = null;
+                if (currentHolder != null) {
+                    givePotatoTo(currentHolder);
+                } else {
+                    selectRandomHolder();
+                }
+            }
 
             // Action bar & visual FX for current holder
             Player holder = currentHolder != null ? Bukkit.getPlayer(currentHolder) : null;
@@ -214,6 +221,8 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Liste
 
         alivePlayers.remove(explodedId);
         eliminationOrder.add(explodedId);
+        // A snowball still in the air would hand the potato out after the bomb already went off
+        clearThrownPotato();
 
         broadcastMessage("minigame.hot-potato-exploded", "player", holder != null ? holder.getName() : "A player");
 
@@ -237,6 +246,7 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Liste
 
     private void givePotatoTo(UUID playerId) {
         currentHolder = playerId;
+        potatoInFlight = false;
         Player p = Bukkit.getPlayer(playerId);
         if (p != null && p.isOnline()) {
             p.getInventory().clear();
@@ -321,6 +331,7 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Liste
         projectile.getPersistentDataContainer().set(potatoKey, PersistentDataType.BYTE, (byte) 1);
 
         activeThrownPotato = projectile;
+        potatoInFlight = true;
         shooter.playSound(shooter.getLocation(), Sound.ENTITY_SNOWBALL_THROW, 1.0f, 1.0f);
     }
 
@@ -332,6 +343,7 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Liste
         snowball.remove();
         if (snowball.equals(activeThrownPotato)) {
             activeThrownPotato = null;
+            potatoInFlight = false;
         }
 
         Player shooter = snowball.getShooter() instanceof Player ? (Player) snowball.getShooter() : null;
@@ -391,9 +403,6 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Liste
         if (isPotatoItem(event.getItem().getItemStack())) {
             event.setCancelled(true);
             event.getItem().remove();
-            if (event.getItem().equals(activeGroundPotato)) {
-                activeGroundPotato = null;
-            }
             givePotatoTo(player.getUniqueId());
         }
     }
@@ -435,15 +444,7 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Liste
             task = null;
         }
         HandlerList.unregisterAll(this);
-
-        if (activeGroundPotato != null && !activeGroundPotato.isDead()) {
-            activeGroundPotato.remove();
-            activeGroundPotato = null;
-        }
-        if (activeThrownPotato != null && !activeThrownPotato.isDead()) {
-            activeThrownPotato.remove();
-            activeThrownPotato = null;
-        }
+        clearThrownPotato();
 
         // Add remaining survivor(s) to elimination order in 1st place
         List<UUID> finalPlacements = new ArrayList<>(alivePlayers);
@@ -511,15 +512,7 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Liste
             task = null;
         }
         HandlerList.unregisterAll(this);
-
-        if (activeGroundPotato != null && !activeGroundPotato.isDead()) {
-            activeGroundPotato.remove();
-            activeGroundPotato = null;
-        }
-        if (activeThrownPotato != null && !activeThrownPotato.isDead()) {
-            activeThrownPotato.remove();
-            activeThrownPotato = null;
-        }
+        clearThrownPotato();
 
         for (UUID id : matchPlayers) {
             Player p = Bukkit.getPlayer(id);
@@ -535,6 +528,13 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Liste
         matchPlayers.clear();
         alivePlayers.clear();
         snapshots.clear();
-        initialLocations.clear();
+    }
+
+    private void clearThrownPotato() {
+        if (activeThrownPotato != null && !activeThrownPotato.isDead()) {
+            activeThrownPotato.remove();
+        }
+        activeThrownPotato = null;
+        potatoInFlight = false;
     }
 }

@@ -5,9 +5,7 @@ import dev.epicc.slime.SlimeWorldService;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 
-import java.util.HashSet;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Consumer;
 
 /**
@@ -80,19 +78,6 @@ public final class MinigameManager {
     /** Run an isolated minigame session for admin testing. */
     public void runSpecific(Minigame minigame, List<Player> players, Consumer<MinigameResult> done) {
         createRunner().run(minigame, null, players, ArenaTransitions.none(), done);
-    }
-
-    /** Gather all ASP slime template names declared by registered minigames. */
-    public Set<String> getSlimeTemplates() {
-        Set<String> templates = new HashSet<>();
-        for (Minigame minigame : registry.all()) {
-            minigame.arenaSpec().ifPresent(spec -> {
-                if (!spec.template().isBlank()) {
-                    templates.add(spec.template().trim());
-                }
-            });
-        }
-        return templates;
     }
 
     JavaPlugin plugin() {

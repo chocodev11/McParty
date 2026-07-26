@@ -83,6 +83,17 @@ public final class PathHopMover implements Listener {
         }
     }
 
+    /**
+     * Stop this player's hop but still run {@code onDone}, so a board round that waits
+     * on the hop chain keeps advancing (player left / disconnected mid-hop).
+     */
+    public void release(UUID playerId) {
+        Hop hop = hops.get(playerId);
+        if (hop != null) {
+            finish(hop, true);
+        }
+    }
+
     /** Abort hop without running {@code onDone} (party end / replace). */
     public void cancel(UUID playerId) {
         Hop hop = hops.remove(playerId);
@@ -123,7 +134,8 @@ public final class PathHopMover implements Listener {
     private void tick(Hop hop) {
         Player player = plugin.getServer().getPlayer(hop.playerId);
         if (player == null || !player.isOnline()) {
-            finish(hop, false);
+            // Still call back — the board round waits on this hop before the next player moves
+            finish(hop, true);
             return;
         }
 
@@ -234,7 +246,7 @@ public final class PathHopMover implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         UUID id = event.getPlayer().getUniqueId();
-        cancel(id);
+        release(id);
         fallImmune.remove(id);
     }
 

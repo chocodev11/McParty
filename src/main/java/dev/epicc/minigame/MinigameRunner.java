@@ -39,7 +39,9 @@ public final class MinigameRunner {
 
         AtomicBoolean arenaReady = new AtomicBoolean(true);
         AtomicBoolean revealFinished = new AtomicBoolean(false);
-        loadArena(definition, instance, runGeneration, arenaReady, revealFinished, online, transitions, done);
+        if (!loadArena(definition, instance, runGeneration, arenaReady, revealFinished, online, transitions, done)) {
+            return; // arena unusable — done already accepted, must not also start the reveal
+        }
         if (manager.revealDurationTicks() <= 0) {
             revealFinished.set(true);
             if (arenaReady.get()) startIfCurrent(definition, instance, runGeneration, online, transitions, done);
@@ -63,16 +65,17 @@ public final class MinigameRunner {
         unloadArena();
     }
 
-    private void loadArena(Minigame definition, PartyInstance instance, long runGeneration, AtomicBoolean arenaReady,
-                           AtomicBoolean revealFinished, List<Player> online, ArenaTransitions transitions,
-                           Consumer<MinigameResult> done) {
+    /** @return false when the arena is unusable and {@code done} has already been accepted. */
+    private boolean loadArena(Minigame definition, PartyInstance instance, long runGeneration, AtomicBoolean arenaReady,
+                              AtomicBoolean revealFinished, List<Player> online, ArenaTransitions transitions,
+                              Consumer<MinigameResult> done) {
         Optional<MinigameArenaSpec> specOpt = definition.arenaSpec();
-        if (specOpt.isEmpty()) return;
+        if (specOpt.isEmpty()) return true;
         MinigameArenaSpec spec = specOpt.get();
         SlimeWorldService slime = manager.slime();
         if (!spec.isValid() || slime == null || !slime.isReady()) {
             done.accept(new MinigameResult());
-            return;
+            return false;
         }
         arenaReady.set(false);
         UUID owner = instance != null ? instance.id() : UUID.randomUUID();
@@ -81,12 +84,17 @@ public final class MinigameRunner {
                 worldOpt.ifPresent(world -> slime.unloadWorldForInstance(owner, world));
                 return;
             }
-            if (worldOpt.isEmpty()) { done.accept(new MinigameResult()); return; }
+            if (worldOpt.isEmpty()) {
+                cancel(); // stop the reveal already running, then end the round once
+                done.accept(new MinigameResult());
+                return;
+            }
             arenaOwner = owner;
             arenaWorld = worldOpt.get();
             arenaReady.set(true);
             if (revealFinished.get()) startIfCurrent(definition, instance, runGeneration, online, transitions, done);
         });
+        return true;
     }
 
     private void startIfCurrent(Minigame definition, PartyInstance instance, long runGeneration, List<Player> online,
@@ -120,7 +128,11 @@ public final class MinigameRunner {
     }
 
     private void unloadArena() {
-        if (arenaWorld != null && arenaOwner != null) manager.slime().unloadWorldForInstance(arenaOwner, arenaWorld);
+        // Force-cancel can run before players are evacuated; party cleanup unloads those
+        // worlds via the instance mapping, so skip instead of logging a refusal.
+        if (arenaWorld != null && arenaOwner != null && arenaWorld.getPlayers().isEmpty()) {
+            manager.slime().unloadWorldForInstance(arenaOwner, arenaWorld);
+        }
         arenaWorld = null;
         arenaOwner = null;
     }

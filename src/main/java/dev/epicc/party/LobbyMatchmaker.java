@@ -3,6 +3,7 @@ package dev.epicc.party;
 import com.infernalsuite.asp.api.world.SlimeWorld;
 import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
+import dev.epicc.containment.SlotBoundary;
 import dev.epicc.player.PlayerSessionService;
 import dev.epicc.seamless.SeamlessWorldChangeService;
 import dev.epicc.slime.SlimeWorldService;
@@ -12,7 +13,6 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Optional;
@@ -127,21 +127,10 @@ public final class LobbyMatchmaker implements Listener {
                         teleportToLobby(p, lobbyWorld.get());
                     }
                 }
+                // Only clamp once everyone is inside — the boundary lives in the clone world
+                bindLobbyArea(newInstance, lobbyWorld.get());
             });
         });
-    }
-
-    @EventHandler
-    public void onPlayerQuit(PlayerQuitEvent event) {
-        // If they quit during WAITING, they leave the party automatically.
-        Player player = event.getPlayer();
-        Optional<PartyInstance> opt = partyManager.instanceOf(player.getUniqueId());
-        if (opt.isPresent()) {
-            PartyInstance instance = opt.get();
-            if (instance.state() == PartyState.WAITING) {
-                partyManager.leave(player, true);
-            }
-        }
     }
 
     private void teleportToLobby(Player player, UUID instanceId) {
@@ -150,7 +139,21 @@ public final class LobbyMatchmaker implements Listener {
     }
 
     private void teleportToLobby(Player player, World world) {
-        Location spawn = new Location(
+        seamless.teleport(player, lobbySpawn(world));
+    }
+
+    /** Contain waiting players inside the configured {@code lobby.boundary} of their own clone. */
+    private void bindLobbyArea(PartyInstance instance, World world) {
+        SlotBoundary boundary = new SlotBoundary(
+                world,
+                config.lobbyBoundMinX(), config.lobbyBoundMinY(), config.lobbyBoundMinZ(),
+                config.lobbyBoundMaxX(), config.lobbyBoundMaxY(), config.lobbyBoundMaxZ()
+        );
+        instance.setActivePlayArea(new PartyPlayArea(world, lobbySpawn(world), boundary));
+    }
+
+    private Location lobbySpawn(World world) {
+        return new Location(
                 world,
                 config.lobbySpawnX(),
                 config.lobbySpawnY(),
@@ -158,6 +161,5 @@ public final class LobbyMatchmaker implements Listener {
                 config.lobbySpawnYaw(),
                 config.lobbySpawnPitch()
         );
-        seamless.teleport(player, spawn);
     }
 }

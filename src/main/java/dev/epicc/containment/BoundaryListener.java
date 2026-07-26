@@ -52,9 +52,8 @@ public final class BoundaryListener implements Listener {
         if (instance == null || instance.activePlayArea() == null) {
             return;
         }
-        if (instance.state() != PartyState.STARTING
-                && instance.state() != PartyState.PLAYING
-                && instance.state() != PartyState.ENDING) {
+        // WAITING has a play area only once the lobby clone is loaded; CLEANUP is releasing worlds
+        if (instance.state() == PartyState.CLEANUP) {
             return;
         }
 
