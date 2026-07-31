@@ -5,6 +5,8 @@ import dev.epicc.board.BoardSlot;
 import dev.epicc.board.BoardSlotRegistry;
 import dev.epicc.board.setup.PathSetupService;
 import dev.epicc.config.MessageService;
+import dev.epicc.config.PluginConfig;
+import dev.epicc.lobby.parkour.LobbyParkourPoint;
 import dev.epicc.minigame.Minigame;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.slime.SlimeWorldService;
@@ -32,6 +34,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
     private final MessageService messages;
     private final SlimeWorldService slime;
     private final MinigameManager minigames;
+    private final PluginConfig config;
 
     public PartyAdminCommand(
             McPartyPlugin plugin,
@@ -39,7 +42,8 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             PathSetupService pathSetup,
             MessageService messages,
             SlimeWorldService slime,
-            MinigameManager minigames
+            MinigameManager minigames,
+            PluginConfig config
     ) {
         this.plugin = plugin;
         this.slots = slots;
@@ -47,6 +51,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         this.messages = messages;
         this.slime = slime;
         this.minigames = minigames;
+        this.config = config;
     }
 
     @Override
@@ -82,6 +87,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         switch (group) {
             case "slot" -> handleSlot(player, args);
             case "path" -> handlePath(player, args);
+            case "parkour" -> handleParkour(player, args);
             default -> help(player);
         }
         return true;
@@ -220,17 +226,59 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         err.ifPresent(player::sendMessage);
     }
 
+    private void handleParkour(Player player, String[] args) {
+        if (args.length < 2) {
+            messages.send(player, "admin.parkour-usage");
+            return;
+        }
+        String sub = args[1].toLowerCase(Locale.ROOT);
+        LobbyParkourPoint point = LobbyParkourPoint.beneath(player.getLocation());
+        switch (sub) {
+            case "start" -> {
+                config.setLobbyParkourStart(point);
+                messages.send(player, "admin.parkour-start-set");
+            }
+            case "checkpoint" -> {
+                config.addLobbyParkourCheckpoint(point);
+                messages.send(player, "admin.parkour-checkpoint-added", "count",
+                        Integer.toString(config.lobbyParkour().checkpoints().size()));
+            }
+            case "goal" -> {
+                config.setLobbyParkourGoal(point);
+                messages.send(player, "admin.parkour-goal-set");
+            }
+            case "remove-checkpoint" -> {
+                if (args.length < 3 || !args[2].matches("\\d+")) {
+                    messages.send(player, "admin.parkour-remove-checkpoint-usage");
+                    return;
+                }
+                int index = Integer.parseInt(args[2]) - 1;
+                if (config.removeLobbyParkourCheckpoint(index)) {
+                    messages.send(player, "admin.parkour-checkpoint-removed", "index", args[2]);
+                } else {
+                    messages.send(player, "admin.parkour-checkpoint-not-found", "index", args[2]);
+                }
+            }
+            case "clear" -> {
+                config.clearLobbyParkour();
+                messages.send(player, "admin.parkour-cleared");
+            }
+            default -> messages.send(player, "admin.parkour-usage");
+        }
+    }
+
     private void help(CommandSender sender) {
         messages.send(sender, "admin.help-path");
         messages.send(sender, "admin.help-slot");
         messages.send(sender, "admin.help-minigame");
+        messages.send(sender, "admin.help-parkour");
         messages.send(sender, "admin.help-reload");
     }
 
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filter(List.of("slot", "path", "minigame", "reload"), args[0]);
+            return filter(List.of("slot", "path", "parkour", "minigame", "reload"), args[0]);
         }
         if (args.length == 2) {
             String g = args[0].toLowerCase(Locale.ROOT);
@@ -239,6 +287,9 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             }
             if (g.equals("path")) {
                 return filter(List.of("create", "undo", "end", "remove", "slime"), args[1]);
+            }
+            if (g.equals("parkour")) {
+                return filter(List.of("start", "checkpoint", "goal", "remove-checkpoint", "clear"), args[1]);
             }
             if (g.equals("minigame") || g.equals("mg")) {
                 return filter(minigames.registry().ids(), args[1]);
@@ -256,6 +307,13 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             if (g.equals("minigame") || g.equals("mg")) {
                 List<String> names = Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
                 return filter(names, args[2]);
+            }
+            if (g.equals("parkour") && s.equals("remove-checkpoint")) {
+                List<String> indices = new ArrayList<>();
+                for (int i = 1; i <= config.lobbyParkour().checkpoints().size(); i++) {
+                    indices.add(Integer.toString(i));
+                }
+                return filter(indices, args[2]);
             }
             return List.of();
         }

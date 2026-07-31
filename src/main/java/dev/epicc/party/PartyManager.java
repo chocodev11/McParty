@@ -15,6 +15,7 @@ import dev.epicc.minigame.MinigameArena;
 import dev.epicc.minigame.PlayerStateSnapshot;
 import dev.epicc.player.PlayerSessionService;
 import dev.epicc.resourcepack.ResourcePackService;
+import dev.epicc.lobby.parkour.LobbyParkourService;
 import dev.epicc.seamless.SeamlessWorldChangeService;
 import dev.epicc.slime.SlimeWorldService;
 import dev.epicc.store.InstanceStore;
@@ -53,6 +54,7 @@ public final class PartyManager {
     private final ResourcePackService resourcePacks;
     private final PartyTransitionService transitions;
     private final Map<UUID, BoardTurnController> controllers = new ConcurrentHashMap<>();
+    private LobbyParkourService lobbyParkour;
 
 
     public PartyManager(
@@ -92,6 +94,10 @@ public final class PartyManager {
 
     public MessageService messages() {
         return messages;
+    }
+
+    public void setLobbyParkour(LobbyParkourService lobbyParkour) {
+        this.lobbyParkour = lobbyParkour;
     }
 
     public Optional<PartyInstance> instanceOf(UUID playerId) {
@@ -180,6 +186,9 @@ public final class PartyManager {
     }
 
     public Optional<Component> leave(Player player, boolean silent) {
+        if (lobbyParkour != null) {
+            lobbyParkour.stopSilently(player);
+        }
         Optional<PartyInstance> opt = instanceOf(player.getUniqueId());
         if (opt.isEmpty()) {
             return silent ? Optional.empty() : Optional.of(messages.get("party.not-in"));
@@ -391,6 +400,9 @@ public final class PartyManager {
         for (PartyPlayer pp : instance.players()) {
             Player p = plugin.getServer().getPlayer(pp.uuid());
             if (p != null && p.isOnline()) {
+                if (lobbyParkour != null) {
+                    lobbyParkour.stopSilently(p);
+                }
                 PlayerStateSnapshot.preparePhase(p);
                 online.add(p);
                 p.showTitle(startTitle);
@@ -483,6 +495,9 @@ public final class PartyManager {
             transitions.clear(pp.uuid());
             Player player = plugin.getServer().getPlayer(pp.uuid());
             if (player != null && player.isOnline()) {
+                if (lobbyParkour != null) {
+                    lobbyParkour.stopSilently(player);
+                }
                 Location fallback = fallbackLocation();
                 transitions.permit(player, fallback);
                 seamless.teleport(player, fallback);

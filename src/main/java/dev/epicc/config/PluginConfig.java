@@ -2,11 +2,15 @@ package dev.epicc.config;
 
 import dev.epicc.minigame.MinigameArenaSpec;
 import dev.epicc.minigame.MinigameRevealSettings;
+import dev.epicc.lobby.parkour.LobbyParkourDefinition;
+import dev.epicc.lobby.parkour.LobbyParkourPoint;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 public final class PluginConfig {
 
@@ -78,6 +82,7 @@ public final class PluginConfig {
     private int lobbyBoundMaxX;
     private int lobbyBoundMaxY;
     private int lobbyBoundMaxZ;
+    private LobbyParkourDefinition lobbyParkour;
 
     public PluginConfig(JavaPlugin plugin) {
         this.plugin = plugin;
@@ -189,6 +194,14 @@ public final class PluginConfig {
         lobbyBoundMaxX = c.getInt("lobby.boundary.maxX", 50);
         lobbyBoundMaxY = c.getInt("lobby.boundary.maxY", 256);
         lobbyBoundMaxZ = c.getInt("lobby.boundary.maxZ", 50);
+        lobbyParkour = new LobbyParkourDefinition(
+                point(c, "lobby.parkour.start"),
+                c.getMapList("lobby.parkour.checkpoints").stream()
+                        .map(PluginConfig::point)
+                        .filter(java.util.Objects::nonNull)
+                        .toList(),
+                point(c, "lobby.parkour.goal")
+        );
     }
 
     private static String nullToEmpty(String s) {
@@ -264,4 +277,70 @@ public final class PluginConfig {
     public int lobbyBoundMaxX() { return lobbyBoundMaxX; }
     public int lobbyBoundMaxY() { return lobbyBoundMaxY; }
     public int lobbyBoundMaxZ() { return lobbyBoundMaxZ; }
+    public LobbyParkourDefinition lobbyParkour() { return lobbyParkour; }
+
+    public void setLobbyParkourStart(LobbyParkourPoint point) {
+        plugin.getConfig().set("lobby.parkour.start", pointMap(point));
+        plugin.saveConfig();
+        lobbyParkour = new LobbyParkourDefinition(point, lobbyParkour.checkpoints(), lobbyParkour.goal());
+    }
+
+    public void addLobbyParkourCheckpoint(LobbyParkourPoint point) {
+        List<LobbyParkourPoint> checkpoints = new ArrayList<>(lobbyParkour.checkpoints());
+        checkpoints.add(point);
+        saveLobbyParkourCheckpoints(checkpoints);
+    }
+
+    public boolean removeLobbyParkourCheckpoint(int index) {
+        List<LobbyParkourPoint> checkpoints = new ArrayList<>(lobbyParkour.checkpoints());
+        if (index < 0 || index >= checkpoints.size()) {
+            return false;
+        }
+        checkpoints.remove(index);
+        saveLobbyParkourCheckpoints(checkpoints);
+        return true;
+    }
+
+    public void setLobbyParkourGoal(LobbyParkourPoint point) {
+        plugin.getConfig().set("lobby.parkour.goal", pointMap(point));
+        plugin.saveConfig();
+        lobbyParkour = new LobbyParkourDefinition(lobbyParkour.start(), lobbyParkour.checkpoints(), point);
+    }
+
+    public void clearLobbyParkour() {
+        plugin.getConfig().set("lobby.parkour", null);
+        plugin.saveConfig();
+        lobbyParkour = new LobbyParkourDefinition(null, List.of(), null);
+    }
+
+    private void saveLobbyParkourCheckpoints(List<LobbyParkourPoint> checkpoints) {
+        plugin.getConfig().set("lobby.parkour.checkpoints", checkpoints.stream().map(PluginConfig::pointMap).toList());
+        plugin.saveConfig();
+        lobbyParkour = new LobbyParkourDefinition(lobbyParkour.start(), checkpoints, lobbyParkour.goal());
+    }
+
+    private static LobbyParkourPoint point(FileConfiguration config, String path) {
+        if (!config.isConfigurationSection(path)) {
+            return null;
+        }
+        return new LobbyParkourPoint(config.getInt(path + ".x"), config.getInt(path + ".y"), config.getInt(path + ".z"));
+    }
+
+    private static LobbyParkourPoint point(Map<?, ?> map) {
+        Object x = map.get("x");
+        Object y = map.get("y");
+        Object z = map.get("z");
+        if (!(x instanceof Number xNumber) || !(y instanceof Number yNumber) || !(z instanceof Number zNumber)) {
+            return null;
+        }
+        return new LobbyParkourPoint(xNumber.intValue(), yNumber.intValue(), zNumber.intValue());
+    }
+
+    private static Map<String, Integer> pointMap(LobbyParkourPoint point) {
+        Map<String, Integer> out = new LinkedHashMap<>();
+        out.put("x", point.x());
+        out.put("y", point.y());
+        out.put("z", point.z());
+        return out;
+    }
 }

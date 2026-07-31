@@ -50,8 +50,8 @@ public final class BoardSlotRegistry {
             String worldName = sec.getString("world");
             World world = worldName != null ? Bukkit.getWorld(worldName) : null;
             if (world == null) {
-                plugin.getLogger().warning("Slot '" + id + "' world missing: " + worldName);
-                continue;
+                plugin.getLogger().info("Slot '" + id + "' setup world is unavailable: " + worldName
+                        + " (the slot remains usable with slime worlds)");
             }
             // Per-board ASP template; missing key keeps empty (PartyManager falls back to config default).
             String slimeTemplate = sec.getString("slime-template", "");
@@ -92,7 +92,7 @@ public final class BoardSlotRegistry {
             }
             slots.put(
                     id.toLowerCase(),
-                    new BoardSlot(id.toLowerCase(), world, slimeTemplate, boundary, path, spawn)
+                    new BoardSlot(id.toLowerCase(), world, worldName, slimeTemplate, boundary, path, spawn)
             );
         }
         plugin.getLogger().info("Loaded " + slots.size() + " board slot(s)");
@@ -102,7 +102,7 @@ public final class BoardSlotRegistry {
         FileConfiguration conf = new YamlConfiguration();
         for (BoardSlot slot : slots.values()) {
             String base = "slots." + slot.id();
-            conf.set(base + ".world", slot.world().getName());
+            conf.set(base + ".world", slot.setupWorldName());
             conf.set(base + ".slime-template", slot.slimeTemplate());
             SlotBoundary b = slot.boundary();
             conf.set(base + ".minX", b.minX());
@@ -154,7 +154,7 @@ public final class BoardSlotRegistry {
             return false;
         }
         String template = slimeTemplate != null ? slimeTemplate.trim() : "";
-        slots.put(key, new BoardSlot(key, world, template, boundary, path, spawn));
+        slots.put(key, new BoardSlot(key, world, world.getName(), template, boundary, path, spawn));
         save();
         return true;
     }
@@ -197,7 +197,7 @@ public final class BoardSlotRegistry {
     public Optional<BoardSlot> acquire(java.util.UUID instanceId, boolean exclusive) {
         List<BoardSlot> candidates = new ArrayList<>();
         for (BoardSlot slot : slots.values()) {
-            if (!slot.isReady() || (exclusive && !slot.isFree())) {
+            if (!slot.isReady() || (exclusive && (slot.world() == null || !slot.isFree()))) {
                 continue;
             }
             candidates.add(slot);

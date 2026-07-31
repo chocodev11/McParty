@@ -10,6 +10,7 @@ public final class BoardSlot {
 
     private final String id;
     private final World world;
+    private final String setupWorldName;
     /** ASP FileLoader world name (basename of {@code <name>.slime}), not the Bukkit setup world. */
     private String slimeTemplate;
     private final SlotBoundary boundary;
@@ -20,6 +21,7 @@ public final class BoardSlot {
     public BoardSlot(
             String id,
             World world,
+            String setupWorldName,
             String slimeTemplate,
             SlotBoundary boundary,
             BoardPath path,
@@ -27,6 +29,7 @@ public final class BoardSlot {
     ) {
         this.id = id;
         this.world = world;
+        this.setupWorldName = setupWorldName != null ? setupWorldName : "";
         this.slimeTemplate = slimeTemplate != null ? slimeTemplate : "";
         this.boundary = boundary;
         this.path = path;
@@ -35,6 +38,7 @@ public final class BoardSlot {
 
     public String id() { return id; }
     public World world() { return world; }
+    public String setupWorldName() { return setupWorldName; }
     public String slimeTemplate() { return slimeTemplate; }
     public SlotBoundary boundary() { return boundary; }
     public BoardPath path() { return path; }
@@ -84,6 +88,7 @@ public final class BoardSlot {
         return new BoardSlot(
                 id,
                 target,
+                setupWorldName,
                 slimeTemplate,
                 boundary != null ? boundary.forWorld(target) : null,
                 path.forWorld(target),

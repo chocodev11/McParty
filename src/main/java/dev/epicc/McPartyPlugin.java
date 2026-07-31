@@ -17,6 +17,8 @@ import dev.epicc.minigame.HotPotatoMinigame;
 import dev.epicc.minigame.MinigameEventBus;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.minigame.MinigameRegistry;
+import dev.epicc.lobby.parkour.LobbyParkourListener;
+import dev.epicc.lobby.parkour.LobbyParkourService;
 import dev.epicc.party.LobbyMatchmaker;
 import dev.epicc.party.PartyManager;
 import dev.epicc.player.PlayerSessionService;
@@ -47,6 +49,7 @@ public final class McPartyPlugin extends JavaPlugin {
     private MinigameEventBus minigameEvents;
     private final List<DummyMinigame> dummyMinigames = new ArrayList<>();
     private SlimeWorldService slimeWorldService;
+    private LobbyParkourService lobbyParkour;
 
     @Override
     public void onEnable() {
@@ -143,6 +146,8 @@ public final class McPartyPlugin extends JavaPlugin {
                 this, config, messages, store, sessions, slotRegistry, minigames, slimeWorldService, seamless,
                 dicePresenter, diceHats, pathHopMover, resourcePackService
         );
+        lobbyParkour = new LobbyParkourService(this, config, messages);
+        partyManager.setLobbyParkour(lobbyParkour);
 
         // One shared listener for every running minigame session (see MinigameEventBus)
         getServer().getPluginManager().registerEvents(minigameEvents, this);
@@ -152,6 +157,7 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new SlimeFallDamageListener(slimeWorldService), this);
         getServer().getPluginManager().registerEvents(new ResourcePackListener(resourcePackService), this);
         getServer().getPluginManager().registerEvents(new LobbyMatchmaker(this, partyManager, config, messages, slimeWorldService, seamless, sessions), this);
+        getServer().getPluginManager().registerEvents(new LobbyParkourListener(lobbyParkour, partyManager), this);
 
         PartyCommand partyCommand = new PartyCommand(partyManager, messages);
         PluginCommand party = getCommand("party");
@@ -164,7 +170,7 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new PathSetupListener(this, pathSetupService), this);
 
         PartyAdminCommand adminCommand = new PartyAdminCommand(
-                this, slotRegistry, pathSetupService, messages, slimeWorldService, minigames
+                this, slotRegistry, pathSetupService, messages, slimeWorldService, minigames, config
         );
         PluginCommand partyAdmin = getCommand("partyadmin");
         if (partyAdmin != null) {

@@ -139,3 +139,9 @@ lobby:
     maxX: 50
     maxY: 256
     maxZ: 50
+  # Template-relative trigger blocks. Set while standing on the intended block:
+  # /partyadmin parkour start|checkpoint|goal
+  parkour:
+    start: null
+    checkpoints: []
+    goal: null
