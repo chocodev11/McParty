@@ -301,7 +301,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             String s = args[1].toLowerCase(Locale.ROOT);
             if ((g.equals("slot") && s.equals("delete"))
                     || (g.equals("path") && (s.equals("remove") || s.equals("slime")))) {
-                List<String> ids = slots.all().stream().map(BoardSlot::id).collect(Collectors.toCollection(ArrayList::new));
+                List<String> ids = slots.all().stream().map(BoardSlot::id).sorted().collect(Collectors.toCollection(ArrayList::new));
                 return filter(ids, args[2]);
             }
             if (g.equals("minigame") || g.equals("mg")) {
