@@ -13,8 +13,8 @@ commands:
     usage: /party <create|join|leave|start|list|end|roll>
     permission: mcparty.party
   partyadmin:
-    description: Board slot and setup admin commands
-    usage: /partyadmin <path|slot|parkour|minigame|reload>
+    description: Board, minigame, and lobby parkour setup admin commands
+    usage: /partyadmin <path|slot|minigame|parkour <start|checkpoint|goal|leaderboard|remove-checkpoint|clear>|reload>
     permission: mcparty.admin
     aliases: [padmin]
 

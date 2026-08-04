@@ -4,6 +4,8 @@ import dev.epicc.party.PartyInstance;
 import dev.epicc.party.PartyManager;
 import dev.epicc.party.PartyPlayArea;
 import dev.epicc.party.PartyState;
+import org.bukkit.Tag;
+import org.bukkit.event.block.Action;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -28,11 +30,6 @@ public final class LobbyParkourListener implements Listener {
 
     @EventHandler(ignoreCancelled = true)
     public void onMove(PlayerMoveEvent event) {
-        if (event.getFrom().getBlockX() == event.getTo().getBlockX()
-                && event.getFrom().getBlockY() == event.getTo().getBlockY()
-                && event.getFrom().getBlockZ() == event.getTo().getBlockZ()) {
-            return;
-        }
         Player player = event.getPlayer();
         if (!isWaitingInLobby(player)) {
             if (parkour.isRunning(player.getUniqueId())) {
@@ -45,7 +42,28 @@ public final class LobbyParkourListener implements Listener {
         if (!definition.isReady()) {
             return;
         }
-        if (!parkour.isRunning(player.getUniqueId()) && definition.start().matchesBlockBelow(event.getTo())) {
+        parkour.handleTrigger(player);
+        if (!parkour.isRunning(player.getUniqueId())) {
+            return;
+        }
+        parkour.handleSlimeLanding(player, event.getTo());
+    }
+
+    @EventHandler(ignoreCancelled = true)
+    public void onPressurePlate(PlayerInteractEvent event) {
+        if (event.getAction() != Action.PHYSICAL || event.getClickedBlock() == null
+                || !Tag.PRESSURE_PLATES.isTagged(event.getClickedBlock().getType())) {
+            return;
+        }
+        Player player = event.getPlayer();
+        if (!isWaitingInLobby(player)) {
+            return;
+        }
+        LobbyParkourDefinition definition = parkour.definition();
+        if (!definition.isReady()) {
+            return;
+        }
+        if (!parkour.isRunning(player.getUniqueId()) && definition.start().matchesBlock(event.getClickedBlock().getLocation())) {
             parkour.start(player);
             return;
         }
@@ -53,13 +71,10 @@ public final class LobbyParkourListener implements Listener {
             return;
         }
         for (LobbyParkourPoint checkpoint : definition.checkpoints()) {
-            if (checkpoint.matchesBlockBelow(event.getTo())) {
+            if (checkpoint.matchesBlock(event.getClickedBlock().getLocation())) {
                 parkour.updateCheckpoint(player, checkpoint);
                 return;
             }
-        }
-        if (definition.goal().matchesBlockBelow(event.getTo())) {
-            parkour.finish(player);
         }
     }
 
@@ -116,10 +131,16 @@ public final class LobbyParkourListener implements Listener {
 
     private boolean isWaitingInLobby(Player player) {
         PartyInstance instance = parties.instanceOf(player.getUniqueId()).orElse(null);
-        if (instance == null || instance.state() != PartyState.WAITING) {
+        if (instance == null) {
+            return parkour.definition().fallbackWorld().equals(player.getWorld().getName());
+        }
+        if (instance.state() != PartyState.WAITING) {
             return false;
         }
         PartyPlayArea area = instance.activePlayArea();
-        return area != null && area.world().equals(player.getWorld());
+        if (area != null) {
+            return area.world().equals(player.getWorld());
+        }
+        return parkour.definition().fallbackWorld().equals(player.getWorld().getName());
     }
 }

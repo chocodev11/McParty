@@ -194,13 +194,19 @@ public final class PluginConfig {
         lobbyBoundMaxX = c.getInt("lobby.boundary.maxX", 50);
         lobbyBoundMaxY = c.getInt("lobby.boundary.maxY", 256);
         lobbyBoundMaxZ = c.getInt("lobby.boundary.maxZ", 50);
+        String parkourWorld = nullToEmpty(c.getString("lobby.parkour.world"));
+        if (parkourWorld.isBlank()) {
+            parkourWorld = fallbackWorld;
+        }
         lobbyParkour = new LobbyParkourDefinition(
+                parkourWorld,
                 point(c, "lobby.parkour.start"),
                 c.getMapList("lobby.parkour.checkpoints").stream()
                         .map(PluginConfig::point)
                         .filter(java.util.Objects::nonNull)
                         .toList(),
-                point(c, "lobby.parkour.goal")
+                point(c, "lobby.parkour.goal"),
+                point(c, "lobby.parkour.leaderboard")
         );
     }
 
@@ -279,10 +285,11 @@ public final class PluginConfig {
     public int lobbyBoundMaxZ() { return lobbyBoundMaxZ; }
     public LobbyParkourDefinition lobbyParkour() { return lobbyParkour; }
 
-    public void setLobbyParkourStart(LobbyParkourPoint point) {
+    public void setLobbyParkourStart(String worldName, LobbyParkourPoint point) {
+        saveLobbyParkourWorld(worldName);
         plugin.getConfig().set("lobby.parkour.start", pointMap(point));
         plugin.saveConfig();
-        lobbyParkour = new LobbyParkourDefinition(point, lobbyParkour.checkpoints(), lobbyParkour.goal());
+        lobbyParkour = new LobbyParkourDefinition(worldName, point, lobbyParkour.checkpoints(), lobbyParkour.goal(), lobbyParkour.leaderboard());
     }
 
     public void addLobbyParkourCheckpoint(LobbyParkourPoint point) {
@@ -301,22 +308,36 @@ public final class PluginConfig {
         return true;
     }
 
-    public void setLobbyParkourGoal(LobbyParkourPoint point) {
+    public void setLobbyParkourGoal(String worldName, LobbyParkourPoint point) {
+        saveLobbyParkourWorld(worldName);
         plugin.getConfig().set("lobby.parkour.goal", pointMap(point));
         plugin.saveConfig();
-        lobbyParkour = new LobbyParkourDefinition(lobbyParkour.start(), lobbyParkour.checkpoints(), point);
+        lobbyParkour = new LobbyParkourDefinition(worldName, lobbyParkour.start(), lobbyParkour.checkpoints(), point, lobbyParkour.leaderboard());
+    }
+
+    public void setLobbyParkourLeaderboard(String worldName, LobbyParkourPoint point) {
+        saveLobbyParkourWorld(worldName);
+        plugin.getConfig().set("lobby.parkour.leaderboard", pointMap(point));
+        plugin.saveConfig();
+        lobbyParkour = new LobbyParkourDefinition(worldName, lobbyParkour.start(), lobbyParkour.checkpoints(), lobbyParkour.goal(), point);
     }
 
     public void clearLobbyParkour() {
         plugin.getConfig().set("lobby.parkour", null);
         plugin.saveConfig();
-        lobbyParkour = new LobbyParkourDefinition(null, List.of(), null);
+        lobbyParkour = new LobbyParkourDefinition("", null, List.of(), null, null);
     }
 
     private void saveLobbyParkourCheckpoints(List<LobbyParkourPoint> checkpoints) {
         plugin.getConfig().set("lobby.parkour.checkpoints", checkpoints.stream().map(PluginConfig::pointMap).toList());
         plugin.saveConfig();
-        lobbyParkour = new LobbyParkourDefinition(lobbyParkour.start(), checkpoints, lobbyParkour.goal());
+        lobbyParkour = new LobbyParkourDefinition(
+                lobbyParkour.fallbackWorld(), lobbyParkour.start(), checkpoints, lobbyParkour.goal(), lobbyParkour.leaderboard()
+        );
+    }
+
+    private void saveLobbyParkourWorld(String worldName) {
+        plugin.getConfig().set("lobby.parkour.world", worldName);
     }
 
     private static LobbyParkourPoint point(FileConfiguration config, String path) {

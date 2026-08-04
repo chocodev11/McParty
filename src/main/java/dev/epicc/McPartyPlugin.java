@@ -148,6 +148,7 @@ public final class McPartyPlugin extends JavaPlugin {
         );
         lobbyParkour = new LobbyParkourService(this, config, messages);
         partyManager.setLobbyParkour(lobbyParkour);
+        lobbyParkour.refreshConfiguredWorld();
 
         // One shared listener for every running minigame session (see MinigameEventBus)
         getServer().getPluginManager().registerEvents(minigameEvents, this);
@@ -156,7 +157,9 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(pathHopMover, this);
         getServer().getPluginManager().registerEvents(new SlimeFallDamageListener(slimeWorldService), this);
         getServer().getPluginManager().registerEvents(new ResourcePackListener(resourcePackService), this);
-        getServer().getPluginManager().registerEvents(new LobbyMatchmaker(this, partyManager, config, messages, slimeWorldService, seamless, sessions), this);
+        getServer().getPluginManager().registerEvents(
+                new LobbyMatchmaker(this, partyManager, config, messages, slimeWorldService, seamless, sessions, lobbyParkour), this
+        );
         getServer().getPluginManager().registerEvents(new LobbyParkourListener(lobbyParkour, partyManager), this);
 
         PartyCommand partyCommand = new PartyCommand(partyManager, messages);
@@ -170,7 +173,7 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new PathSetupListener(this, pathSetupService), this);
 
         PartyAdminCommand adminCommand = new PartyAdminCommand(
-                this, slotRegistry, pathSetupService, messages, slimeWorldService, minigames, config
+                this, slotRegistry, pathSetupService, messages, slimeWorldService, minigames, config, lobbyParkour
         );
         PluginCommand partyAdmin = getCommand("partyadmin");
         if (partyAdmin != null) {
@@ -223,11 +226,15 @@ public final class McPartyPlugin extends JavaPlugin {
         }
 
         resourcePackService.reload();
+        lobbyParkour.refreshConfiguredWorld();
         getLogger().info("Config reloaded");
     }
 
     @Override
     public void onDisable() {
+        if (lobbyParkour != null) {
+            lobbyParkour.shutdown();
+        }
         if (pathSetupService != null) {
             pathSetupService.cancelAll();
         }

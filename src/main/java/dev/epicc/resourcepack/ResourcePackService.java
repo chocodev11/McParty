@@ -25,6 +25,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Enumeration;
+import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import java.util.concurrent.Executors;
@@ -272,6 +273,7 @@ public final class ResourcePackService {
     private void ensureSourcePack(Path sourceDir) throws IOException {
         Path meta = sourceDir.resolve("pack.mcmeta");
         if (Files.isRegularFile(meta)) {
+            ensureParkourModels(sourceDir);
             return;
         }
         if (Files.exists(sourceDir) && !Files.isDirectory(sourceDir)) {
@@ -279,12 +281,33 @@ public final class ResourcePackService {
         }
         Files.createDirectories(sourceDir);
         if (extractBundledPack(sourceDir)) {
+            ensureParkourModels(sourceDir);
             plugin.getLogger().info("Extracted bundled resource pack to " + sourceDir);
             return;
         }
         throw new IllegalStateException(
                 "No resource pack at " + sourceDir + " and none bundled in the jar"
         );
+    }
+
+    /** Add new built-in marker models without overwriting an administrator's customized pack. */
+    private void ensureParkourModels(Path sourceDir) throws IOException {
+        for (String relative : List.of(
+                "assets/mcparty/items/parkour_goal.json",
+                "assets/mcparty/models/item/parkour_goal.json"
+        )) {
+            Path target = sourceDir.resolve(relative);
+            if (Files.isRegularFile(target)) {
+                continue;
+            }
+            try (InputStream source = plugin.getResource("resourcepack/" + relative)) {
+                if (source == null) {
+                    throw new IOException("Bundled parkour model missing: " + relative);
+                }
+                Files.createDirectories(target.getParent());
+                Files.copy(source, target);
+            }
+        }
     }
 
     /**

@@ -5,6 +5,7 @@ import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.containment.SlotBoundary;
 import dev.epicc.player.PlayerSessionService;
+import dev.epicc.lobby.parkour.LobbyParkourService;
 import dev.epicc.seamless.SeamlessWorldChangeService;
 import dev.epicc.slime.SlimeWorldService;
 import org.bukkit.Location;
@@ -27,6 +28,7 @@ public final class LobbyMatchmaker implements Listener {
     private final SlimeWorldService slime;
     private final SeamlessWorldChangeService seamless;
     private final PlayerSessionService sessions;
+    private final LobbyParkourService lobbyParkour;
 
     public LobbyMatchmaker(
             JavaPlugin plugin,
@@ -35,7 +37,8 @@ public final class LobbyMatchmaker implements Listener {
             MessageService messages,
             SlimeWorldService slime,
             SeamlessWorldChangeService seamless,
-            PlayerSessionService sessions
+            PlayerSessionService sessions,
+            LobbyParkourService lobbyParkour
     ) {
         this.plugin = plugin;
         this.partyManager = partyManager;
@@ -44,6 +47,7 @@ public final class LobbyMatchmaker implements Listener {
         this.slime = slime;
         this.seamless = seamless;
         this.sessions = sessions;
+        this.lobbyParkour = lobbyParkour;
     }
 
     @EventHandler
@@ -150,6 +154,7 @@ public final class LobbyMatchmaker implements Listener {
                 config.lobbyBoundMaxX(), config.lobbyBoundMaxY(), config.lobbyBoundMaxZ()
         );
         instance.setActivePlayArea(new PartyPlayArea(world, lobbySpawn(world), boundary));
+        lobbyParkour.refresh(world);
     }
 
     private Location lobbySpawn(World world) {

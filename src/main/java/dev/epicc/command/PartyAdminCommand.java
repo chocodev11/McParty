@@ -6,7 +6,7 @@ import dev.epicc.board.BoardSlotRegistry;
 import dev.epicc.board.setup.PathSetupService;
 import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
-import dev.epicc.lobby.parkour.LobbyParkourPoint;
+import dev.epicc.lobby.parkour.LobbyParkourService;
 import dev.epicc.minigame.Minigame;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.slime.SlimeWorldService;
@@ -35,6 +35,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
     private final SlimeWorldService slime;
     private final MinigameManager minigames;
     private final PluginConfig config;
+    private final LobbyParkourService lobbyParkour;
 
     public PartyAdminCommand(
             McPartyPlugin plugin,
@@ -43,7 +44,8 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             MessageService messages,
             SlimeWorldService slime,
             MinigameManager minigames,
-            PluginConfig config
+            PluginConfig config,
+            LobbyParkourService lobbyParkour
     ) {
         this.plugin = plugin;
         this.slots = slots;
@@ -52,6 +54,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         this.slime = slime;
         this.minigames = minigames;
         this.config = config;
+        this.lobbyParkour = lobbyParkour;
     }
 
     @Override
@@ -232,20 +235,29 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             return;
         }
         String sub = args[1].toLowerCase(Locale.ROOT);
-        LobbyParkourPoint point = LobbyParkourPoint.beneath(player.getLocation());
         switch (sub) {
             case "start" -> {
-                config.setLobbyParkourStart(point);
-                messages.send(player, "admin.parkour-start-set");
+                if (lobbyParkour.configureStart(player)) {
+                    messages.send(player, "admin.parkour-start-set");
+                } else {
+                    messages.send(player, "admin.parkour-pressure-plate-required");
+                }
             }
             case "checkpoint" -> {
-                config.addLobbyParkourCheckpoint(point);
-                messages.send(player, "admin.parkour-checkpoint-added", "count",
-                        Integer.toString(config.lobbyParkour().checkpoints().size()));
+                if (lobbyParkour.addCheckpoint(player)) {
+                    messages.send(player, "admin.parkour-checkpoint-added", "count",
+                            Integer.toString(config.lobbyParkour().checkpoints().size()));
+                } else {
+                    messages.send(player, "admin.parkour-pressure-plate-required");
+                }
             }
             case "goal" -> {
-                config.setLobbyParkourGoal(point);
+                lobbyParkour.configureGoal(player);
                 messages.send(player, "admin.parkour-goal-set");
+            }
+            case "leaderboard" -> {
+                lobbyParkour.configureLeaderboard(player);
+                messages.send(player, "admin.parkour-leaderboard-set");
             }
             case "remove-checkpoint" -> {
                 if (args.length < 3 || !args[2].matches("\\d+")) {
@@ -260,7 +272,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
                 }
             }
             case "clear" -> {
-                config.clearLobbyParkour();
+                lobbyParkour.clear(player);
                 messages.send(player, "admin.parkour-cleared");
             }
             default -> messages.send(player, "admin.parkour-usage");
@@ -289,7 +301,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
                 return filter(List.of("create", "undo", "end", "remove", "slime"), args[1]);
             }
             if (g.equals("parkour")) {
-                return filter(List.of("start", "checkpoint", "goal", "remove-checkpoint", "clear"), args[1]);
+                return filter(List.of("start", "checkpoint", "goal", "leaderboard", "remove-checkpoint", "clear"), args[1]);
             }
             if (g.equals("minigame") || g.equals("mg")) {
                 return filter(minigames.registry().ids(), args[1]);

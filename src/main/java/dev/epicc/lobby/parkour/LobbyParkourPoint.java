@@ -9,8 +9,8 @@ public record LobbyParkourPoint(int x, int y, int z) {
         return new LobbyParkourPoint(location.getBlockX(), location.getBlockY() - 1, location.getBlockZ());
     }
 
-    public boolean matchesBlockBelow(Location location) {
-        return location.getBlockX() == x && location.getBlockY() - 1 == y && location.getBlockZ() == z;
+    public boolean matchesBlock(Location location) {
+        return location.getBlockX() == x && location.getBlockY() == y && location.getBlockZ() == z;
     }
 
     public Location teleportLocation(Location source) {

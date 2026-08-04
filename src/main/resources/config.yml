@@ -139,9 +139,12 @@ lobby:
     maxX: 50
     maxY: 256
     maxZ: 50
-  # Template-relative trigger blocks. Set while standing on the intended block:
-  # /partyadmin parkour start|checkpoint|goal
+  # Start and checkpoints are pressure plates; the goal is an entity. Set while standing on each location:
+  # /partyadmin parkour start|checkpoint|goal|leaderboard
   parkour:
+    # Permanent MCA lobby world used when Slime is unavailable. Commands set this automatically.
+    world: ""
     start: null
     checkpoints: []
     goal: null
+    leaderboard: null
