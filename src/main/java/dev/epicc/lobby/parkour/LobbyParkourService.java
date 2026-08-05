@@ -29,6 +29,7 @@ public final class LobbyParkourService {
     private static final double TRIGGER_RANGE = 0.9;
     private static final double LAUNCH_VELOCITY = 5.0;
     private static final long LAUNCH_TIMEOUT_TICKS = 160L;
+    private static final long HOTBAR_ITEM_COOLDOWN_NANOS = 500_000_000L;
 
     private final JavaPlugin plugin;
     private final PluginConfig config;
@@ -53,6 +54,14 @@ public final class LobbyParkourService {
 
     public String action(ItemStack stack) {
         return LobbyParkourItems.action(plugin, stack);
+    }
+
+    public boolean tryUseHotbarItem(Player player) {
+        Run run = runs.get(player.getUniqueId());
+        if (run == null) {
+            return false;
+        }
+        return run.tryUseHotbarItem();
     }
 
     public void refreshConfiguredWorld() {
@@ -316,6 +325,7 @@ public final class LobbyParkourService {
         private LobbyParkourPoint checkpoint;
         private boolean goalReached;
         private BukkitTask launchTask;
+        private long nextHotbarItemUseNanos;
 
         private Run(ItemStack[] hotbar, LobbyParkourPoint start) {
             this.hotbar = hotbar;
@@ -328,6 +338,14 @@ public final class LobbyParkourService {
         private LobbyParkourPoint start() { return start; }
         private boolean goalReached() { return goalReached; }
         private BukkitTask launchTask() { return launchTask; }
+        private boolean tryUseHotbarItem() {
+            long now = System.nanoTime();
+            if (now < nextHotbarItemUseNanos) {
+                return false;
+            }
+            nextHotbarItemUseNanos = now + HOTBAR_ITEM_COOLDOWN_NANOS;
+            return true;
+        }
         private void setCheckpoint(LobbyParkourPoint checkpoint) { this.checkpoint = checkpoint; }
         private void setGoalReached(boolean goalReached) { this.goalReached = goalReached; }
         private void setLaunchTask(BukkitTask launchTask) { this.launchTask = launchTask; }

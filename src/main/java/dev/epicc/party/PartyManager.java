@@ -16,7 +16,6 @@ import dev.epicc.minigame.PlayerStateSnapshot;
 import dev.epicc.player.PlayerSessionService;
 import dev.epicc.resourcepack.ResourcePackService;
 import dev.epicc.lobby.parkour.LobbyParkourService;
-import dev.epicc.lobby.parkour.MultiverseSpawnService;
 import dev.epicc.seamless.SeamlessWorldChangeService;
 import dev.epicc.slime.SlimeWorldService;
 import dev.epicc.store.InstanceStore;
@@ -55,8 +54,8 @@ public final class PartyManager {
     private final PathHopMover pathHopMover;
     private final ResourcePackService resourcePacks;
     private final PartyTransitionService transitions;
-    private final MultiverseSpawnService multiverseSpawns;
     private final Map<UUID, BoardTurnController> controllers = new ConcurrentHashMap<>();
+    private final Map<UUID, Map<UUID, Location>> arenaReturnLocations = new ConcurrentHashMap<>();
     private LobbyParkourService lobbyParkour;
 
 
@@ -89,7 +88,6 @@ public final class PartyManager {
         this.pathHopMover = pathHopMover;
         this.resourcePacks = resourcePacks;
         this.transitions = new PartyTransitionService(plugin, seamless);
-        this.multiverseSpawns = new MultiverseSpawnService(plugin);
     }
 
     public JavaPlugin plugin() {
@@ -118,8 +116,7 @@ public final class PartyManager {
         }
         lobbyParkour.stopSilently(player);
 
-        World world = Bukkit.getWorld(config.lobbyParkour().fallbackWorld());
-        Location destination = world == null ? fallbackLocation() : multiverseSpawns.spawnFor(world);
+        Location destination = lobbySpawn(player);
         transitions.permit(player, destination);
         seamless.teleport(player, destination);
         messages.send(player, "parkour.left");
@@ -500,6 +497,7 @@ public final class PartyManager {
         if (!instance.beginCleanup()) return;
         instance.cancelPendingTasks();
         BoardTurnController controller = controllers.remove(instance.id());
+        arenaReturnLocations.remove(instance.id());
 
         if (controller != null) {
             controller.stop();
@@ -538,6 +536,11 @@ public final class PartyManager {
     private void enterArena(PartyInstance instance, MinigameArena arena) {
         if (instance.state() != PartyState.PLAYING) return;
         List<Player> players = onlinePlayers(instance);
+        Map<UUID, Location> returnLocations = new ConcurrentHashMap<>();
+        for (Player player : players) {
+            returnLocations.put(player.getUniqueId(), player.getLocation().clone());
+        }
+        arenaReturnLocations.put(instance.id(), returnLocations);
         instance.setActivePlayArea(arena.playArea());
         transitions.transition(players, arena.playArea());
     }
@@ -546,7 +549,16 @@ public final class PartyManager {
         PartyPlayArea board = instance.boardPlayArea();
         if (board == null || instance.state() != PartyState.PLAYING) return;
         instance.setActivePlayArea(board);
-        transitions.transition(onlinePlayers(instance), board);
+        Map<UUID, Location> returnLocations = arenaReturnLocations.remove(instance.id());
+        if (returnLocations == null) return;
+        for (Player player : onlinePlayers(instance)) {
+            Location destination = returnLocations.get(player.getUniqueId());
+            if (destination == null || destination.getWorld() != board.world()) {
+                destination = board.spawn();
+            }
+            transitions.permit(player, destination);
+            seamless.teleport(player, destination);
+        }
     }
 
     private List<Player> onlinePlayers(PartyInstance instance) {
@@ -565,6 +577,19 @@ public final class PartyManager {
             return plugin.getServer().getWorlds().getFirst().getSpawnLocation();
         }
         return new Location(world, config.fallbackX(), config.fallbackY(), config.fallbackZ(), config.fallbackYaw(), config.fallbackPitch());
+    }
+
+    private Location lobbySpawn(Player player) {
+        PartyInstance instance = instanceOf(player.getUniqueId()).orElse(null);
+        if (instance != null && instance.state() == PartyState.WAITING && instance.activePlayArea() != null) {
+            return instance.activePlayArea().spawn();
+        }
+        World world = Bukkit.getWorld(config.lobbyParkour().fallbackWorld());
+        if (world == null) {
+            return fallbackLocation();
+        }
+        return new Location(world, config.lobbySpawnX(), config.lobbySpawnY(), config.lobbySpawnZ(),
+                config.lobbySpawnYaw(), config.lobbySpawnPitch());
     }
 
 

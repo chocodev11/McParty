@@ -91,6 +91,8 @@ admin:
   help-path: "<aqua>/partyadmin path create <name> | undo | end | remove <name> | slime <name> <template>"
   help-slot: "<aqua>/partyadmin slot list|delete"
   help-minigame: "<aqua>/partyadmin minigame <minigame> [player]"
+  lobby-spawn-set: "{prefix}<green>Lobby spawn set."
+  help-setlobby: "<aqua>/partyadmin setlobby"
   parkour-usage: "<aqua>/partyadmin parkour <start|checkpoint|goal|leaderboard|remove-checkpoint|clear>"
   parkour-start-set: "{prefix}<green>Parkour start pressure plate set."
   parkour-checkpoint-added: "{prefix}<green>Parkour checkpoint #<count> pressure plate set."

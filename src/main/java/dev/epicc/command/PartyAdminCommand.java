@@ -90,6 +90,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         switch (group) {
             case "slot" -> handleSlot(player, args);
             case "path" -> handlePath(player, args);
+            case "setlobby" -> setLobby(player);
             case "parkour" -> handleParkour(player, args);
             default -> help(player);
         }
@@ -279,10 +280,16 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    private void setLobby(Player player) {
+        config.setLobbySpawn(player.getLocation());
+        messages.send(player, "admin.lobby-spawn-set");
+    }
+
     private void help(CommandSender sender) {
         messages.send(sender, "admin.help-path");
         messages.send(sender, "admin.help-slot");
         messages.send(sender, "admin.help-minigame");
+        messages.send(sender, "admin.help-setlobby");
         messages.send(sender, "admin.help-parkour");
         messages.send(sender, "admin.help-reload");
     }
@@ -290,7 +297,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filter(List.of("slot", "path", "parkour", "minigame", "reload"), args[0]);
+            return filter(List.of("slot", "path", "setlobby", "parkour", "minigame", "reload"), args[0]);
         }
         if (args.length == 2) {
             String g = args[0].toLowerCase(Locale.ROOT);

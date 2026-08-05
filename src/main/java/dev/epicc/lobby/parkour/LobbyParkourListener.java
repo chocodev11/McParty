@@ -92,6 +92,9 @@ public final class LobbyParkourListener implements Listener {
             return;
         }
         event.setCancelled(true);
+        if (!parkour.tryUseHotbarItem(player)) {
+            return;
+        }
         switch (action) {
             case LobbyParkourItems.RESTART -> parkour.restart(player);
             case LobbyParkourItems.CHECKPOINT -> parkour.teleportCheckpoint(player);

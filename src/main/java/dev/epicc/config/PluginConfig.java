@@ -4,6 +4,7 @@ import dev.epicc.minigame.MinigameArenaSpec;
 import dev.epicc.minigame.MinigameRevealSettings;
 import dev.epicc.lobby.parkour.LobbyParkourDefinition;
 import dev.epicc.lobby.parkour.LobbyParkourPoint;
+import org.bukkit.Location;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -284,6 +285,20 @@ public final class PluginConfig {
     public int lobbyBoundMaxY() { return lobbyBoundMaxY; }
     public int lobbyBoundMaxZ() { return lobbyBoundMaxZ; }
     public LobbyParkourDefinition lobbyParkour() { return lobbyParkour; }
+
+    public void setLobbySpawn(Location location) {
+        lobbySpawnX = location.getX();
+        lobbySpawnY = location.getY();
+        lobbySpawnZ = location.getZ();
+        lobbySpawnYaw = location.getYaw();
+        lobbySpawnPitch = location.getPitch();
+        plugin.getConfig().set("lobby.spawn.x", lobbySpawnX);
+        plugin.getConfig().set("lobby.spawn.y", lobbySpawnY);
+        plugin.getConfig().set("lobby.spawn.z", lobbySpawnZ);
+        plugin.getConfig().set("lobby.spawn.yaw", lobbySpawnYaw);
+        plugin.getConfig().set("lobby.spawn.pitch", lobbySpawnPitch);
+        plugin.saveConfig();
+    }
 
     public void setLobbyParkourStart(String worldName, LobbyParkourPoint point) {
         saveLobbyParkourWorld(worldName);
