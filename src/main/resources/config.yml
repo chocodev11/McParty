@@ -148,3 +148,10 @@ lobby:
     checkpoints: []
     goal: null
     leaderboard: null
+
+holograms:
+  enabled: true
+  file: holograms.yml
+  # How often player/world visibility is recalculated.
+  view-scan-interval-ticks: 5
+  default-view-range: 32.0

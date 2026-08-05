@@ -17,6 +17,7 @@ import dev.epicc.minigame.HotPotatoMinigame;
 import dev.epicc.minigame.MinigameEventBus;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.minigame.MinigameRegistry;
+import dev.epicc.hologram.HologramService;
 import dev.epicc.lobby.parkour.LobbyParkourListener;
 import dev.epicc.lobby.parkour.LobbyParkourService;
 import dev.epicc.party.LobbyMatchmaker;
@@ -33,6 +34,8 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.List;
+import net.kyori.adventure.text.Component;
+import org.bukkit.Bukkit;
 
 public final class McPartyPlugin extends JavaPlugin {
 
@@ -51,11 +54,23 @@ public final class McPartyPlugin extends JavaPlugin {
     private SlimeWorldService slimeWorldService;
     private LobbyParkourService lobbyParkour;
     private LobbyMatchmaker lobbyMatchmaker;
+    private HologramService holograms;
 
     @Override
     public void onEnable() {
         config = new PluginConfig(this);
         messages = new MessageService(this);
+        boolean packetEventsReady = Bukkit.getPluginManager().isPluginEnabled("packetevents");
+        holograms = new HologramService(
+                this,
+                config.hologramsEnabled() && packetEventsReady,
+                config.hologramsFile(),
+                config.hologramScanIntervalTicks(),
+                config.hologramDefaultViewRange()
+        );
+        if (config.hologramsEnabled() && !packetEventsReady) {
+            getLogger().warning("Holograms enabled but PacketEvents is unavailable; holograms are disabled");
+        }
         PlayerSessionService sessions = new PlayerSessionService();
         InMemoryInstanceStore store = new InMemoryInstanceStore();
         slotRegistry = new BoardSlotRegistry(this);
@@ -145,8 +160,20 @@ public final class McPartyPlugin extends JavaPlugin {
 
         partyManager = new PartyManager(
                 this, config, messages, store, sessions, slotRegistry, minigames, slimeWorldService, seamless,
-                dicePresenter, diceHats, pathHopMover, resourcePackService
+                dicePresenter, diceHats, pathHopMover, resourcePackService, holograms
         );
+        holograms.setScopeVisibility((scopeId, player) -> partyManager.instanceOf(player.getUniqueId())
+                .map(instance -> instance.id().equals(scopeId)).orElse(false));
+        holograms.registerPlaceholder("mcparty.party_id", context -> partyManager.instanceOf(context.player().getUniqueId())
+                .map(instance -> Component.text(instance.shortId())).orElse(Component.empty()));
+        holograms.registerPlaceholder("mcparty.party_state", context -> partyManager.instanceOf(context.player().getUniqueId())
+                .map(instance -> Component.text(instance.state().name())).orElse(Component.empty()));
+        holograms.registerPlaceholder("mcparty.turn", context -> partyManager.instanceOf(context.player().getUniqueId())
+                .map(instance -> Component.text(instance.round() + 1)).orElse(Component.empty()));
+        holograms.registerPlaceholder("mcparty.coins", context -> partyManager.instanceOf(context.player().getUniqueId())
+                .flatMap(instance -> instance.player(context.player().getUniqueId()))
+                .map(player -> Component.text(player.coins())).orElse(Component.empty()));
+        holograms.start();
         lobbyParkour = new LobbyParkourService(this, config, messages);
         partyManager.setLobbyParkour(lobbyParkour);
         lobbyParkour.refreshConfiguredWorld();
@@ -164,6 +191,7 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new ResourcePackListener(resourcePackService), this);
         getServer().getPluginManager().registerEvents(lobbyMatchmaker, this);
         getServer().getPluginManager().registerEvents(new LobbyParkourListener(lobbyParkour, partyManager), this);
+        getServer().getPluginManager().registerEvents(holograms, this);
 
         PartyCommand partyCommand = new PartyCommand(partyManager, messages);
         PluginCommand party = getCommand("party");
@@ -176,7 +204,8 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new PathSetupListener(this, pathSetupService), this);
 
         PartyAdminCommand adminCommand = new PartyAdminCommand(
-                this, slotRegistry, pathSetupService, messages, slimeWorldService, minigames, config, lobbyParkour
+                this, slotRegistry, pathSetupService, messages, slimeWorldService, minigames, config, lobbyParkour,
+                holograms
         );
         PluginCommand partyAdmin = getCommand("partyadmin");
         if (partyAdmin != null) {
@@ -215,6 +244,13 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.hopFallMaxSeconds()
         );
         minigames.reconfigure(config.minigameReveal());
+        if (holograms != null) {
+            holograms.reconfigure(
+                    config.hologramsEnabled() && Bukkit.getPluginManager().isPluginEnabled("packetevents"),
+                    config.hologramScanIntervalTicks(),
+                    config.hologramDefaultViewRange()
+            );
+        }
         for (DummyMinigame dummy : dummyMinigames) {
             dummy.reconfigure(config.dummyDurationSeconds(), config.dummyCoinRewards());
         }
@@ -236,6 +272,9 @@ public final class McPartyPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (holograms != null) {
+            holograms.shutdown();
+        }
         if (lobbyParkour != null) {
             lobbyParkour.shutdown();
         }

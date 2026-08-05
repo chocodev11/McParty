@@ -6,6 +6,7 @@ import dev.epicc.board.BoardSlotRegistry;
 import dev.epicc.board.setup.PathSetupService;
 import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
+import dev.epicc.hologram.HologramService;
 import dev.epicc.lobby.parkour.LobbyParkourService;
 import dev.epicc.minigame.Minigame;
 import dev.epicc.minigame.MinigameManager;
@@ -36,6 +37,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
     private final MinigameManager minigames;
     private final PluginConfig config;
     private final LobbyParkourService lobbyParkour;
+    private final HologramService holograms;
 
     public PartyAdminCommand(
             McPartyPlugin plugin,
@@ -45,7 +47,8 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             SlimeWorldService slime,
             MinigameManager minigames,
             PluginConfig config,
-            LobbyParkourService lobbyParkour
+            LobbyParkourService lobbyParkour,
+            HologramService holograms
     ) {
         this.plugin = plugin;
         this.slots = slots;
@@ -55,6 +58,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         this.minigames = minigames;
         this.config = config;
         this.lobbyParkour = lobbyParkour;
+        this.holograms = holograms;
     }
 
     @Override
@@ -79,6 +83,10 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         String group = args[0].toLowerCase(Locale.ROOT);
         if (group.equals("minigame") || group.equals("mg")) {
             handleMinigame(sender, args);
+            return true;
+        }
+        if (group.equals("hologram") || group.equals("holo")) {
+            handleHologram(sender, args);
             return true;
         }
 
@@ -280,6 +288,86 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         }
     }
 
+    private void handleHologram(CommandSender sender, String[] args) {
+        if (!sender.hasPermission("mcparty.admin") && !sender.hasPermission("mcparty.admin.hologram")) {
+            messages.send(sender, "general.no-permission");
+            return;
+        }
+        if (args.length < 2) {
+            messages.send(sender, "admin.hologram-usage");
+            return;
+        }
+        String sub = args[1].toLowerCase(Locale.ROOT);
+        if (sub.equals("list")) {
+            List<String> ids = holograms.allIds();
+            if (ids.isEmpty()) {
+                messages.send(sender, "admin.hologram-none");
+                return;
+            }
+            for (String id : ids) {
+                messages.send(sender, "admin.hologram-entry", "id", id,
+                        "scope", holograms.scopeOf(id).orElse("global"));
+            }
+            return;
+        }
+        if (sub.equals("remove")) {
+            if (args.length < 3) {
+                messages.send(sender, "admin.hologram-remove-usage");
+                return;
+            }
+            messages.send(sender, holograms.remove(args[2])
+                    ? "admin.hologram-removed" : "admin.hologram-not-found", "id", args[2]);
+            return;
+        }
+        if (sub.equals("reload")) {
+            holograms.reloadDefinitions();
+            messages.send(sender, "admin.hologram-reloaded");
+            return;
+        }
+        if (!(sender instanceof Player player)) {
+            messages.send(sender, "general.players-only");
+            return;
+        }
+        if (args.length < 3) {
+            messages.send(player, "admin.hologram-usage");
+            return;
+        }
+        String id = args[2];
+        switch (sub) {
+            case "create" -> messages.send(player, holograms.create(id, player.getLocation())
+                    ? "admin.hologram-created" : "admin.hologram-create-failed", "id", id);
+            case "move" -> messages.send(player, holograms.move(id, player.getLocation())
+                    ? "admin.hologram-moved" : "admin.hologram-not-found", "id", id);
+            case "setline" -> {
+                if (args.length < 5 || !args[3].matches("\\d+")) {
+                    messages.send(player, "admin.hologram-line-usage");
+                    return;
+                }
+                String text = String.join(" ", java.util.Arrays.copyOfRange(args, 4, args.length));
+                messages.send(player, holograms.setLine(id, Integer.parseInt(args[3]), text)
+                        ? "admin.hologram-line-set" : "admin.hologram-line-failed", "id", id);
+            }
+            case "addline" -> {
+                if (args.length < 4) {
+                    messages.send(player, "admin.hologram-line-usage");
+                    return;
+                }
+                String text = String.join(" ", java.util.Arrays.copyOfRange(args, 3, args.length));
+                messages.send(player, holograms.addLine(id, text)
+                        ? "admin.hologram-line-added" : "admin.hologram-line-failed", "id", id);
+            }
+            case "removeline" -> {
+                if (args.length < 4 || !args[3].matches("\\d+")) {
+                    messages.send(player, "admin.hologram-line-usage");
+                    return;
+                }
+                messages.send(player, holograms.removeLine(id, Integer.parseInt(args[3]))
+                        ? "admin.hologram-line-removed" : "admin.hologram-line-failed", "id", id);
+            }
+            default -> messages.send(player, "admin.hologram-usage");
+        }
+    }
+
     private void setLobby(Player player) {
         config.setLobbySpawn(player.getLocation());
         messages.send(player, "admin.lobby-spawn-set");
@@ -291,13 +379,14 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         messages.send(sender, "admin.help-minigame");
         messages.send(sender, "admin.help-setlobby");
         messages.send(sender, "admin.help-parkour");
+        messages.send(sender, "admin.help-hologram");
         messages.send(sender, "admin.help-reload");
     }
 
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filter(List.of("slot", "path", "setlobby", "parkour", "minigame", "reload"), args[0]);
+            return filter(List.of("slot", "path", "setlobby", "parkour", "minigame", "hologram", "reload"), args[0]);
         }
         if (args.length == 2) {
             String g = args[0].toLowerCase(Locale.ROOT);
@@ -313,6 +402,9 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             if (g.equals("minigame") || g.equals("mg")) {
                 return filter(minigames.registry().ids(), args[1]);
             }
+            if (g.equals("hologram") || g.equals("holo")) {
+                return filter(List.of("list", "create", "remove", "move", "setline", "addline", "removeline", "reload"), args[1]);
+            }
             return List.of();
         }
         if (args.length == 3) {
@@ -326,6 +418,10 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             if (g.equals("minigame") || g.equals("mg")) {
                 List<String> names = Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
                 return filter(names, args[2]);
+            }
+            if ((g.equals("hologram") || g.equals("holo"))
+                    && List.of("remove", "move", "setline", "addline", "removeline").contains(s)) {
+                return filter(holograms.ids(), args[2]);
             }
             if (g.equals("parkour") && s.equals("remove-checkpoint")) {
                 List<String> indices = new ArrayList<>();

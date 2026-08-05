@@ -1,0 +1,40 @@
+schema-version: 1
+
+# Text is MiniMessage. Replaceable values use {{name}} markers; the template is
+# parsed once at load time, so rendering a viewer only resolves those markers.
+# A frame list is optional and loops by duration-ticks. Use scope: party for a
+# copy in every loaded party board world (the world value is a template value).
+#
+# Example:
+#
+# lobby:
+#   scope: global
+#   world: world
+#   location: {x: 0.5, y: 80.0, z: 0.5, yaw: 0.0, pitch: 0.0}
+#   content:
+#     lines:
+#       - "<gold>Welcome, {{mcparty.player_name}}</gold>"
+#       - "<gray>Online: {{mcparty.online_players}}</gray>"
+#     refresh-ticks: 20
+#   style:
+#     billboard: center
+#     alignment: center
+#     color: "#FFFFFF"
+#     background: default
+#     shadowed: true
+#     see-through: false
+#     view-range: 32.0
+#   visibility: {mode: all, permission: ""}
+#
+# board_status:
+#   scope: party
+#   world: board-template
+#   location: {x: 0.5, y: 70.0, z: 0.5}
+#   content:
+#     frames:
+#       enabled: true
+#       entries:
+#         - {duration-ticks: 20, lines: ["<yellow>Round {{mcparty.turn}}</yellow>"]}
+#         - {duration-ticks: 20, lines: ["<aqua>Coins: {{mcparty.coins}}</aqua>"]}
+
+holograms: {}

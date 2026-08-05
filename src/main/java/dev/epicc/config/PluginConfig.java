@@ -85,6 +85,11 @@ public final class PluginConfig {
     private int lobbyBoundMaxZ;
     private LobbyParkourDefinition lobbyParkour;
 
+    private boolean hologramsEnabled;
+    private String hologramsFile;
+    private int hologramScanIntervalTicks;
+    private float hologramDefaultViewRange;
+
     public PluginConfig(JavaPlugin plugin) {
         this.plugin = plugin;
         plugin.saveDefaultConfig();
@@ -209,6 +214,11 @@ public final class PluginConfig {
                 point(c, "lobby.parkour.goal"),
                 point(c, "lobby.parkour.leaderboard")
         );
+
+        hologramsEnabled = c.getBoolean("holograms.enabled", true);
+        hologramsFile = c.getString("holograms.file", "holograms.yml");
+        hologramScanIntervalTicks = Math.max(1, c.getInt("holograms.view-scan-interval-ticks", 5));
+        hologramDefaultViewRange = (float) c.getDouble("holograms.default-view-range", 32.0);
     }
 
     private static String nullToEmpty(String s) {
@@ -285,6 +295,11 @@ public final class PluginConfig {
     public int lobbyBoundMaxY() { return lobbyBoundMaxY; }
     public int lobbyBoundMaxZ() { return lobbyBoundMaxZ; }
     public LobbyParkourDefinition lobbyParkour() { return lobbyParkour; }
+
+    public boolean hologramsEnabled() { return hologramsEnabled; }
+    public String hologramsFile() { return hologramsFile; }
+    public int hologramScanIntervalTicks() { return hologramScanIntervalTicks; }
+    public float hologramDefaultViewRange() { return hologramDefaultViewRange; }
 
     public void setLobbySpawn(Location location) {
         lobbySpawnX = location.getX();

@@ -36,6 +36,21 @@
     @org.bukkit.event.EventHandler <methods>;
 }
 
+# HologramService also exposes a small API for future interaction handlers and
+# runtime party scopes; keep those methods available after shrinking.
+-keep public class dev.epicc.hologram.HologramService {
+    public <init>(...);
+    public *;
+}
+-keep public class dev.epicc.hologram.HologramInteractionTarget {
+    public *;
+}
+-keep interface dev.epicc.hologram.HologramRenderer { *; }
+-keep class dev.epicc.hologram.PacketTextDisplayRenderer { public <init>(); public *; }
+-keepclassmembers class dev.epicc.hologram.HologramService {
+    dev.epicc.hologram.HologramRenderer renderer;
+}
+
 # Enums used by the JVM / switch tables
 -keepclassmembers,allowoptimization enum * {
     public static **[] values();

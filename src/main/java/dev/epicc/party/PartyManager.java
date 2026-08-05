@@ -9,6 +9,7 @@ import dev.epicc.board.dice.DiceHatService;
 import dev.epicc.board.dice.DicePresenter;
 import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
+import dev.epicc.hologram.HologramService;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.minigame.ArenaTransitions;
 import dev.epicc.minigame.MinigameArena;
@@ -53,6 +54,7 @@ public final class PartyManager {
     private final DiceHatService diceHats;
     private final PathHopMover pathHopMover;
     private final ResourcePackService resourcePacks;
+    private final HologramService holograms;
     private final PartyTransitionService transitions;
     private final Map<UUID, BoardTurnController> controllers = new ConcurrentHashMap<>();
     private final Map<UUID, Map<UUID, Location>> arenaReturnLocations = new ConcurrentHashMap<>();
@@ -72,7 +74,8 @@ public final class PartyManager {
             DicePresenter dicePresenter,
             DiceHatService diceHats,
             PathHopMover pathHopMover,
-            ResourcePackService resourcePacks
+            ResourcePackService resourcePacks,
+            HologramService holograms
     ) {
         this.plugin = plugin;
         this.config = config;
@@ -87,6 +90,7 @@ public final class PartyManager {
         this.diceHats = diceHats;
         this.pathHopMover = pathHopMover;
         this.resourcePacks = resourcePacks;
+        this.holograms = holograms;
         this.transitions = new PartyTransitionService(plugin, seamless);
     }
 
@@ -402,6 +406,7 @@ public final class PartyManager {
             cleanup(instance);
             return;
         }
+        holograms.openPartyScope(instance.id(), slot.world());
 
         Title startTitle = Title.title(
                 messages.get("party.start-title"),
@@ -495,6 +500,7 @@ public final class PartyManager {
 
     public void cleanup(PartyInstance instance) {
         if (!instance.beginCleanup()) return;
+        holograms.closePartyScope(instance.id());
         instance.cancelPendingTasks();
         BoardTurnController controller = controllers.remove(instance.id());
         arenaReturnLocations.remove(instance.id());
