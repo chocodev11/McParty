@@ -71,7 +71,7 @@ public final class SeamlessWorldChangeService {
     }
 
     public void mark(UUID playerId) {
-        if (!active || playerId == null) {
+        if (!active || !plugin.isEnabled() || playerId == null) {
             return;
         }
         long token = System.nanoTime();
