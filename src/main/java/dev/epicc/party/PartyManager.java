@@ -16,11 +16,13 @@ import dev.epicc.minigame.PlayerStateSnapshot;
 import dev.epicc.player.PlayerSessionService;
 import dev.epicc.resourcepack.ResourcePackService;
 import dev.epicc.lobby.parkour.LobbyParkourService;
+import dev.epicc.lobby.parkour.MultiverseSpawnService;
 import dev.epicc.seamless.SeamlessWorldChangeService;
 import dev.epicc.slime.SlimeWorldService;
 import dev.epicc.store.InstanceStore;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.title.Title;
+import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
@@ -53,6 +55,7 @@ public final class PartyManager {
     private final PathHopMover pathHopMover;
     private final ResourcePackService resourcePacks;
     private final PartyTransitionService transitions;
+    private final MultiverseSpawnService multiverseSpawns;
     private final Map<UUID, BoardTurnController> controllers = new ConcurrentHashMap<>();
     private LobbyParkourService lobbyParkour;
 
@@ -86,6 +89,7 @@ public final class PartyManager {
         this.pathHopMover = pathHopMover;
         this.resourcePacks = resourcePacks;
         this.transitions = new PartyTransitionService(plugin, seamless);
+        this.multiverseSpawns = new MultiverseSpawnService(plugin);
     }
 
     public JavaPlugin plugin() {
@@ -106,6 +110,19 @@ public final class PartyManager {
 
     public boolean consumeTransitionPermit(Player player, Location destination) {
         return transitions.consumeIfAllowed(player, destination);
+    }
+
+    public void leaveLobbyParkour(Player player) {
+        if (lobbyParkour == null || !lobbyParkour.isRunning(player.getUniqueId())) {
+            return;
+        }
+        lobbyParkour.stopSilently(player);
+
+        World world = Bukkit.getWorld(config.lobbyParkour().fallbackWorld());
+        Location destination = world == null ? fallbackLocation() : multiverseSpawns.spawnFor(world);
+        transitions.permit(player, destination);
+        seamless.teleport(player, destination);
+        messages.send(player, "parkour.left");
     }
 
     public Collection<PartyInstance> all() {

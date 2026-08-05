@@ -41,7 +41,7 @@ public final class MinigameEventBus implements Listener {
         return player == null ? null : byPlayer.get(player.getUniqueId());
     }
 
-    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    @EventHandler(priority = EventPriority.HIGH)
     public void onInteract(PlayerInteractEvent event) {
         MatchScope scope = scopeOf(event.getPlayer());
         if (scope != null) {

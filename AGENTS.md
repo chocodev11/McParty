@@ -522,6 +522,6 @@ Prefer incremental features that fit the current single-process, in-memory desig
 | `PluginConfig` | Typed settings |
 | `MessageService` | `messages.yml` MiniMessage lookup + placeholders |
 | `ResourcePackService` | Dice pack host + prompt |
-| `LobbyParkourService` | Pressure-plate start/checkpoints, goal ItemDisplay hitbox, and goal launch |
+| `LobbyParkourService` | Pressure-plate start/checkpoints, goal ArmorStand + touch hitbox, and goal launch |
 
 When in doubt: **put orchestration in `PartyManager`, world IO in `SlimeWorldService`, board rules in `board/`, minigame rules in `minigame/`.**

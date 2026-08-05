@@ -19,15 +19,15 @@ public final class LobbyParkourItems {
     }
 
     public static ItemStack restart(Plugin plugin, MessageService messages) {
-        return create(plugin, Material.COMPASS, RESTART, messages.get("parkour.item-restart"));
+        return create(plugin, Material.PRISMARINE_SHARD, RESTART, messages.get("parkour.item-restart"));
     }
 
     public static ItemStack checkpoint(Plugin plugin, MessageService messages) {
-        return create(plugin, Material.ENDER_PEARL, CHECKPOINT, messages.get("parkour.item-checkpoint"));
+        return create(plugin, Material.AMETHYST_SHARD, CHECKPOINT, messages.get("parkour.item-checkpoint"));
     }
 
     public static ItemStack leave(Plugin plugin, MessageService messages) {
-        return create(plugin, Material.BARRIER, LEAVE, messages.get("parkour.item-leave"));
+        return create(plugin, Material.ECHO_SHARD, LEAVE, messages.get("parkour.item-leave"));
     }
 
     public static String action(Plugin plugin, ItemStack stack) {

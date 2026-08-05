@@ -42,7 +42,7 @@ public final class LobbyParkourListener implements Listener {
         if (!definition.isReady()) {
             return;
         }
-        parkour.handleTrigger(player);
+        parkour.handleTrigger(player, event.getTo());
         if (!parkour.isRunning(player.getUniqueId())) {
             return;
         }
@@ -78,7 +78,7 @@ public final class LobbyParkourListener implements Listener {
         }
     }
 
-    @EventHandler(ignoreCancelled = true)
+    @EventHandler
     public void onInteract(PlayerInteractEvent event) {
         if (event.getHand() != EquipmentSlot.HAND || !event.getAction().isRightClick()) {
             return;
@@ -95,7 +95,7 @@ public final class LobbyParkourListener implements Listener {
         switch (action) {
             case LobbyParkourItems.RESTART -> parkour.restart(player);
             case LobbyParkourItems.CHECKPOINT -> parkour.teleportCheckpoint(player);
-            case LobbyParkourItems.LEAVE -> parkour.leave(player);
+            case LobbyParkourItems.LEAVE -> parties.leaveLobbyParkour(player);
             default -> { }
         }
     }

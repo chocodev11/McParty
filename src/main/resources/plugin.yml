@@ -5,7 +5,7 @@ description: Mario Party-style multiplayer minigame system
 api-version: '26.1.2'
 load: POSTWORLD
 authors: [McParty]
-softdepend: [packetevents]
+softdepend: [packetevents, Multiverse-Core]
 
 commands:
   party:

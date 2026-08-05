@@ -8,9 +8,9 @@ import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.Tag;
 import org.bukkit.World;
+import org.bukkit.entity.ArmorStand;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Interaction;
-import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.persistence.PersistentDataType;
@@ -137,9 +137,9 @@ public final class LobbyParkourService {
         messages.send(player, "parkour.started");
     }
 
-    /** Handles contact with the invisible hitbox paired with each ItemDisplay model. */
-    public void handleTrigger(Player player) {
-        String trigger = nearbyTrigger(player);
+    /** Handles contact with the invisible hitbox paired with the goal visual. */
+    public void handleTrigger(Player player, Location location) {
+        String trigger = nearbyTrigger(location);
         if (trigger == null) {
             return;
         }
@@ -179,8 +179,7 @@ public final class LobbyParkourService {
         if (run == null || !run.goalReached() || run.launchTask() != null) {
             return;
         }
-        if (location.clone().subtract(0.0, 0.1, 0.0).getBlock().getType() != Material.SLIME_BLOCK
-                || player.getVelocity().getY() >= 0.0) {
+        if (location.clone().subtract(0.0, 0.1, 0.0).getBlock().getType() != Material.SLIME_BLOCK) {
             return;
         }
 
@@ -269,15 +268,15 @@ public final class LobbyParkourService {
         Location at = point.teleportLocation(new Location(world, 0, 0, 0));
         ItemStack item = new ItemStack(Material.PAPER);
         item.editMeta(meta -> meta.setItemModel(new NamespacedKey("mcparty", "parkour_" + trigger)));
-        ItemDisplay display = world.spawn(at, ItemDisplay.class, entity -> {
-            entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+        Location visualAt = at.clone().subtract(0.0, 1.0, 0.0);
+        world.spawn(visualAt, ArmorStand.class, entity -> {
+            entity.setInvisible(true);
+            entity.setGravity(false);
+            entity.setMarker(true);
+            entity.setBasePlate(false);
+            entity.getEquipment().setHelmet(item, true);
             entity.getPersistentDataContainer().set(triggerKey, PersistentDataType.STRING, trigger);
         });
-        plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-            if (display.isValid()) {
-                display.setItemStack(item);
-            }
-        }, 1L);
         world.spawn(at, Interaction.class, interaction -> {
             interaction.setInteractionWidth(1.0f);
             interaction.setInteractionHeight(2.0f);
@@ -286,9 +285,9 @@ public final class LobbyParkourService {
         });
     }
 
-    private String nearbyTrigger(Player player) {
-        Collection<Entity> nearby = player.getWorld().getNearbyEntities(
-                player.getLocation(), TRIGGER_RANGE, 1.2, TRIGGER_RANGE
+    private String nearbyTrigger(Location location) {
+        Collection<Entity> nearby = location.getWorld().getNearbyEntities(
+                location, TRIGGER_RANGE, 1.2, TRIGGER_RANGE
         );
         for (Entity entity : nearby) {
             if (!(entity instanceof Interaction)) {
