@@ -9,10 +9,13 @@ import dev.epicc.lobby.parkour.LobbyParkourService;
 import dev.epicc.seamless.SeamlessWorldChangeService;
 import dev.epicc.slime.SlimeWorldService;
 import org.bukkit.Location;
+import org.bukkit.GameRule;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -53,6 +56,7 @@ public final class LobbyMatchmaker implements Listener {
     @EventHandler
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        preparePlayer(player);
 
         if (sessions.isInParty(player.getUniqueId())) {
             // Player is already in a party (e.g. rejoining after disconnect)
@@ -124,6 +128,7 @@ public final class LobbyMatchmaker implements Listener {
                     return;
                 }
 
+                configureLobbyWorld(lobbyWorld.get());
                 // Lobby loaded! Teleport host (and anyone who joined while it was loading)
                 for (PartyPlayer pp : newInstance.players()) {
                     Player p = plugin.getServer().getPlayer(pp.uuid());
@@ -143,11 +148,34 @@ public final class LobbyMatchmaker implements Listener {
     }
 
     private void teleportToLobby(Player player, World world) {
+        configureLobbyWorld(world);
+        preparePlayer(player);
         seamless.teleport(player, lobbySpawn(world));
+    }
+
+    public void configureFallbackWorld() {
+        String worldName = config.lobbyParkour().fallbackWorld();
+        if (!worldName.isBlank()) {
+            World world = plugin.getServer().getWorld(worldName);
+            if (world != null) {
+                configureLobbyWorld(world);
+            }
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onFoodLevelChange(FoodLevelChangeEvent event) {
+        if (!(event.getEntity() instanceof Player player)
+                || !isLobbyWorld(player.getWorld())
+                || event.getFoodLevel() >= player.getFoodLevel()) {
+            return;
+        }
+        event.setCancelled(true);
     }
 
     /** Contain waiting players inside the configured {@code lobby.boundary} of their own clone. */
     private void bindLobbyArea(PartyInstance instance, World world) {
+        configureLobbyWorld(world);
         SlotBoundary boundary = new SlotBoundary(
                 world,
                 config.lobbyBoundMinX(), config.lobbyBoundMinY(), config.lobbyBoundMinZ(),
@@ -155,6 +183,33 @@ public final class LobbyMatchmaker implements Listener {
         );
         instance.setActivePlayArea(new PartyPlayArea(world, lobbySpawn(world), boundary));
         lobbyParkour.refresh(world);
+    }
+
+    private void preparePlayer(Player player) {
+        player.setHealth(player.getMaxHealth());
+        player.setFoodLevel(20);
+        player.setSaturation(20.0f);
+        player.setExhaustion(0.0f);
+    }
+
+    private void configureLobbyWorld(World world) {
+        world.setTime(6000L);
+        world.setGameRule(GameRule.DO_DAYLIGHT_CYCLE, false);
+    }
+
+    private boolean isLobbyWorld(World world) {
+        if (world.getName().equals(config.lobbyParkour().fallbackWorld())) {
+            return true;
+        }
+        for (PartyInstance instance : partyManager.all()) {
+            if (instance.state() != PartyState.WAITING || instance.activePlayArea() == null) {
+                continue;
+            }
+            if (instance.activePlayArea().world().equals(world)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private Location lobbySpawn(World world) {

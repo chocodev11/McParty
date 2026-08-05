@@ -50,6 +50,7 @@ public final class McPartyPlugin extends JavaPlugin {
     private final List<DummyMinigame> dummyMinigames = new ArrayList<>();
     private SlimeWorldService slimeWorldService;
     private LobbyParkourService lobbyParkour;
+    private LobbyMatchmaker lobbyMatchmaker;
 
     @Override
     public void onEnable() {
@@ -149,6 +150,10 @@ public final class McPartyPlugin extends JavaPlugin {
         lobbyParkour = new LobbyParkourService(this, config, messages);
         partyManager.setLobbyParkour(lobbyParkour);
         lobbyParkour.refreshConfiguredWorld();
+        lobbyMatchmaker = new LobbyMatchmaker(
+                this, partyManager, config, messages, slimeWorldService, seamless, sessions, lobbyParkour
+        );
+        lobbyMatchmaker.configureFallbackWorld();
 
         // One shared listener for every running minigame session (see MinigameEventBus)
         getServer().getPluginManager().registerEvents(minigameEvents, this);
@@ -157,9 +162,7 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(pathHopMover, this);
         getServer().getPluginManager().registerEvents(new SlimeFallDamageListener(slimeWorldService), this);
         getServer().getPluginManager().registerEvents(new ResourcePackListener(resourcePackService), this);
-        getServer().getPluginManager().registerEvents(
-                new LobbyMatchmaker(this, partyManager, config, messages, slimeWorldService, seamless, sessions, lobbyParkour), this
-        );
+        getServer().getPluginManager().registerEvents(lobbyMatchmaker, this);
         getServer().getPluginManager().registerEvents(new LobbyParkourListener(lobbyParkour, partyManager), this);
 
         PartyCommand partyCommand = new PartyCommand(partyManager, messages);
@@ -227,6 +230,7 @@ public final class McPartyPlugin extends JavaPlugin {
 
         resourcePackService.reload();
         lobbyParkour.refreshConfiguredWorld();
+        lobbyMatchmaker.configureFallbackWorld();
         getLogger().info("Config reloaded");
     }
 
