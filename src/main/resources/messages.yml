@@ -123,9 +123,11 @@ admin:
 
 parkour:
   started: "{prefix}<green>Parkour started!"
+  timer: "<yellow>Time: <time>"
   checkpoint-reached: "{prefix}<yellow>Checkpoint reached."
   restarted: "{prefix}<yellow>Run restarted."
   finished: "{prefix}<gold>Parkour complete!"
+  personal-best: "{prefix}<green>New personal best: <time>"
   goal-reached: "{prefix}<yellow>Goal reached — land on the slime block!"
   left: "{prefix}<gray>You left the parkour."
   item-restart: "<yellow>Restart Run"

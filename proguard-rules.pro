@@ -79,3 +79,7 @@
 -dontwarn org.checkerframework.**
 -dontwarn com.google.errorprone.**
 -dontwarn org.jetbrains.annotations.**
+
+# SQLite JDBC is loaded through the JDBC driver contract and contains native
+# binaries that must remain in the shaded plugin jar.
+-keep class org.sqlite.** { *; }

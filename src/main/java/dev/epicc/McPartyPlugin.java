@@ -19,7 +19,9 @@ import dev.epicc.minigame.MinigameManager;
 import dev.epicc.minigame.MinigameRegistry;
 import dev.epicc.hologram.HologramService;
 import dev.epicc.lobby.parkour.LobbyParkourListener;
+import dev.epicc.lobby.parkour.ParkourLeaderboardStore;
 import dev.epicc.lobby.parkour.LobbyParkourService;
+import dev.epicc.lobby.parkour.SqliteParkourLeaderboardStore;
 import dev.epicc.party.LobbyMatchmaker;
 import dev.epicc.party.PartyManager;
 import dev.epicc.player.PlayerSessionService;
@@ -34,6 +36,7 @@ import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 
@@ -53,6 +56,7 @@ public final class McPartyPlugin extends JavaPlugin {
     private final List<DummyMinigame> dummyMinigames = new ArrayList<>();
     private SlimeWorldService slimeWorldService;
     private LobbyParkourService lobbyParkour;
+    private ParkourLeaderboardStore parkourLeaderboard;
     private LobbyMatchmaker lobbyMatchmaker;
     private HologramService holograms;
 
@@ -60,6 +64,15 @@ public final class McPartyPlugin extends JavaPlugin {
     public void onEnable() {
         config = new PluginConfig(this);
         messages = new MessageService(this);
+        try {
+            parkourLeaderboard = new SqliteParkourLeaderboardStore(
+                    getDataFolder().toPath().resolve(config.databaseSqliteFile()),
+                    getLogger()
+            );
+        } catch (Exception exception) {
+            getLogger().log(Level.SEVERE,
+                    "Parkour leaderboard is disabled because its SQLite database could not be opened", exception);
+        }
         boolean packetEventsReady = Bukkit.getPluginManager().isPluginEnabled("packetevents");
         holograms = new HologramService(
                 this,
@@ -174,7 +187,7 @@ public final class McPartyPlugin extends JavaPlugin {
                 .flatMap(instance -> instance.player(context.player().getUniqueId()))
                 .map(player -> Component.text(player.coins())).orElse(Component.empty()));
         holograms.start();
-        lobbyParkour = new LobbyParkourService(this, config, messages);
+        lobbyParkour = new LobbyParkourService(this, config, messages, parkourLeaderboard);
         partyManager.setLobbyParkour(lobbyParkour);
         lobbyParkour.refreshConfiguredWorld();
         lobbyMatchmaker = new LobbyMatchmaker(
@@ -277,6 +290,9 @@ public final class McPartyPlugin extends JavaPlugin {
         }
         if (lobbyParkour != null) {
             lobbyParkour.shutdown();
+        }
+        if (parkourLeaderboard != null) {
+            parkourLeaderboard.close();
         }
         if (pathSetupService != null) {
             pathSetupService.cancelAll();

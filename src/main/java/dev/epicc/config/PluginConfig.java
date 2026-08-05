@@ -60,6 +60,8 @@ public final class PluginConfig {
     private int resourcePackLocalPort;
     private String resourcePackLocalPublicUrl;
 
+    private String databaseSqliteFile;
+
     private boolean slimeEnabled;
     private String slimeWorldsDirectory;
     private String slimeTemplateWorld;
@@ -83,6 +85,7 @@ public final class PluginConfig {
     private int lobbyBoundMaxX;
     private int lobbyBoundMaxY;
     private int lobbyBoundMaxZ;
+    private String lobbyParkourCourseId;
     private LobbyParkourDefinition lobbyParkour;
 
     private boolean hologramsEnabled;
@@ -174,6 +177,11 @@ public final class PluginConfig {
         resourcePackLocalPort = c.getInt("resource-pack.local.port", 8163);
         resourcePackLocalPublicUrl = nullToEmpty(c.getString("resource-pack.local.public-url"));
 
+        databaseSqliteFile = nullToEmpty(c.getString("database.sqlite-file", "parkour.db"));
+        if (databaseSqliteFile.isBlank()) {
+            databaseSqliteFile = "parkour.db";
+        }
+
         slimeEnabled = c.getBoolean("slime.enabled", true);
         slimeWorldsDirectory = c.getString("slime.worlds-directory", "slime_worlds");
         slimeTemplateWorld = c.getString("slime.template-world", "party_board");
@@ -200,6 +208,11 @@ public final class PluginConfig {
         lobbyBoundMaxX = c.getInt("lobby.boundary.maxX", 50);
         lobbyBoundMaxY = c.getInt("lobby.boundary.maxY", 256);
         lobbyBoundMaxZ = c.getInt("lobby.boundary.maxZ", 50);
+        lobbyParkourCourseId = nullToEmpty(c.getString("lobby.parkour.course-id", "lobby"));
+        if (!lobbyParkourCourseId.matches("[a-z0-9_-]{1,64}")) {
+            plugin.getLogger().warning("Invalid lobby.parkour.course-id; using 'lobby'");
+            lobbyParkourCourseId = "lobby";
+        }
         String parkourWorld = nullToEmpty(c.getString("lobby.parkour.world"));
         if (parkourWorld.isBlank()) {
             parkourWorld = fallbackWorld;
@@ -268,6 +281,8 @@ public final class PluginConfig {
     public int resourcePackLocalPort() { return resourcePackLocalPort; }
     public String resourcePackLocalPublicUrl() { return resourcePackLocalPublicUrl; }
 
+    public String databaseSqliteFile() { return databaseSqliteFile; }
+
     public boolean slimeEnabled() { return slimeEnabled; }
     public String slimeWorldsDirectory() { return slimeWorldsDirectory; }
     public String slimeTemplateWorld() { return slimeTemplateWorld; }
@@ -294,6 +309,7 @@ public final class PluginConfig {
     public int lobbyBoundMaxX() { return lobbyBoundMaxX; }
     public int lobbyBoundMaxY() { return lobbyBoundMaxY; }
     public int lobbyBoundMaxZ() { return lobbyBoundMaxZ; }
+    public String lobbyParkourCourseId() { return lobbyParkourCourseId; }
     public LobbyParkourDefinition lobbyParkour() { return lobbyParkour; }
 
     public boolean hologramsEnabled() { return hologramsEnabled; }

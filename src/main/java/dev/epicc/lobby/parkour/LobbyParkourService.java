@@ -17,11 +17,17 @@ import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Vector;
+import net.kyori.adventure.text.Component;
 
 import java.util.Collection;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
+import java.util.logging.Level;
 
 public final class LobbyParkourService {
 
@@ -34,13 +40,20 @@ public final class LobbyParkourService {
     private final JavaPlugin plugin;
     private final PluginConfig config;
     private final MessageService messages;
+    private final ParkourLeaderboardStore leaderboard;
     private final NamespacedKey triggerKey;
     private final Map<UUID, Run> runs = new ConcurrentHashMap<>();
 
-    public LobbyParkourService(JavaPlugin plugin, PluginConfig config, MessageService messages) {
+    public LobbyParkourService(
+            JavaPlugin plugin,
+            PluginConfig config,
+            MessageService messages,
+            ParkourLeaderboardStore leaderboard
+    ) {
         this.plugin = plugin;
         this.config = config;
         this.messages = messages;
+        this.leaderboard = leaderboard;
         this.triggerKey = new NamespacedKey(plugin, "lobby_parkour_trigger");
     }
 
@@ -54,6 +67,13 @@ public final class LobbyParkourService {
 
     public String action(ItemStack stack) {
         return LobbyParkourItems.action(plugin, stack);
+    }
+
+    public CompletableFuture<List<ParkourLeaderboardEntry>> top(int limit) {
+        if (leaderboard == null) {
+            return CompletableFuture.completedFuture(List.of());
+        }
+        return leaderboard.top(config.lobbyParkourCourseId(), limit);
     }
 
     public boolean tryUseHotbarItem(Player player) {
@@ -142,7 +162,9 @@ public final class LobbyParkourService {
         player.getInventory().setItem(0, LobbyParkourItems.restart(plugin, messages));
         player.getInventory().setItem(1, LobbyParkourItems.checkpoint(plugin, messages));
         player.getInventory().setItem(8, LobbyParkourItems.leave(plugin, messages));
-        runs.put(player.getUniqueId(), new Run(hotbar, definition.start()));
+        Run run = new Run(hotbar, definition.start(), System.nanoTime());
+        runs.put(player.getUniqueId(), run);
+        startTimerDisplay(player, run);
         messages.send(player, "parkour.started");
     }
 
@@ -171,6 +193,11 @@ public final class LobbyParkourService {
         if (run == null) {
             return;
         }
+        cancelLaunch(run);
+        cancelTimerDisplay(run);
+        run.setGoalReached(false);
+        run.restartTimer();
+        startTimerDisplay(player, run);
         player.teleport(run.start().teleportLocation(player.getLocation()));
         messages.send(player, "parkour.restarted");
     }
@@ -231,8 +258,9 @@ public final class LobbyParkourService {
     }
 
     public void shutdown() {
-        for (UUID playerId : runs.keySet()) {
-            cancelLaunch(playerId);
+        for (Run run : runs.values()) {
+            cancelLaunch(run);
+            cancelTimerDisplay(run);
         }
         runs.clear();
         for (World world : Bukkit.getWorlds()) {
@@ -245,8 +273,37 @@ public final class LobbyParkourService {
         if (run == null || run.goalReached()) {
             return;
         }
+        long completionTimeMs = run.stopTimer();
+        cancelTimerDisplay(run);
         run.setGoalReached(true);
+        recordCompletion(player, completionTimeMs);
         messages.send(player, "parkour.goal-reached");
+    }
+
+    private void recordCompletion(Player player, long completionTimeMs) {
+        if (leaderboard == null) {
+            return;
+        }
+        leaderboard.submit(
+                config.lobbyParkourCourseId(),
+                player.getUniqueId(),
+                player.getName(),
+                completionTimeMs
+        ).whenComplete((submission, error) -> {
+            if (error != null) {
+                plugin.getLogger().log(Level.WARNING,
+                        "Could not save parkour result for " + player.getUniqueId(), error);
+                return;
+            }
+            if (!submission.personalBest()) {
+                return;
+            }
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                if (player.isOnline()) {
+                    messages.send(player, "parkour.personal-best", "time", formatTime(completionTimeMs));
+                }
+            });
+        });
     }
 
     private boolean stop(Player player) {
@@ -254,10 +311,9 @@ public final class LobbyParkourService {
         if (run == null) {
             return false;
         }
-        BukkitTask launchTask = run.launchTask();
-        if (launchTask != null) {
-            launchTask.cancel();
-        }
+        cancelLaunch(run);
+        cancelTimerDisplay(run);
+        player.sendActionBar(Component.empty());
         for (int slot = 0; slot < run.hotbar().length; slot++) {
             player.getInventory().setItem(slot, run.hotbar()[slot]);
         }
@@ -266,11 +322,36 @@ public final class LobbyParkourService {
 
     private void cancelLaunch(UUID playerId) {
         Run run = runs.get(playerId);
-        if (run == null || run.launchTask() == null) {
+        if (run == null) {
             return;
         }
-        run.launchTask().cancel();
-        run.setLaunchTask(null);
+        cancelLaunch(run);
+    }
+
+    private static void cancelLaunch(Run run) {
+        BukkitTask launchTask = run.launchTask();
+        if (launchTask != null) {
+            launchTask.cancel();
+            run.setLaunchTask(null);
+        }
+    }
+
+    private void startTimerDisplay(Player player, Run run) {
+        run.setTimerTask(plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
+            if (!player.isOnline() || runs.get(player.getUniqueId()) != run || run.timerStopped()) {
+                cancelTimerDisplay(run);
+                return;
+            }
+            player.sendActionBar(messages.get("parkour.timer", "time", formatTime(run.elapsedMs())));
+        }, 1L, 1L));
+    }
+
+    private static void cancelTimerDisplay(Run run) {
+        BukkitTask timerTask = run.timerTask();
+        if (timerTask != null) {
+            timerTask.cancel();
+            run.setTimerTask(null);
+        }
     }
 
     private void spawnTrigger(World world, LobbyParkourPoint point, String trigger) {
@@ -319,17 +400,26 @@ public final class LobbyParkourService {
         return new LobbyParkourPoint(location.getBlockX(), location.getBlockY(), location.getBlockZ());
     }
 
+    private static String formatTime(long milliseconds) {
+        return String.format(Locale.ROOT, "%.3fs", milliseconds / 1000.0);
+    }
+
     private static final class Run {
         private final ItemStack[] hotbar;
         private final LobbyParkourPoint start;
+        private long startedAtNanos;
+        private long stoppedAtNanos;
+        private boolean timerStopped;
         private LobbyParkourPoint checkpoint;
         private boolean goalReached;
         private BukkitTask launchTask;
+        private BukkitTask timerTask;
         private long nextHotbarItemUseNanos;
 
-        private Run(ItemStack[] hotbar, LobbyParkourPoint start) {
+        private Run(ItemStack[] hotbar, LobbyParkourPoint start, long startedAtNanos) {
             this.hotbar = hotbar;
             this.start = start;
+            this.startedAtNanos = startedAtNanos;
             this.checkpoint = start;
         }
 
@@ -338,6 +428,8 @@ public final class LobbyParkourService {
         private LobbyParkourPoint start() { return start; }
         private boolean goalReached() { return goalReached; }
         private BukkitTask launchTask() { return launchTask; }
+        private BukkitTask timerTask() { return timerTask; }
+        private boolean timerStopped() { return timerStopped; }
         private boolean tryUseHotbarItem() {
             long now = System.nanoTime();
             if (now < nextHotbarItemUseNanos) {
@@ -346,8 +438,25 @@ public final class LobbyParkourService {
             nextHotbarItemUseNanos = now + HOTBAR_ITEM_COOLDOWN_NANOS;
             return true;
         }
+        private long stopTimer() {
+            if (!timerStopped) {
+                stoppedAtNanos = System.nanoTime();
+                timerStopped = true;
+            }
+            return elapsedMs();
+        }
+        private long elapsedMs() {
+            long endNanos = timerStopped ? stoppedAtNanos : System.nanoTime();
+            return Math.max(1L, TimeUnit.NANOSECONDS.toMillis(endNanos - startedAtNanos));
+        }
+        private void restartTimer() {
+            startedAtNanos = System.nanoTime();
+            stoppedAtNanos = 0L;
+            timerStopped = false;
+        }
         private void setCheckpoint(LobbyParkourPoint checkpoint) { this.checkpoint = checkpoint; }
         private void setGoalReached(boolean goalReached) { this.goalReached = goalReached; }
         private void setLaunchTask(BukkitTask launchTask) { this.launchTask = launchTask; }
+        private void setTimerTask(BukkitTask timerTask) { this.timerTask = timerTask; }
     }
 }

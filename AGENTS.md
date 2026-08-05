@@ -124,6 +124,7 @@ Persistent data at runtime:
 | `plugins/McParty/config.yml` | Defaults from resources; `PluginConfig` reads once on enable |
 | `plugins/McParty/messages.yml` | All player-facing text (MiniMessage); `MessageService` — reloaded with `/partyadmin reload` |
 | `plugins/McParty/slots.yml` | Board slots (world name, bounds, path, spawn) — `BoardSlotRegistry` |
+| `plugins/McParty/parkour.db` | SQLite parkour best times and attempt counts; schema versioned with SQLite `user_version` |
 | `plugins/McParty/slime_worlds/*.slime` | Template worlds for ASP FileLoader |
 
 ---
@@ -135,16 +136,17 @@ Persistent data at runtime:
 `onEnable` constructs (order matters for wiring):
 
 1. `PluginConfig`
-2. `PlayerSessionService`, `InMemoryInstanceStore`
-3. `BoardSlotRegistry` → `load()`
-4. `SlimeWorldService` (ASP + FileLoader)
-5. `SeamlessWorldChangeService` (PacketEvents hook if present)
-6. `ResourcePackService` (local HTTP or external URL; optional)
-7. `MinigameEventBus` (one shared listener for every session) + `MinigameManager` (registry/config) + per-controller `MinigameRunner`
-8. `PartyManager`
-9. `MinigameEventBus`, `BoundaryListener`, resource-pack listener, commands
+2. `SqliteParkourLeaderboardStore` (persistent parkour records)
+3. `PlayerSessionService`, `InMemoryInstanceStore`
+4. `BoardSlotRegistry` → `load()`
+5. `SlimeWorldService` (ASP + FileLoader)
+6. `SeamlessWorldChangeService` (PacketEvents hook if present)
+7. `ResourcePackService` (local HTTP or external URL; optional)
+8. `MinigameEventBus` (one shared listener for every session) + `MinigameManager` (registry/config) + per-controller `MinigameRunner`
+9. `PartyManager`
+10. `MinigameEventBus`, `BoundaryListener`, resource-pack listener, commands
 
-`onDisable`: `partyManager.shutdown()` → unload slime worlds → stop resource-pack HTTP → save slots.
+`onDisable`: stop parkour runs → close SQLite store → `partyManager.shutdown()` → unload slime worlds → stop resource-pack HTTP → save slots.
 
 ### Domain model
 
@@ -374,6 +376,8 @@ Important groups:
 - `minigame.dummy-*`, `minigame.reveal-duration-ticks`, `minigame.reveal-interval-ticks`  
 - `seamless-world-change.enabled` — cancel RESPAWN on McParty same-env world teleports (needs PacketEvents)  
 - `resource-pack.*` — local HTTP or external URL, send-on join/party, required/kick-on-decline (prompt/kick text in `messages.yml`)  
+- `database.sqlite-file` — persistent SQLite file path relative to the plugin data folder  
+- `lobby.parkour.course-id` — stable leaderboard key for the configured parkour course  
 - `messages.yml` — all player chat/title/item strings (MiniMessage)
 - `slime.*` — ASP template and world naming  
 
@@ -523,5 +527,6 @@ Prefer incremental features that fit the current single-process, in-memory desig
 | `MessageService` | `messages.yml` MiniMessage lookup + placeholders |
 | `ResourcePackService` | Dice pack host + prompt |
 | `LobbyParkourService` | Pressure-plate start/checkpoints, goal ArmorStand + touch hitbox, and goal launch |
+| `ParkourLeaderboardStore` / `SqliteParkourLeaderboardStore` | Async persistent best times; replace the adapter for MySQL later |
 
 When in doubt: **put orchestration in `PartyManager`, world IO in `SlimeWorldService`, board rules in `board/`, minigame rules in `minigame/`.**

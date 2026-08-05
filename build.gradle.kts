@@ -47,6 +47,8 @@ dependencies {
     compileOnly("com.infernalsuite.asp:api:4.2.0-SNAPSHOT")
     // Reference loaders are not on the server — must be shaded into this plugin
     implementation("com.infernalsuite.asp:file-loader:4.2.0-SNAPSHOT")
+    // Embedded persistent storage for parkour records
+    implementation("org.xerial:sqlite-jdbc:3.51.1.1")
     // Soft-depend at runtime (plugin.yml); not shaded
     compileOnly("com.github.retrooper:packetevents-spigot:2.7.0")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))

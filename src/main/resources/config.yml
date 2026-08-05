@@ -103,6 +103,11 @@ resource-pack:
     # Example: http://play.example.com:8163/mcparty.zip
     public-url: ""
 
+# Persistent plugin data. The SQLite file is created relative to plugins/McParty.
+# Parkour records use a versioned schema so another JDBC backend can replace it later.
+database:
+  sqlite-file: parkour.db
+
 # AdvancedSlimePaper — per-party world load/unload
 # Place templates as: plugins/McParty/<worlds-directory>/<name>.slime
 # Path setup does not assign slime-template; slots may leave it empty and use template-world
@@ -142,6 +147,8 @@ lobby:
   # Start and checkpoints are pressure plates; the goal is an entity. Set while standing on each location:
   # /partyadmin parkour start|checkpoint|goal|leaderboard
   parkour:
+    # Stable identifier used by the leaderboard store; change only when creating a separate course.
+    course-id: lobby
     # Permanent MCA lobby world used when Slime is unavailable. Commands set this automatically.
     world: ""
     start: null
