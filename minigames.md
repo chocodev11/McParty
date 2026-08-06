@@ -189,16 +189,16 @@ minigame:
 
 ---
 
-### 5.2 Spleef — `spleef`
+### 5.2 TNT Spleef — `spleef`
 
 **Fantasy:** Break the floor under others. Last one standing wins.
 
 #### Rules
 
-1. Players spawn on a flat multi-layer or single-layer snow/terracotta platform.
-2. Each gets a shovel (instant or fast break on arena materials only).
-3. Breaking floor blocks removes them (real world); players who fall below the configured Y threshold or leave the arena world are eliminated.
-4. Optional: snowballs with knockback later (v2).
+1. Players spawn on a flat multi-layer or single-layer TNT platform.
+2. Each gets an unbreakable Fire Crossbow and arrows.
+3. Arrows remove TNT floor blocks (real world); players who fall below the configured Y threshold or leave the arena world are eliminated.
+4. A Multishot power-up periodically appears above a remaining TNT block; touching it grants Multishot for the configured duration.
 5. Last player above the floor wins.
 
 #### Win / coins
@@ -211,16 +211,18 @@ minigame:
 | Area | Plan |
 |------|------|
 | State | Alive set |
-| Events | `BlockBreakEvent` (only arena materials + match players), fall check on move/tick |
+| Events | `ProjectileHitEvent` (arrows + TNT floor), fall check on move/tick |
 | Blocks | Real break; **no physics**; the per-party arena clone is disposable |
+| Weapon | Unbreakable `CROSSBOW` with Quick Charge; Multishot is temporary |
+| Power-up | Non-persistent `ItemDisplay` with configurable custom item model |
 | Restore | `MinigameRunner` unloads the arena clone on end/cancel |
 | Packets | Not for floor |
 
 #### Flow
 
 ```text
-start → snapshot → load disposable arena clone → teleport spawns → assume prebuilt platform
-     → give shovels → listen breaks + fall
+start → snapshot → load disposable arena clone → teleport spawns → assume prebuilt TNT platform
+     → give crossbows → listen arrow hits + fall + power-up touch
      → last alive / timeout (rank by alive then height)
      → result → unload arena clone → done
 ```
@@ -243,7 +245,11 @@ minigame:
     timeout-seconds: 90
     fall-y: 60.0
     spawn-radius: 7.0
-    floor-materials: [SNOW_BLOCK, POWDER_SNOW]
+    floor-materials: [TNT]
+    powerup:
+      spawn-interval-seconds: 10
+      multishot-duration-seconds: 10
+      item-model: tnt_multishot
 ```
 
 #### References
@@ -687,7 +693,7 @@ Store in `slots.yml` or `minigames.yml` next to board data; remap with `forWorld
 - [ ] Disconnect mid-game does not soft-lock manager (`active` cleared)
 - [ ] Party end during minigame cancels cleanly
 - [ ] No block leaks outside pad
-- [ ] No leftover potato/blaster items on board after return
+- [ ] No leftover TNT power-up or crossbow items on board after return
 
 ---
 

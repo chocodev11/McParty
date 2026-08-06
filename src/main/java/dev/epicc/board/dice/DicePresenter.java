@@ -27,11 +27,12 @@ import java.util.function.IntConsumer;
  * Rolling die rides the player as a passenger (no freestanding teleport while spinning).
  * Entity yaw/pitch stay 0; "in front" is world-space transformation translation on the eye look-ray
  * (updated each tick; passenger attach is player height, so Y is relative to the top of the head).
- * Visible only to the roller. On settle: detach onto the current eye ray, face the roller, hold 1s,
- * callback.
+ * Visible only to the roller. On settle: detach onto the current eye ray, face the roller once,
+ * hold 1s, callback.
  */
 public final class DicePresenter {
     private static final long SETTLE_HOLD_TICKS = 20L;
+    private static final int SETTLE_PARTICLE_COUNT = 72;
     /** Steady per-tick tumble (radians) — 60° yaw and 45° pitch every four ticks. */
     private static final float SPIN_YAW_PER_TICK = (float) (Math.PI / 12.0);
     private static final float SPIN_PITCH_PER_TICK = (float) (Math.PI / 16.0);
@@ -41,9 +42,7 @@ public final class DicePresenter {
     private double spawnDistance;
     private int interactTicks;
     private int spinIntervalTicks;
-    /** Settled floating size ({@code board.dice-display-scale}). */
-    private float displayScale;
-    /** Spin in front of eyes ({@code board.dice-spin-scale}); usually smaller than settle. */
+    /** Rolling and settled floating size ({@code board.dice-spin-scale}). */
     private float spinScale;
 
     private final Map<UUID, Session> byPlayer = new ConcurrentHashMap<>();
@@ -54,25 +53,22 @@ public final class DicePresenter {
             double spawnDistance,
             int interactSeconds,
             int spinIntervalTicks,
-            float displayScale,
             float spinScale
     ) {
         this.plugin = plugin;
         this.hats = hats;
-        reconfigure(spawnDistance, interactSeconds, spinIntervalTicks, displayScale, spinScale);
+        reconfigure(spawnDistance, interactSeconds, spinIntervalTicks, spinScale);
     }
 
     public void reconfigure(
             double spawnDistance,
             int interactSeconds,
             int spinIntervalTicks,
-            float displayScale,
             float spinScale
     ) {
         this.spawnDistance = Math.max(0.5, spawnDistance);
         this.interactTicks = Math.max(1, interactSeconds) * 20;
         this.spinIntervalTicks = Math.max(1, spinIntervalTicks);
-        this.displayScale = Math.max(0.1f, displayScale);
         this.spinScale = Math.max(0.1f, spinScale);
     }
 
@@ -208,13 +204,18 @@ public final class DicePresenter {
             Location settledAt = player != null && player.isOnline()
                     ? floatingInFront(player)
                     : session.display.getLocation().clone();
+            float settledYaw = player != null && player.isOnline()
+                    ? player.getLocation().getYaw() + 180f
+                    : session.display.getYaw();
+            settledAt.setYaw(settledYaw);
+            settledAt.setPitch(0f);
             int landAnimTicks = Math.max(1, spinIntervalTicks);
             session.display.setTeleportDuration(landAnimTicks);
             session.display.teleport(settledAt);
             session.display.setInterpolationDelay(0);
             session.display.setInterpolationDuration(landAnimTicks);
-            session.display.setBillboard(Display.Billboard.CENTER);
-            session.display.setTransformation(floatingPose(displayScale));
+            session.display.setBillboard(Display.Billboard.FIXED);
+            session.display.setTransformation(floatingPose());
             particleAt = settledAt.clone().add(0, 0.05, 0);
 
             // Private display can drop tracking after dismount — keep roller viewer
@@ -300,16 +301,14 @@ public final class DicePresenter {
             direction.normalize();
         }
         at.add(direction.multiply(spawnDistance));
-        at.setYaw(0f);
-        at.setPitch(0f);
         return at;
     }
 
-    private static Transformation floatingPose(float scale) {
+    private Transformation floatingPose() {
         return new Transformation(
                 new Vector3f(),
                 new Quaternionf(),
-                scaleVec(scale),
+                scaleVec(spinScale),
                 new Quaternionf()
         );
     }
@@ -334,7 +333,7 @@ public final class DicePresenter {
                 Color.fromRGB(255, 209, 220),
         };
 
-        for (int i = 0; i < 36; i++) {
+        for (int i = 0; i < SETTLE_PARTICLE_COUNT; i++) {
             Color c = pastels[rng.nextInt(pastels.length)];
             Particle.DustOptions dust = new Particle.DustOptions(c, 2.6f);
             double ox = rng.nextDouble(-1.1, 1.1);

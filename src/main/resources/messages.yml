@@ -63,9 +63,12 @@ minigame:
   hot-potato-holding: "<red><bold>BOMB TICKING: <seconds>s</bold>"
   hot-potato-exploded: "{prefix}<red><player> exploded!"
   hot-potato-passed: "{prefix}<yellow><from> threw the potato to <to>!"
-  spleef-started: "{prefix}<aqua>Spleef! Break the floor and stay standing!"
+  spleef-started: "{prefix}<aqua>TNT Spleef! Fire your crossbow and stay standing!"
   spleef-eliminated: "{prefix}<red><player> fell!"
   spleef-time-left: "<yellow>Spleef: <seconds>s remaining"
+  spleef-powerup-spawned: "{prefix}<gold>Multishot power-up spawned!"
+  spleef-powerup-collected: "{prefix}<yellow><player> collected Multishot for <seconds>s!"
+  spleef-multishot: "<gold>Multishot: <seconds>s"
 
 admin:
   reload-ok: "{prefix}<green>Config reloaded (resource pack restarted). Slime/seamless need a server restart to change."

@@ -14,10 +14,8 @@ board:
   dice-interact-seconds: 10
   # Face-texture shuffle interval while the die tumbles at a fixed smooth rate
   dice-spin-interval-ticks: 4
-  dice-spawn-distance: 2.0
-  # Settle / world size (cube ~14/16 tall; 1.0 = 1:1 on ItemDisplay NONE)
-  dice-display-scale: 1.0
-  # Spin (in front of eyes) — keep smaller so first-person does not look huge
+  dice-spawn-distance: 2.5
+  # Rolling and settled dice size — keep smaller so first-person does not look huge
   dice-spin-scale: 0.7
   # Public hat above head (larger than the old 0.35)
   dice-hat-scale: 0.8
@@ -87,8 +85,13 @@ minigame:
     fall-y: 60.0
     spawn-radius: 7.0
     floor-materials:
-      - SNOW_BLOCK
-      - POWDER_SNOW
+      - TNT
+    powerup:
+      # Spawn a Multishot power-up above a remaining TNT block.
+      spawn-interval-seconds: 10
+      multishot-duration-seconds: 10
+      # Item model id under the mcparty namespace.
+      item-model: tnt_multishot
 
 # Suppress dirt "Loading terrain…" on party world teleports (same env + height).
 # Requires PacketEvents plugin on the server. Fail-open if missing.

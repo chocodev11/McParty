@@ -152,7 +152,9 @@ public final class McPartyPlugin extends JavaPlugin {
                 && config.spleefFallY() > config.spleefArena().minY()) {
             minigameRegistry.register(new SpleefMinigame(
                     config.spleefTimeoutSeconds(), config.spleefFallY(), config.spleefSpawnRadius(),
-                    config.spleefArena(), config.spleefFloorMaterials(), config.dummyCoinRewards()
+                    config.spleefArena(), config.spleefFloorMaterials(), config.dummyCoinRewards(),
+                    config.spleefPowerupSpawnSeconds(), config.spleefMultishotSeconds(),
+                    config.spleefPowerupItemModel()
             ));
         } else {
             getLogger().severe("Spleef is disabled: minigame.spleef.arena is invalid or fall-y is not above boundary.minY.");
@@ -175,7 +177,6 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.diceSpawnDistance(),
                 config.diceInteractSeconds(),
                 config.diceSpinIntervalTicks(),
-                config.diceDisplayScale(),
                 config.diceSpinScale()
         );
         pathHopMover = new PathHopMover(
@@ -287,7 +288,6 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.diceSpawnDistance(),
                 config.diceInteractSeconds(),
                 config.diceSpinIntervalTicks(),
-                config.diceDisplayScale(),
                 config.diceSpinScale()
         );
         pathHopMover.reconfigure(
@@ -321,7 +321,9 @@ public final class McPartyPlugin extends JavaPlugin {
                 && config.spleefFallY() > config.spleefArena().minY()) {
             minigames.registry().register(new SpleefMinigame(
                     config.spleefTimeoutSeconds(), config.spleefFallY(), config.spleefSpawnRadius(),
-                    config.spleefArena(), config.spleefFloorMaterials(), config.dummyCoinRewards()
+                    config.spleefArena(), config.spleefFloorMaterials(), config.dummyCoinRewards(),
+                    config.spleefPowerupSpawnSeconds(), config.spleefMultishotSeconds(),
+                    config.spleefPowerupItemModel()
             ));
         } else {
             getLogger().severe("Spleef remains disabled: minigame.spleef.arena is invalid or fall-y is not above boundary.minY.");

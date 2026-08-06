@@ -30,7 +30,6 @@ public final class PluginConfig {
     private int diceInteractSeconds;
     private int diceSpinIntervalTicks;
     private double diceSpawnDistance;
-    private float diceDisplayScale;
     private float diceSpinScale;
     private float diceHatScale;
     private double hopUpVelocity;
@@ -51,6 +50,9 @@ public final class PluginConfig {
     private double spleefSpawnRadius;
     private List<Material> spleefFloorMaterials;
     private MinigameArenaSpec spleefArena;
+    private int spleefPowerupSpawnSeconds;
+    private int spleefMultishotSeconds;
+    private String spleefPowerupItemModel;
 
     private boolean seamlessWorldChangeEnabled;
 
@@ -125,8 +127,7 @@ public final class PluginConfig {
         diceMax = c.getInt("board.dice-max", 6);
         diceInteractSeconds = c.getInt("board.dice-interact-seconds", 5);
         diceSpinIntervalTicks = c.getInt("board.dice-spin-interval-ticks", 4);
-        diceSpawnDistance = c.getDouble("board.dice-spawn-distance", 2.0);
-        diceDisplayScale = (float) c.getDouble("board.dice-display-scale", 1.0);
+        diceSpawnDistance = c.getDouble("board.dice-spawn-distance", 2.5);
         diceSpinScale = (float) c.getDouble("board.dice-spin-scale", 0.5);
         diceHatScale = (float) c.getDouble("board.dice-hat-scale", 0.55);
         hopUpVelocity = c.getDouble("board.hop-up-velocity", 1.70);
@@ -172,6 +173,14 @@ public final class PluginConfig {
         spleefTimeoutSeconds = c.getInt("minigame.spleef.timeout-seconds", 90);
         spleefFallY = c.getDouble("minigame.spleef.fall-y", 60.0);
         spleefSpawnRadius = c.getDouble("minigame.spleef.spawn-radius", 7.0);
+        spleefPowerupSpawnSeconds = c.getInt("minigame.spleef.powerup.spawn-interval-seconds", 10);
+        spleefMultishotSeconds = c.getInt("minigame.spleef.powerup.multishot-duration-seconds", 10);
+        spleefPowerupItemModel = nullToEmpty(
+                c.getString("minigame.spleef.powerup.item-model", "tnt_multishot")
+        );
+        if (spleefPowerupItemModel.isBlank()) {
+            spleefPowerupItemModel = "tnt_multishot";
+        }
         List<Material> configuredFloorMaterials = new ArrayList<>();
         for (String name : c.getStringList("minigame.spleef.floor-materials")) {
             Material material = Material.matchMaterial(name.trim().toUpperCase(Locale.ROOT));
@@ -184,7 +193,7 @@ public final class PluginConfig {
             }
         }
         spleefFloorMaterials = configuredFloorMaterials.isEmpty()
-                ? List.of(Material.SNOW_BLOCK, Material.POWDER_SNOW)
+                ? List.of(Material.TNT)
                 : List.copyOf(configuredFloorMaterials);
         spleefArena = new MinigameArenaSpec(
                 c.getString("minigame.spleef.arena.template", "spleef_arena"),
@@ -289,7 +298,6 @@ public final class PluginConfig {
     public int diceInteractSeconds() { return diceInteractSeconds; }
     public int diceSpinIntervalTicks() { return diceSpinIntervalTicks; }
     public double diceSpawnDistance() { return diceSpawnDistance; }
-    public float diceDisplayScale() { return diceDisplayScale; }
     public float diceSpinScale() { return diceSpinScale; }
     public float diceHatScale() { return diceHatScale; }
     public double hopUpVelocity() { return hopUpVelocity; }
@@ -310,6 +318,9 @@ public final class PluginConfig {
     public double spleefSpawnRadius() { return spleefSpawnRadius; }
     public List<Material> spleefFloorMaterials() { return spleefFloorMaterials; }
     public MinigameArenaSpec spleefArena() { return spleefArena; }
+    public int spleefPowerupSpawnSeconds() { return spleefPowerupSpawnSeconds; }
+    public int spleefMultishotSeconds() { return spleefMultishotSeconds; }
+    public String spleefPowerupItemModel() { return spleefPowerupItemModel; }
 
     public boolean seamlessWorldChangeEnabled() { return seamlessWorldChangeEnabled; }
 

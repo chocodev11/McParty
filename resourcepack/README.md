@@ -3,6 +3,7 @@
 Provides custom item models:
 
 - `mcparty:dice_1` … `mcparty:dice_6`
+- `mcparty:tnt_multishot` for the TNT Spleef Multishot power-up
 
 Each id is **one cube, one texture** (all 6 sides use that face art). The server
 swaps models while spinning (`DiceItems.face` → `item_model` `mcparty:dice_N`).
