@@ -17,12 +17,16 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.util.Vector;
 
 import java.util.Optional;
 import java.util.UUID;
 
 public final class LobbyMatchmaker implements Listener {
+
+    private static final double LOBBY_FALL_Y = 30.0;
 
     private final JavaPlugin plugin;
     private final PartyManager partyManager;
@@ -177,6 +181,19 @@ public final class LobbyMatchmaker implements Listener {
                 configureLobbyWorld(world);
             }
         }
+    }
+
+    @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
+    public void onLobbyFall(PlayerMoveEvent event) {
+        Location to = event.getTo();
+        Player player = event.getPlayer();
+        if (to == null || to.getY() > LOBBY_FALL_Y || !isLobbyWorld(player.getWorld())) {
+            return;
+        }
+
+        event.setTo(lobbySpawn(player.getWorld()));
+        player.setFallDistance(0.0f);
+        player.setVelocity(new Vector());
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
