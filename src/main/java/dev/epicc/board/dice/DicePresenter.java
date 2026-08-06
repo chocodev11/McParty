@@ -2,7 +2,6 @@ package dev.epicc.board.dice;
 
 import dev.epicc.board.Dice;
 import org.bukkit.Color;
-import org.bukkit.FluidCollisionMode;
 import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.World;
@@ -12,10 +11,10 @@ import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
-import org.bukkit.util.RayTraceResult;
 import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
 import org.joml.AxisAngle4f;
+import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
 import java.util.Map;
@@ -28,22 +27,11 @@ import java.util.function.IntConsumer;
  * Rolling die rides the player as a passenger (no freestanding teleport while spinning).
  * Entity yaw/pitch stay 0; "in front" is world-space transformation translation on the eye look-ray
  * (updated each tick; passenger attach is player height, so Y is relative to the top of the head).
- * Visible only to the roller. On settle: detach, land upright on the look-ray floor, hold 1s, callback.
+ * Visible only to the roller. On settle: detach at the current position, face the roller, hold 1s,
+ * callback.
  */
 public final class DicePresenter {
-
-    /**
-     * Matches resourcepack {@code dice_*.json}: element {@code from [1,0,1] to [15,14,15]}.
-     * ItemDisplay + {@code NONE} pivots on the 16px item-space center (8/16), not the cube
-     * midpoint (7/16). Bottom is at model y=0 → 8px below origin. Using 7px left the die
-     * buried by exactly 1 texture pixel.
-     */
-    private static final float MODEL_UNIT = 1f / 16f;
-    /** Entity → mesh bottom (item center at 8, cube bottom at 0). */
-    private static final float MODEL_ORIGIN_TO_BOTTOM = 8f * MODEL_UNIT;
     private static final long SETTLE_HOLD_TICKS = 20L;
-    /** How far along the eye ray to search for a land surface on settle. */
-    private static final double SETTLE_RAY_RANGE = 8.0;
     /** Steady per-tick tumble (radians) — 60° yaw and 45° pitch every four ticks. */
     private static final float SPIN_YAW_PER_TICK = (float) (Math.PI / 12.0);
     private static final float SPIN_PITCH_PER_TICK = (float) (Math.PI / 16.0);
@@ -53,7 +41,7 @@ public final class DicePresenter {
     private double spawnDistance;
     private int interactTicks;
     private int spinIntervalTicks;
-    /** Settle / on-ground size ({@code board.dice-display-scale}). */
+    /** Settled size ({@code board.dice-display-scale}); translation stays at click time. */
     private float displayScale;
     /** Spin in front of eyes ({@code board.dice-spin-scale}); usually smaller than settle. */
     private float spinScale;
@@ -210,31 +198,27 @@ public final class DicePresenter {
         Location particleAt = null;
 
         if (session.display != null && session.display.isValid()) {
+            Location stoppedAt = session.display.getLocation().clone();
             session.display.setItemStack(DiceItems.face(session.result));
+            session.display.setTeleportDuration(0);
+            session.display.setInterpolationDelay(0);
+            session.display.setInterpolationDuration(0);
+
+            Transformation current = session.display.getTransformation();
+            session.display.setBillboard(Display.Billboard.CENTER);
+            session.display.setTransformation(new Transformation(
+                    new Vector3f(current.getTranslation()),
+                    new Quaternionf(),
+                    scaleVec(displayScale),
+                    new Quaternionf()
+            ));
 
             Entity vehicle = session.display.getVehicle();
             if (vehicle != null) {
                 vehicle.removePassenger(session.display);
             }
 
-            Location landAt;
-            if (player != null && player.isOnline()) {
-                landAt = groundInFront(player);
-            } else {
-                landAt = session.display.getLocation();
-                landAt.setPitch(0f);
-            }
-
-            // Short land motion, then freeze for the hold (see settleTask below)
-            int landAnimTicks = Math.max(1, spinIntervalTicks);
-            session.display.setTeleportDuration(landAnimTicks);
-            session.display.teleport(landAt);
-            session.display.setRotation(landAt.getYaw(), 0f);
-            session.display.setInterpolationDelay(0);
-            session.display.setInterpolationDuration(landAnimTicks);
-            // Same scale as spin ({@link #tumble}); upright, no extra local offset
-            session.display.setTransformation(diceScale(displayScale));
-            particleAt = landAt.clone().add(0, 0.05, 0);
+            particleAt = stoppedAt.add(0, 0.05, 0);
 
             // Private display can drop tracking after dismount — keep roller viewer
             if (player != null && player.isOnline()) {
@@ -252,31 +236,20 @@ public final class DicePresenter {
             spawnPastelSmoke(particleAt);
         }
 
-        // After land anim: freeze in place, stay SETTLE_HOLD_TICKS, then remove + board callback
-        int landAnimTicks = Math.max(1, spinIntervalTicks);
+        // Stay frozen for the hold second, then remove + board callback.
         session.settleTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (session.aborted) {
                 session.settleTask = null;
                 return;
             }
-            // Snap static for the hold second (no further interpolation)
-            if (session.display != null && session.display.isValid()) {
-                session.display.setTeleportDuration(0);
-                session.display.setInterpolationDuration(0);
+            session.settleTask = null;
+            cleanupEntities(session);
+            unregister(session);
+            IntConsumer cb = session.onSettled;
+            if (cb != null) {
+                cb.accept(session.result);
             }
-            session.settleTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
-                session.settleTask = null;
-                if (session.aborted) {
-                    return;
-                }
-                cleanupEntities(session);
-                unregister(session);
-                IntConsumer cb = session.onSettled;
-                if (cb != null) {
-                    cb.accept(session.result);
-                }
-            }, SETTLE_HOLD_TICKS);
-        }, landAnimTicks);
+        }, SETTLE_HOLD_TICKS);
     }
 
     /**
@@ -308,16 +281,6 @@ public final class DicePresenter {
                 new AxisAngle4f(yaw, 0f, 1f, 0f),
                 scaleVec(spinScale),
                 new AxisAngle4f(pitch, 1f, 0f, 0f)
-        );
-    }
-
-    /** Settle pose: ground size only, no rotation/translation (entity holds world pose). */
-    private static Transformation diceScale(float scale) {
-        return new Transformation(
-                new Vector3f(0f, 0f, 0f),
-                new AxisAngle4f(0f, 0f, 1f, 0f),
-                scaleVec(scale),
-                new AxisAngle4f(0f, 0f, 1f, 0f)
         );
     }
 
@@ -380,64 +343,6 @@ public final class DicePresenter {
 
     private void unregister(Session session) {
         byPlayer.remove(session.playerId, session);
-    }
-
-    /**
-     * Land on the surface under the player's look ray (same aim as the spinning die).
-     * Raycasts from the eyes; if a block is hit, drops from that XZ to the floor so the
-     * die rests on pads/ground rather than sticking to a wall face.
-     * <p>
-     * Y: snap surface to 1/16, then lift by half model height × {@link #displayScale}
-     * so the cube sits on the pad (visual center is the entity origin).
-     */
-    private Location groundInFront(Player player) {
-        Location eye = player.getEyeLocation();
-        Vector dir = eye.getDirection();
-        if (dir.lengthSquared() < 1.0e-6) {
-            dir = new Vector(0, 0, 1);
-        } else {
-            dir.normalize();
-        }
-
-        World world = player.getWorld();
-        double range = Math.max(spawnDistance, SETTLE_RAY_RANGE);
-        RayTraceResult lookHit = world.rayTraceBlocks(
-                eye, dir, range, FluidCollisionMode.NEVER, true
-        );
-
-        Vector aim;
-        if (lookHit != null && lookHit.getHitPosition() != null) {
-            aim = lookHit.getHitPosition();
-        } else {
-            aim = eye.toVector().add(dir.clone().multiply(spawnDistance));
-        }
-
-        // From slightly above the aim point, find the floor so the cube sits on a pad
-        Location probe = new Location(world, aim.getX(), aim.getY() + 0.25, aim.getZ());
-        RayTraceResult floor = world.rayTraceBlocks(
-                probe, new Vector(0, -1, 0), 8.0, FluidCollisionMode.NEVER, true
-        );
-
-        Location at;
-        if (floor != null && floor.getHitPosition() != null) {
-            at = floor.getHitPosition().toLocation(world);
-        } else {
-            at = aim.toLocation(world);
-            // Fallback: keep player feet Y if no floor under the aim point
-            at.setY(player.getLocation().getY());
-        }
-
-        double surfaceY = snapModelGrid(at.getY());
-        // Origin is item-space center: lift by 8px so model y=0 sits on the pad
-        at.setY(surfaceY + displayScale * MODEL_ORIGIN_TO_BOTTOM);
-        at.setYaw(player.getLocation().getYaw());
-        at.setPitch(0f);
-        return at;
-    }
-
-    /** Snap world Y to the item-model pixel grid (1/16 block). */
-    private static double snapModelGrid(double y) {
-        return Math.round(y * 16.0) / 16.0;
     }
 
     private static int spinFace(Dice dice) {

@@ -57,7 +57,6 @@ public final class PartyManager {
     private final HologramService holograms;
     private final PartyTransitionService transitions;
     private final Map<UUID, BoardTurnController> controllers = new ConcurrentHashMap<>();
-    private final Map<UUID, Map<UUID, Location>> arenaReturnLocations = new ConcurrentHashMap<>();
     private LobbyParkourService lobbyParkour;
 
 
@@ -505,7 +504,6 @@ public final class PartyManager {
         holograms.closePartyScope(instance.id());
         instance.cancelPendingTasks();
         BoardTurnController controller = controllers.remove(instance.id());
-        arenaReturnLocations.remove(instance.id());
 
         if (controller != null) {
             controller.stop();
@@ -544,11 +542,6 @@ public final class PartyManager {
     private void enterArena(PartyInstance instance, MinigameArena arena) {
         if (instance.state() != PartyState.PLAYING) return;
         List<Player> players = onlinePlayers(instance);
-        Map<UUID, Location> returnLocations = new ConcurrentHashMap<>();
-        for (Player player : players) {
-            returnLocations.put(player.getUniqueId(), player.getLocation().clone());
-        }
-        arenaReturnLocations.put(instance.id(), returnLocations);
         instance.setActivePlayArea(arena.playArea());
         transitions.transition(players, arena.playArea());
     }
@@ -557,13 +550,15 @@ public final class PartyManager {
         PartyPlayArea board = instance.boardPlayArea();
         if (board == null || instance.state() != PartyState.PLAYING) return;
         instance.setActivePlayArea(board);
-        Map<UUID, Location> returnLocations = arenaReturnLocations.remove(instance.id());
-        if (returnLocations == null) return;
         for (Player player : onlinePlayers(instance)) {
-            Location destination = returnLocations.get(player.getUniqueId());
-            if (destination == null || destination.getWorld() != board.world()) {
-                destination = board.spawn();
+            Location destination = board.spawn();
+            PartyPlayer partyPlayer = instance.player(player.getUniqueId()).orElse(null);
+            BoardSlot slot = instance.slot();
+            if (partyPlayer != null && slot != null && !slot.path().isEmpty()) {
+                destination = slot.path().get(partyPlayer.boardIndex());
             }
+            // Path setup stores the administrator's pitch; board returns should stay level.
+            destination.setPitch(0f);
             transitions.permit(player, destination);
             seamless.teleport(player, destination);
         }

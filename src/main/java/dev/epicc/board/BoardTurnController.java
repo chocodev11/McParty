@@ -12,6 +12,7 @@ import dev.epicc.party.PartyState;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -25,6 +26,8 @@ import java.util.UUID;
  */
 public final class BoardTurnController {
 
+    private static final long MINIGAME_REVEAL_DELAY_TICKS = 60L;
+
     private final JavaPlugin plugin;
     private final MessageService messages;
     private final MinigameRunner minigameRunner;
@@ -37,6 +40,7 @@ public final class BoardTurnController {
     private boolean waitingForRoll;
     private boolean inMinigame;
     private boolean moving;
+    private BukkitTask minigameRevealDelayTask;
 
     private java.util.function.Consumer<dev.epicc.minigame.MinigameResult> onRoundEnd;
     private ArenaTransitions arenaTransitions;
@@ -68,6 +72,7 @@ public final class BoardTurnController {
 
     public void attach(PartyInstance instance, java.util.function.Consumer<dev.epicc.minigame.MinigameResult> onRoundEnd,
                        ArenaTransitions arenaTransitions) {
+        cancelMinigameRevealDelay();
         this.instance = instance;
         this.onRoundEnd = onRoundEnd;
         this.arenaTransitions = arenaTransitions;
@@ -115,6 +120,7 @@ public final class BoardTurnController {
             }
         }
         minigameRunner.cancel();
+        cancelMinigameRevealDelay();
         waitingForRoll = false;
         inMinigame = false;
         moving = false;
@@ -213,7 +219,7 @@ public final class BoardTurnController {
             }
         }
         if (order.isEmpty()) {
-            startMinigameThenContinue();
+            scheduleMinigameThenContinue();
             return;
         }
 
@@ -229,7 +235,7 @@ public final class BoardTurnController {
         }
         if (moveIndex >= moveQueue.size()) {
             moving = false;
-            startMinigameThenContinue();
+            scheduleMinigameThenContinue();
             return;
         }
 
@@ -261,6 +267,22 @@ public final class BoardTurnController {
             moveIndex++;
             hopNext();
         });
+    }
+
+    private void scheduleMinigameThenContinue() {
+        if (instance == null || instance.state() != PartyState.PLAYING || minigameRevealDelayTask != null) {
+            return;
+        }
+        minigameRevealDelayTask = plugin.getServer().getScheduler().runTaskLater(
+                plugin,
+                () -> {
+                    minigameRevealDelayTask = null;
+                    if (instance != null && instance.state() == PartyState.PLAYING) {
+                        startMinigameThenContinue();
+                    }
+                },
+                MINIGAME_REVEAL_DELAY_TICKS
+        );
     }
 
     private void startMinigameThenContinue() {
@@ -307,6 +329,13 @@ public final class BoardTurnController {
         }
         for (PartyPlayer pp : instance.players()) {
             diceHats.clear(pp.uuid());
+        }
+    }
+
+    private void cancelMinigameRevealDelay() {
+        if (minigameRevealDelayTask != null) {
+            minigameRevealDelayTask.cancel();
+            minigameRevealDelayTask = null;
         }
     }
 }

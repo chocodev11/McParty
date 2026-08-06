@@ -17,8 +17,8 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Path move: upward velocity hop → at apex (vy ≤ 0) face pad + teleport to target XZ at that Y → fall.
- * Yaw/pitch applied mid-air at apex, not when landing. No potion effects.
+ * Path move: upward velocity hop → at apex (vy ≤ 0) face the pad horizontally + teleport to target
+ * XZ at that Y → fall. No potion effects.
  */
 public final class PathHopMover implements Listener {
 
@@ -163,7 +163,7 @@ public final class PathHopMover implements Listener {
 
             Location peak = hop.land.clone();
             peak.setY(peakY);
-            applyLookAt(peak, hop.land);
+            applyHorizontalLookAt(peak, hop.land);
             player.teleport(peak);
             player.setRotation(peak.getYaw(), peak.getPitch());
             player.setFallDistance(0f);
@@ -209,23 +209,19 @@ public final class PathHopMover implements Listener {
         p.setWalkSpeed(Math.max(0f, Math.min(1f, walkSpeed)));
     }
 
-    /** Set location yaw/pitch so the player looks at the pad from mid-air (apex). */
-    private static void applyLookAt(Location from, Location target) {
+    /** Set horizontal yaw toward the pad while keeping the player's view level at the apex. */
+    private static void applyHorizontalLookAt(Location from, Location target) {
         double dx = target.getX() - from.getX();
-        double dy = target.getY() - from.getY();
         double dz = target.getZ() - from.getZ();
         double horiz = Math.sqrt(dx * dx + dz * dz);
-        if (horiz < 1.0e-6 && Math.abs(dy) < 1.0e-6) {
+        if (horiz < 1.0e-6) {
             from.setYaw(target.getYaw());
-            from.setPitch(target.getPitch());
+            from.setPitch(0f);
             return;
         }
         float yaw = (float) Math.toDegrees(Math.atan2(-dx, dz));
-        float pitch = horiz < 1.0e-6
-                ? (dy > 0 ? -90f : 90f)
-                : (float) Math.toDegrees(-Math.atan2(dy, horiz));
         from.setYaw(yaw);
-        from.setPitch(Math.max(-90f, Math.min(90f, pitch)));
+        from.setPitch(0f);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
