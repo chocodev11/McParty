@@ -1,8 +1,8 @@
 # McParty — Minigame Design & Implementation Plan
 
 **Version:** 1.0  
-**Updated:** 2026-07-21  
-**Scope:** Launch set of **8 free-for-all** minigames between board dice rounds  
+**Updated:** 2026-08-06
+**Scope:** Launch set of **12 free-for-all** minigames between board dice rounds
 **Parent docs:** `mcparty.md` (product vision), `AGENTS.md` (current plugin architecture)
 
 ---
@@ -19,7 +19,7 @@
 
 1. **Match-scoped everything** — listeners and tasks only apply to players in the active match.
 2. **Main-thread results** — `MinigameResult` applied on the server thread.
-3. **Real physics where fall/stand matters** — Spleef, Floor is Lava, Race terrain.
+3. **Real physics where fall/stand matters** — Spleef, Floor is Lava, and floating-island courses.
 4. **Packets only for visuals / UI** — walls, optional Color Chaos paint, displays; not fake collision for spleef.
 5. **Restore or discard** — either journal changed blocks + batch restore, or unload a disposable minigame pad.
 
@@ -69,9 +69,10 @@ Implement once under `minigame/` (names indicative):
 | `MatchScope` | UUID set, world, cancelled flag, task list | All |
 | `PlayerStateSnapshot` | inv, armor, XP, gamemode, effects, flight | All |
 | `BlockChangeJournal` | pos → old `BlockData`; batch restore N blocks/tick | Floor is Lava, Color Chaos (real mode) |
-| `EliminationTracker` | elimination order → placements | Hot Potato, Spleef, Musical Chairs, Color Chaos, Floor is Lava |
-| `Region` / AABB | integer bounds; contains / finish line | Red Light, Race, arenas |
-| `ScoreTracker` | UUID → score; rank by score | Laser Tag |
+| `EliminationTracker` | elimination order → placements | Hot Potato, Spleef, Mini Skywars, Color Chaos, Floor is Lava, Warden Escape, Antwar, Hopper |
+| `Region` / AABB | integer bounds; contains / finish line | Elytra Race, King of the Hill, Warden Escape, Hopper, Laser Tag, Speed Race, arenas |
+| `ScoreTracker` | UUID → score; rank by score | King of the Hill, Antwar, Laser Tag |
+| `CheckpointTracker` | sequential progress through a course | Elytra Race, King of the Hill, Warden Escape, Hopper, Speed Race |
 | `ArenaSpawns` | list of spawn locations per minigame pad | All |
 | `SpectatorUtil` | eliminated → spectator (or freeze) until end | Elimination games |
 
@@ -89,8 +90,8 @@ Implement once under `minigame/` (names indicative):
 | Use packets / displays | Use real world |
 |------------------------|----------------|
 | Fake walls, UI titles, boss bars | Spleef / Floor is Lava floors |
-| Optional Color Chaos client paint | Race / Red Light terrain |
-| Chair markers, potato glow FX | Player damage, item pass |
+| Optional Color Chaos client paint | Floating-island / Warden course terrain |
+| Elytra rings, hill capture FX, hopper platform FX, laser hit FX | Player damage, item pass, block mining |
 | Score holograms (optional) | Finish regions, collision |
 
 Collision is always server-authoritative. Do not build Spleef on fake-only floors.
@@ -112,15 +113,19 @@ Collision is always server-authoritative. Do not build Spleef on fake-only floor
 |---|-----|--------------|--------|--------|---------------------|
 | 1 | `hot_potato` | Hot Potato | 45–60s | Pass + eliminate | Low |
 | 2 | `spleef` | Spleef | 60–90s | Floor break + last standing | Low–med |
-| 3 | `musical_chairs` | Musical Chairs | 45–75s | Seat claim rounds | Low–med |
+| 3 | `elytra_race` | Elytra Race | 45–75s | Flight checkpoints | Medium |
 | 4 | `color_chaos` | Color Chaos | 45–75s | Color floor vanish | Medium |
-| 5 | `red_light` | Red Light, Green Light | 45–60s | Freeze race | Low–med |
+| 5 | `king_of_the_hill` | King of the Hill | 60–90s | Floating-island bridge + hill capture | Medium |
 | 6 | `floor_is_lava` | Floor is Lava | 60–90s | Trail vanish | Medium |
-| 7 | `race` | Race | 45–75s | Finish-line race | Medium (map) |
-| 8 | `laser_tag` | Laser Tag | 60–90s | Score FFA | Medium |
+| 7 | `warden_escape` | Warden Escape | 60–90s | Stealth escape race | Medium–high |
+| 8 | `mini_skywars` | Mini Skywars | 60–90s | Loot + PvP elimination | Medium |
+| 9 | `antwar` | Antwar (MineBattle) | 60–90s | Mine resources + PvP | Medium |
+| 10 | `hopper` | Hopper (Whirlybird) | 45–75s | Auto-jump platform survival | Medium |
+| 11 | `laser_tag` | Laser Tag | 60–90s | Hitscan score FFA | Medium |
+| 12 | `speed_race` | Speed Race | 45–75s | Boost + checkpoint race | Low–med |
 
 **Implementation order:**  
-`hot_potato` → `spleef` → `musical_chairs` → `red_light` → `color_chaos` → `floor_is_lava` → `race` → `laser_tag`.
+`hot_potato` → `spleef` → `elytra_race` → `king_of_the_hill` → `color_chaos` → `floor_is_lava` → `warden_escape` → `mini_skywars` → `antwar` → `hopper` → `laser_tag` → `speed_race`.
 
 ---
 
@@ -259,57 +264,62 @@ minigame:
 
 ---
 
-### 5.3 Musical Chairs — `musical_chairs`
+### 5.3 Elytra Race — `elytra_race`
 
-**Fantasy:** When the music stops, sit. One fewer chair each round.
+**Fantasy:** Thread the rings, control your glide, and reach the finish before anyone else.
 
 #### Rules
 
-1. Pre-place or generate **N = players − 1** chairs (blocks or interaction points) on the pad.
-2. **Music phase** (e.g. 5–8s): players can move freely; optional coin particles.
-3. **Stop phase:** title “STOP!” — players must stand on a free chair region within a short claim window (e.g. 3s).
-4. At most one claim per chair; unclaimed players eliminated.
-5. Remove one chair, repeat until one player remains (or two players one chair → last claimer wins).
+1. Give every player an Elytra, a fixed number of fireworks, and the same starting lane.
+2. Start all players together after a short countdown; freeze movement until “GO!”.
+3. The course contains visible rings or gates that must be crossed in order. A player cannot skip ahead by flying directly to the finish.
+4. Crossing a checkpoint records progress and can grant a small visual or sound confirmation. Missed gates leave the player at their current checkpoint.
+5. The first player through the finish ring wins. Finish order is used for the remaining placements; unfinished players are ranked by checkpoint progress and distance.
 
 #### Win / coins
 
-- Last seated / elimination order.
-- Optional mid-music coin pickups as bonus coins in result.
+- Finish time/order, then sequential checkpoint progress at timeout.
+- Optional bonus coins for a clean run or remaining fireworks; do not let boosts change placement rewards in v1.
 
 #### Tech
 
 | Area | Plan |
 |------|------|
-| Chairs | Fixed `Location` list or armor-stand/display markers + AABB claim |
-| Events | Move or interact to claim during STOP only |
-| Packets | Optional display-entity chairs (claim still by AABB) |
-| Real world | Optional stair blocks; no mass restore needed if prebuilt |
+| Flight | Enable Elytra flight and provide a controlled firework supply; disable unrelated flight and item use |
+| Checkpoints | Ordered ring AABBs or ring-plane intersection checks; reject out-of-order crossings |
+| Events | `PlayerMoveEvent` for checkpoint/finish detection; `PlayerToggleFlightEvent` and damage hooks for race rules |
+| Anti-skip | Boundary checks, course timeout, and teleport/velocity reset when a player leaves the allowed course |
+| World | Prebuilt disposable course or shared immutable track; no block restore needed |
 
 #### Flow
 
 ```text
-start → place/select chairs (n-1)
-     → loop: music → stop → claim → eliminate fails → remove 1 chair
-     → one left → result
+start → snapshot → equip Elytra and fireworks → teleport lanes
+     → countdown → sequential rings → finish order
+     → all finished or timeout → result → restore player state
 ```
 
 #### Cancel / edge cases
 
-- Disconnect during claim → eliminate that player.
-- Two players same chair: first claim wins (timestamp).
+- Remove Elytra flight and clear temporary fireworks on cancel before restoring the snapshot.
+- A disconnected player is DNF and cannot rejoin the active race.
+- Do not count a finish unless every required checkpoint was crossed in order.
 
 #### Config
 
 ```yaml
 minigame:
-  musical_chairs:
-    music-seconds: 6
-    claim-seconds: 3
+  elytra_race:
+    timeout-seconds: 75
+    fireworks-per-player: 8
+    checkpoint-count: 12
+    boundary-grace-blocks: 8
 ```
 
 #### References
 
-- Cytooxien Musical Chairs (chairs rebrand); implement as round-based elimination.
+- [Cytooxien Minigame Overview](https://www.cytooxien.net/help/minecraft-party-games) — ring-based Elytra racing with optional checkpoints.
+- [ElytraRace](https://modrinth.com/plugin/elytrarace) — sequential checkpoint validation, ring courses, timers, and boundary handling.
 
 ---
 
@@ -369,60 +379,64 @@ minigame:
 
 ---
 
-### 5.5 Red Light, Green Light — `red_light`
+### 5.5 King of the Hill — `king_of_the_hill`
 
-**Fantasy:** Run on green. Freeze on red. First to the finish wins.
+**Fantasy:** Race across floating islands with a limited stack of bridge blocks, then fight for the hill on the final island.
 
 #### Rules
 
-1. Players start on a start line; finish AABB at the far end of a straight (or simple) lane.
-2. **Green:** free movement.
-3. **Red:** any **block-position change** (or velocity threshold) applies penalty: teleport back N blocks or to last legal pos.
-4. Light intervals random or alternating with shortening greens (config).
-5. First player to enter finish region wins; others ranked by distance along track when timer ends.
+1. Each player starts on a separate launch island with an identical stack of blocks in their off-hand. The stack is the only bridge-building supply; no refills or crafting in v1.
+2. Players cross a short sequence of floating islands. Blocks may be placed only inside the course’s build corridor, so bridging is meaningful without letting players cover the whole arena.
+3. Falling into the void eliminates the player. Reaching an island checkpoint records progress and provides a safe respawn point only if the map requires recovery rather than elimination.
+4. The final island contains a raised hill and a capture zone. Entering the hill starts that player’s capture progress; progress pauses while contested and resets when the zone is empty.
+5. The first player to hold the uncontested hill for the target duration wins. If nobody completes the target before timeout, rank by hill-control time, final-island arrival, then course progress.
 
 #### Win / coins
 
-- Finish order; unfinished by progress (distance along axis or checkpoints).
+- Hill completion order, then total uncontested hill-control time.
+- Players eliminated before the hill are ranked by the last island checkpoint reached.
 
 #### Tech
 
 | Area | Plan |
 |------|------|
-| Events | `PlayerMoveEvent` filtered to same-block ignore; only during red |
-| State | light enum, task flipping lights, progress double |
-| World | Prebuilt lane; no block restore |
-| UI | Titles GREEN/RED; optional boss bar |
+| Course | Prebuilt chain of floating islands with start islands, checkpoint islands, and one final hill island |
+| Bridging | `BlockPlaceEvent` validates the build corridor and off-hand block type; normal stack consumption enforces the budget |
+| Progress | `PlayerMoveEvent` detects island checkpoints, void falls, hill entry, and hill exit |
+| Scoring | `ScoreTracker` records uncontested hill ticks; `EliminationTracker` handles void deaths and disconnects |
+| World | Disposable arena clone is preferred because players place blocks and can alter the course |
+| UI | Action bar or boss bar shows hill capture progress and remaining block count |
 
 #### Flow
 
 ```text
-start → teleport start line → freeze countdown
-     → loop green/red until all finished or timeout
-     → rank finish order + distance → result
+start → snapshot → give equal off-hand block stacks → teleport start islands
+     → countdown → bridge through island checkpoints
+     → final hill capture → target reached or timeout → result → unload arena
 ```
 
 #### Cancel / edge cases
 
-- Rubber-band only on intentional move, not head rotation.
-- Knockback from others: count as move on red (fair chaos) or ignore horizontal from damage (v1: count all).
+- Deny block placement outside the build corridor, into the hill, or above the configured height limit.
+- A player who disconnects loses their current hill progress and is placed after all active players.
+- If a player runs out of blocks, they must use the existing islands and cannot receive a hidden refill.
 
 #### Config
 
 ```yaml
 minigame:
-  red_light:
-    green-seconds-min: 2
-    green-seconds-max: 5
-    red-seconds-min: 2
-    red-seconds-max: 4
-    penalty-blocks: 3
-    timeout-seconds: 60
+  king_of_the_hill:
+    timeout-seconds: 90
+    hill-hold-seconds: 12
+    bridge-blocks: 32
+    checkpoint-count: 4
+    void-y: 0.0
 ```
 
 #### References
 
-- Cytooxien Red Light, Green Light; Squid-Game style plugins (logic only).
+- [King of the Hill — MC Public Wiki](https://wiki.nerd.nu/wiki/King_of_the_Hill) — control-point scoring based on time held.
+- [King of the Hill — Minecraft Map](https://www.minecraftmaps.com/49765-king-of-the-hill) — a floating-island KOTH layout reference.
 
 ---
 
@@ -481,102 +495,300 @@ minigame:
 
 ---
 
-### 5.7 Race — `race`
+### 5.7 Warden Escape — `warden_escape`
 
-**Fantasy:** First across the finish line.
+**Fantasy:** Escape the deep dark before the Warden hears you, using stealth, timing, and distractions instead of combat.
 
 #### Rules
 
-1. Players line up at race start (gates optional).
-2. On go, run along a short course to finish AABB.
-3. Optional: coin pickups on path → bonus coins and/or brief speed.
-4. Optional: trampolines as map-only slime/honey blocks (no special code v1).
-5. Rank by finish time; DNF by progress at timeout.
+1. Players start at separate entrances in a compact Ancient City or deep-dark course. Each route leads to the same exit or to equivalent exits with a shared finish order.
+2. Give each player a small distraction kit, such as snowballs, and prevent ordinary combat gear from turning the game into a Warden fight.
+3. Movement, block placement/breaking, projectiles, and other configured actions can create noise or trigger sculk hazards. Native sculk sensors and shriekers remain part of the map’s threat pattern.
+4. One or more Wardens patrol or spawn after the opening phase. Players may hide, sneak, use wool routes, or throw distractions, but killing a Warden is not a valid shortcut.
+5. The first player through the exit wins. Warden death, leaving the course, or the timeout eliminates a player; survivors are ranked by exit/checkpoint progress.
 
 #### Win / coins
 
-- Finish order; placement coins + optional pickup bonus coins.
+- Exit order, then checkpoint progress for players who do not escape.
+- Optional bonus coins for escaping without triggering a personal Warden warning threshold.
 
 #### Tech
 
 | Area | Plan |
 |------|------|
-| Regions | start box, finish box, optional checkpoint list |
-| Events | Move enter finish once; pickup interact or pressure |
-| World | Prebuilt track; no restore |
-| State | finished list with timestamps |
+| Arena | Disposable Ancient City/deep-dark clone with fixed entrances, checkpoints, exit, wool routes, and sculk hazards |
+| Wardens | Spawn and remove only Wardens owned by the match; never affect players outside the match |
+| Noise | Use native sculk behavior where possible, with a small match-owned noise hook for actions the event bus can observe |
+| Events | Movement/checkpoint/finish, block place/break, projectile throws, Warden damage, player damage, and entity lifecycle hooks |
+| State | `CheckpointTracker`, Warden warning state, elimination order, and per-player finish timestamps |
+| UI | Darkness-safe action bar, warning sounds/titles, and a finish beacon; avoid revealing every player’s position |
 
 #### Flow
 
 ```text
-start → teleport lanes → countdown → unfreeze
-     → finish enter → record place
-     → all finished or timeout → result
+start → snapshot → equip distraction kit → teleport entrances
+     → countdown → Wardens active → checkpoints and stealth route
+     → exit order / eliminations → timeout → unload arena → result
 ```
 
 #### Cancel / edge cases
 
-- Re-enter finish ignored after first.
-- Disconnect = DNF last among unfinished.
+- Remove all match-owned Wardens, projectiles, items, and temporary effects before unloading the arena.
+- Cancel must restore players even if a Warden is currently targeting or damaging them.
+- A player who disconnects is eliminated immediately; do not leave a Warden targeting an unloaded player.
 
 #### Config
 
 ```yaml
 minigame:
-  race:
-    timeout-seconds: 75
-    pickup-bonus-coins: 1
+  warden_escape:
+    arena:
+      template: warden_escape_arena
+      checkpoint-count: 5
+    timeout-seconds: 90
+    warden-count: 2
+    distraction-items: 8
+    eliminate-on-warden-hit: true
 ```
-
-#### Map requirement
-
-Needs a **short track** in the pad world (or path points). Until built, dev can use a straight corridor between two regions.
 
 #### References
 
-- Cytooxien Race (coins, fans — v2); keep v1 foot-race only (no horse/elytra).
+- [Warden — Minecraft](https://www.minecraft.net/en-us/article/warden) — blindness, vibration detection, distractions, and the recommendation to avoid combat.
+- [Exploring an ancient city — Minecraft Wiki](https://minecraft.fandom.com/wiki/Tutorials/Exploring_an_ancient_city) — escape routes and waiting for a Warden to calm down.
 
 ---
 
-### 5.8 Laser Tag — `laser_tag`
+### 5.8 Mini Skywars — `mini_skywars`
 
-**Fantasy:** Tag others with a blaster. Highest score wins.
+**Fantasy:** Loot your island, bridge to the center, and be the last player standing above the void.
 
 #### Rules
 
-1. Small arena with cover; all players same kit (blaster item).
-2. Right-click / interact fires a **hitscan** ray (or snowball v1 if faster to ship).
-3. Hit on in-match player = +1 score (config); short invuln frames optional.
-4. Miss → longer cooldown; hit → shorter cooldown (Cytooxien-style, optional).
-5. Melee punch = small score or knockback only.
-6. Time limit ends game; highest score wins (ties by last scorer or first to score).
+1. Each player starts on a compact floating island with a private loot chest and a light, fixed kit. The center island contains stronger or more valuable loot.
+2. Players may bridge, loot, place, and break blocks inside the disposable arena. Void falls and normal combat eliminate players; there are no respawns.
+3. The arena has a short grace period before PvP and a visible boundary. After the midpoint, the boundary or safe area begins to tighten so players cannot hide indefinitely.
+4. Last player alive wins. If the timer expires, rank survivors by eliminations, then health, then distance from the center or remaining safe-area progress.
 
 #### Win / coins
 
-- Score descending → placement; optional killstreak bonus coins.
+- Last alive first; elimination order for the rest.
+- Optional small bonus for eliminations, capped so combat rewards do not outweigh placement coins.
 
 #### Tech
 
 | Area | Plan |
 |------|------|
-| Preferred | Raytrace from eye along direction, max range, ignore non-match |
-| Alt v1 | Snowball projectile + owner track (clear all on end) |
-| State | `ScoreTracker`, cooldown map |
-| UI | Action bar score; sound on hit |
-| Packets | Hit particles; avoid armor-stand spam |
+| Arena | Disposable per-party floating-island clone with player islands, center island, void threshold, and loot chests |
+| Loot | Match-owned chest contents generated from a fixed tier table; clear or discard with the arena |
+| PvP | Route damage, projectile, block place/break, and void-fall events through the shared `MinigameEventBus` |
+| State | `EliminationTracker`, elimination count, grace-period task, and optional shrinking safe boundary |
+| Cleanup | Unload the arena clone rather than attempting to journal arbitrary player block edits |
+| UI | Remaining-player count, grace/PvP state, and optional center-loot indicator |
 
 #### Flow
 
 ```text
-start → snapshot → kit blaster → soft PvP rules
-     → on hit: score++ → action bar
-     → timer end → rank scores → restore → result
+start → snapshot → load disposable arena → fill island chests → teleport islands
+     → grace countdown → PvP and bridging → boundary pressure
+     → last alive or timeout → result → unload arena → restore player state
 ```
 
 #### Cancel / edge cases
 
-- Clear projectiles and scores on cancel.
-- No real death: cancel damage, apply score only (or 1-heart with auto-regen off and freeze on “out” if using lives — v1 score-only, no eliminate).
+- Clear all match-owned entities and projectiles before unloading the clone.
+- A player who disconnects is eliminated and their island loot is discarded with the arena.
+- Do not let players place blocks outside the configured arena or use the lobby/board world as an escape route.
+
+#### Config
+
+```yaml
+minigame:
+  mini_skywars:
+    arena:
+      template: mini_skywars_arena
+      spawn-radius: 0.0
+      boundary: { minX: -48, minY: 40, minZ: -48, maxX: 48, maxY: 160, maxZ: 48 }
+    grace-seconds: 15
+    duration-seconds: 90
+    border-shrink-start-seconds: 45
+    kill-bonus-coins: 1
+```
+
+#### References
+
+- [Skywars — Battle on Floating Sky Islands](https://miniblox.io/game/skywars) — the compact loop of island loot, bridging, combat, and last-player-standing.
+- [Always Building: Download the final map!](https://www.minecraft.net/en-us/article/always-building-download-final-map) — official Minecraft floating-island and bridge-building map inspiration explicitly described as a basis for a Sky Wars map.
+
+---
+
+### 5.9 Antwar — `antwar`
+
+**Fantasy:** Mine to grow your colony, fortify your burrow, and destroy every rival queen.
+
+#### Rules
+
+1. Each player starts in a separate burrow with a protected queen core, a pickaxe, and a small starter kit. The queen core is the player’s elimination anchor.
+2. Players mine regenerating resource nodes around the map. Iron is basic equipment, gold supports ranged gear, copper provides healing, and diamond unlocks the strongest loot tier.
+3. During the preparation phase, players may mine and build defenses. After PvP opens, players can tunnel, raid, and fight, but the queen core remains inside the configured base region.
+4. Destroying a queen core eliminates its owner. A player who dies before their core is destroyed returns once with reduced gear; the second death or core destruction eliminates them.
+5. Last living queen wins. If the timer expires, rank by queen-core health, eliminations, and mined resource value.
+
+#### Win / coins
+
+- Last queen alive first, then elimination order or the timeout score.
+- Optional resource and elimination bonuses are capped so mining cannot outweigh match placement.
+
+#### Tech
+
+| Area | Plan |
+|------|------|
+| Arena | Disposable mine/burrow clone with protected base regions, regenerating ore nodes, and a neutral center |
+| Mining | `BlockBreakEvent` allows only configured resource nodes; nodes respawn from a fixed tier table |
+| Economy | Convert mined resources into kits, healing, blocks, and one-use scout pulses; keep the v1 shop small |
+| Combat | Shared damage and projectile routing; queen-core damage is a separate protected-region hook |
+| State | `ScoreTracker` for mined value/eliminations and `EliminationTracker` for queen deaths |
+| Cleanup | Unload the clone so tunnels, defenses, drops, and temporary loot cannot leak into the board world |
+
+#### Flow
+
+```text
+start → snapshot → load burrow arena → give pickaxes → resource phase
+     → PvP opens → mine, fortify, raid, and attack queen cores
+     → last queen or timeout → result → unload arena → restore player state
+```
+
+#### Cancel / edge cases
+
+- Deny block changes outside the mine, build, and queen-core regions.
+- A disconnected player loses their queen and is eliminated; remove their drops before unloading.
+- Prevent resource duplication by marking each node with its match and tier, then consume it before scheduling regeneration.
+
+#### Config
+
+```yaml
+minigame:
+  antwar:
+    arena:
+      template: antwar_arena
+      resource-region: { minX: -48, minY: 40, minZ: -48, maxX: 48, maxY: 100, maxZ: 48 }
+    preparation-seconds: 20
+    duration-seconds: 90
+    respawn-lives: 1
+    ore-regeneration-seconds: 8
+    scout-pulse-seconds: 20
+```
+
+#### References
+
+- [Minebattle — Minecraft PE Maps](https://mcpedl.com/minebattle-minigame/) — mining tiered ores for gear, then fighting until the last player remains.
+- [Ant War: How to Play](https://antwargame.com/play) — worker resource gathering, defensive structures, scouting, and destroying enemy queens.
+
+---
+
+### 5.10 Hopper — `hopper`
+
+**Fantasy:** Bounce upward through a dangerous sky course, steer between platforms, and never fall into the void.
+
+#### Rules
+
+1. Players start at the bottom of a vertical course with normal jumping disabled and an automatic bounce enabled.
+2. Landing on a platform launches the player toward the next height band. Horizontal movement remains under player control so players must steer into staggered platforms.
+3. The course contains gaps, low ceilings, spikes, moving platforms, and occasional safe checkpoints. The next platform should always be readable before the current bounce.
+4. Falling below the configured recovery height eliminates the player. Reaching a checkpoint can instead return the player to that height once if the map is designed for recovery.
+5. The highest platform reached wins. Players who reach the finish are ranked by finish time; everyone else is ranked by checkpoint/platform progress and survival time.
+
+#### Win / coins
+
+- Finish order, then highest platform/checkpoint reached.
+- Optional bonus for a clean run without a recovery teleport.
+
+#### Tech
+
+| Area | Plan |
+|------|------|
+| Movement | Apply a controlled upward velocity on platform landing; cap horizontal speed and disable flight/elytra exploits |
+| Platforms | Fixed platform AABBs with block-coordinate landing checks; moving platforms are map-owned entities only |
+| Hazards | Void/fall threshold, spike regions, and ceiling collisions; all hazards stay inside the disposable clone |
+| Progress | `CheckpointTracker` stores the highest validated height band and finish timestamp |
+| Events | `PlayerMoveEvent` for landing/progress, damage hooks for hazards, and entity cleanup on cancel |
+| UI | Height/checkpoint action bar and a short warning before the next hazard band |
+
+#### Flow
+
+```text
+start → snapshot → load vertical course → teleport bases → countdown
+     → bounce and steer through platform bands → finish or fall
+     → result → unload arena → restore player state
+```
+
+#### Cancel / edge cases
+
+- Clear forced velocity, Jump Boost, temporary effects, and match-owned platform entities before restoring snapshots.
+- Do not count a platform reached from below if the player skipped the required checkpoint band.
+- A disconnected player is ranked after active players at the last validated platform.
+
+#### Config
+
+```yaml
+minigame:
+  hopper:
+    arena:
+      template: hopper_arena
+      checkpoint-count: 8
+    timeout-seconds: 75
+    bounce-velocity: 0.72
+    fall-y: 40.0
+    recovery-teleports: 0
+```
+
+#### References
+
+- [Google Play Games](https://play.google.com/store/apps/details?id=com.google.android.play.games&hl=en_US) — lists Whirlybird among its built-in offline games.
+- [Whirlybird on Android](https://www.xatakandroid.com/aplicaciones-android/whirlybird-juego-google-play-games-a-doodle-jump-androide-que-ya-tienes-en-tu-telefono) — describes the Doodle Jump-like platform loop, hazards, falling, and tilt-based steering.
+
+---
+
+### 5.11 Laser Tag — `laser_tag`
+
+**Fantasy:** Take cover, track your targets, and finish with the highest blaster score.
+
+#### Rules
+
+1. Spawn players in a compact arena with cover and an identical blaster kit.
+2. Right-clicking the blaster fires a hitscan ray. A hit on an in-match player awards score and applies a short invulnerability window; misses use a longer cooldown.
+3. Damage is cancelled and converted into score/knockback only. There are no real deaths or inventory drops in v1.
+4. The arena contains moving cover or sightline changes only if they are map-owned; do not create fake collision with packets.
+5. Time limit ends the game. Rank by score, then last scorer or first score as the tie-breaker.
+
+#### Win / coins
+
+- Score descending → placement.
+- Optional capped streak bonus coins.
+
+#### Tech
+
+| Area | Plan |
+|------|------|
+| Weapon | Raytrace from the player’s eye direction, max range, and first in-match player hit |
+| Events | Interact/right-click, damage cancellation, projectile cleanup, and player quit through `MinigameEventBus` |
+| State | `ScoreTracker`, per-player cooldowns, hit timestamps, and optional streak count |
+| UI | Action bar score, hit sound, cooldown feedback, and a small match scoreboard |
+| Packets | Hit particles and tracer visuals only; never rely on fake blocks for cover or collision |
+| World | Prebuilt arena or disposable clone; clear dropped items/projectiles on end |
+
+#### Flow
+
+```text
+start → snapshot → give blasters → soft PvP rules → countdown
+     → ray hits award score → timer end → rank scores
+     → clear effects/projectiles → restore → result
+```
+
+#### Cancel / edge cases
+
+- Clear blasters, projectiles, cooldowns, scores, and temporary effects on cancel.
+- Ignore friendly/non-match entities and hits through the arena boundary.
+- A disconnected player keeps their recorded score but is placed after active tied players.
 
 #### Config
 
@@ -588,17 +800,78 @@ minigame:
     cooldown-miss-ticks: 15
     cooldown-hit-ticks: 8
     range: 30
+    streak-bonus-cap: 3
 ```
 
 #### References
 
-- Cytooxien Laser Tag; avoid unmaintained Laser Tag OSS — implement hitscan in-house.
+- Cytooxien Laser Tag — score-based FFA blaster gameplay; implement the hitscan weapon in-house.
+
+---
+
+### 5.12 Speed Race — `speed_race`
+
+**Fantasy:** Run the fastest route, chain every speed boost, and beat the clock to the finish.
+
+#### Rules
+
+1. Players start on parallel lanes with the same movement kit and a synchronized countdown.
+2. The course uses speed pads, jump pads, ice/water sections, short parkour cuts, and optional collectible boosts. Map geometry supplies the challenge; v1 does not add combat.
+3. Checkpoints must be crossed in order. Falling or taking a wrong route returns the player to the last checkpoint with a short time penalty.
+4. The first player through the finish wins. Finish order is followed by checkpoint progress and distance at timeout.
+5. A player may take a harder shortcut, but a shortcut must still cross the required checkpoint sequence.
+
+#### Win / coins
+
+- Finish time/order, then checkpoint progress at timeout.
+- Optional bonus coins for collecting every boost or completing a shortcut without a reset.
+
+#### Tech
+
+| Area | Plan |
+|------|------|
+| Course | Prebuilt short track with parallel starts, ordered checkpoints, speed/jump pads, and one finish region |
+| Movement | Map blocks or match-owned launch pads; apply only temporary speed effects and restore them on end |
+| Progress | `CheckpointTracker` validates order and records the last safe location/time |
+| Events | `PlayerMoveEvent` for checkpoint/finish, pressure/interact for boosts, and damage/fall hooks for resets |
+| State | Finish timestamps, reset counts, checkpoint progress, and timeout distance |
+| World | Shared immutable track or disposable course clone; no player block editing |
+
+#### Flow
+
+```text
+start → snapshot → teleport lanes → countdown → speed sections and checkpoints
+     → finish order / checkpoint resets → all finished or timeout
+     → result → restore player state
+```
+
+#### Cancel / edge cases
+
+- Ignore repeated finish entries after a player has finished.
+- Re-entering a checkpoint does not advance progress twice.
+- Disconnect is DNF and ranks after unfinished active players.
+
+#### Config
+
+```yaml
+minigame:
+  speed_race:
+    timeout-seconds: 75
+    checkpoint-count: 10
+    reset-time-penalty-seconds: 2
+    pickup-bonus-coins: 1
+```
+
+#### References
+
+- [Cytooxien Minigame Overview](https://www.cytooxien.net/help/minecraft-party-games) — race modes built around finish order, checkpoints, and movement challenges.
+- [MC Championship](https://en.wikipedia.org/wiki/MC_Championship) — Ace Race as a Minecraft movement race with laps and powerups.
 
 ---
 
 ## 6. Coin & placement model
 
-Shared for all eight (matches current Dummy behavior, config-driven):
+Shared for all twelve (matches current Dummy behavior, config-driven):
 
 ```yaml
 minigame:
@@ -607,7 +880,7 @@ minigame:
 
 - Always set placement for every participant still in the party at resolve time.
 - Offline mid-minigame: place as eliminated last among leavers.
-- Optional per-game **bonus coins** (race pickups, laser streaks, potato explosion drops) added on top of placement coins in `MinigameResult`.
+- Optional per-game **bonus coins** (Elytra clean runs, Skywars eliminations, Antwar resources, Hopper clean runs, Laser Tag streaks, Speed Race pickups, potato explosion drops) added on top of placement coins in `MinigameResult`.
 
 ---
 
@@ -626,7 +899,7 @@ minigame:
 
 ### Phase C (later)
 
-- Vote UI (Cytooxien-style) — not required for launch eight.
+- Vote UI (Cytooxien-style) — not required for launch twelve.
 
 ---
 
@@ -639,20 +912,28 @@ minigame:
   enabled:
     - hot_potato
     - spleef
-    - musical_chairs
+    - elytra_race
     - color_chaos
-    - red_light
+    - king_of_the_hill
     - floor_is_lava
-    - race
+    - warden_escape
+    - mini_skywars
+    - antwar
+    - hopper
     - laser_tag
+    - speed_race
   hot_potato: { ... }
   spleef: { ... }
-  musical_chairs: { ... }
+  elytra_race: { ... }
   color_chaos: { ... }
-  red_light: { ... }
+  king_of_the_hill: { ... }
   floor_is_lava: { ... }
-  race: { ... }
+  warden_escape: { ... }
+  mini_skywars: { ... }
+  antwar: { ... }
+  hopper: { ... }
   laser_tag: { ... }
+  speed_race: { ... }
 ```
 
 Wire new keys through `PluginConfig` + default `config.yml` together (per `AGENTS.md`).
@@ -668,15 +949,20 @@ Until a full setup command set exists:
 | Pad world (usually party board world) | Where minigames run |
 | Pad cuboid | Bounds for break/fall/claims |
 | Spawn list (4–12 points) | Fair starts |
-| Per-game extras | Race finish AABB; chair points; color floor Y level |
+| Per-game extras | Elytra rings; island checkpoints and hill zone; Warden exit; Skywars loot/spawns; Antwar cores/ore; Hopper platforms; Laser Tag arena; Speed Race boosts/checkpoints |
 
 **Future admin commands** (sketch):
 
 ```text
 /partyadmin minigame pad set          # WE selection → pad bounds
 /partyadmin minigame spawn add
-/partyadmin minigame finish set       # race / red light
-/partyadmin minigame chairs scan     # optional
+/partyadmin minigame finish set       # Elytra Race / Warden Escape
+/partyadmin minigame hill set         # King of the Hill capture zone
+/partyadmin minigame islands scan     # Mini Skywars island and loot points
+/partyadmin minigame antwar set       # Queen cores and resource nodes
+/partyadmin minigame hopper scan      # Vertical platform and hazard bands
+/partyadmin minigame laser set        # Laser Tag arena bounds and spawns
+/partyadmin minigame speed set        # Speed Race pads and checkpoints
 ```
 
 Store in `slots.yml` or `minigames.yml` next to board data; remap with `forWorld` on slime clones like board slots.
@@ -700,7 +986,7 @@ Store in `slots.yml` or `minigames.yml` next to board data; remap with `forWorld
 ## 11. Deferred (not in this plan)
 
 - Teams (2v2, 1v3), Duels
-- Horse / Elytra race, Parkour as separate ranked course pack
+- Parkour as a separate ranked course pack
 - Lucky Towers, One in the Chamber, Shooting Range, Memorize
 - FAWE clipboard service, full Cytooxien power-up meta
 - Vote rotation UI, MySQL minigame history
@@ -714,10 +1000,12 @@ Store in `slots.yml` or `minigames.yml` next to board data; remap with `forWorld
 | **M0** | Registry + random pick + Dummy fallback |
 | **M1** | `PlayerStateSnapshot` + `MatchScope` + `hot_potato` |
 | **M2** | `spleef` on a disposable arena clone |
-| **M3** | `musical_chairs` + `red_light` |
+| **M3** | `elytra_race` + `king_of_the_hill` |
 | **M4** | `color_chaos` (real floor) + `floor_is_lava` |
-| **M5** | `race` (needs finish region) + `laser_tag` |
-| **M6** | Config toggles, polish FX, admin pad setup |
+| **M5** | `warden_escape` + `mini_skywars` (disposable arenas) |
+| **M6** | `antwar` + `hopper` (disposable arenas) |
+| **M7** | `laser_tag` + `speed_race` |
+| **M8** | Config toggles, polish FX, admin pad setup |
 
 ---
 
@@ -727,13 +1015,17 @@ Store in `slots.yml` or `minigames.yml` next to board data; remap with `forWorld
 |----|----------------|
 | `hot_potato` | Pass the potato; holder at boom is out |
 | `spleef` | Break floor; last above wins |
-| `musical_chairs` | When music stops, claim a seat |
+| `elytra_race` | Fly through ordered rings to finish |
 | `color_chaos` | Stand on the announced color |
-| `red_light` | Run green, freeze red, reach finish |
+| `king_of_the_hill` | Bridge across islands and hold the final hill |
 | `floor_is_lava` | Floor vanishes behind you |
-| `race` | First to finish line |
-| `laser_tag` | Most tags when time ends |
+| `warden_escape` | Escape the deep dark before the Warden gets you |
+| `mini_skywars` | Loot, bridge, fight, and be last alive |
+| `antwar` | Mine resources, fortify your burrow, and destroy rival queens |
+| `hopper` | Bounce upward through platforms without falling |
+| `laser_tag` | Score hits with a blaster before time ends |
+| `speed_race` | Chain boosts and checkpoints to finish first |
 
 ---
 
-This plan is the working contract for implementing the launch eight. Update it when a game’s rules or arena model change; keep `mcparty.md` for product-level vision and `AGENTS.md` for bootstrap/SPI wiring.
+This plan is the working contract for implementing the launch twelve. Update it when a game’s rules or arena model change; keep `mcparty.md` for product-level vision and `AGENTS.md` for bootstrap/SPI wiring.
