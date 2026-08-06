@@ -68,7 +68,7 @@ Implement once under `minigame/` (names indicative):
 | `MinigameRegistry` | id → factory; random pick; Dummy fallback | Manager |
 | `MatchScope` | UUID set, world, cancelled flag, task list | All |
 | `PlayerStateSnapshot` | inv, armor, XP, gamemode, effects, flight | All |
-| `BlockChangeJournal` | pos → old `BlockData`; batch restore N blocks/tick | Spleef, Floor is Lava, Color Chaos (real mode) |
+| `BlockChangeJournal` | pos → old `BlockData`; batch restore N blocks/tick | Floor is Lava, Color Chaos (real mode) |
 | `EliminationTracker` | elimination order → placements | Hot Potato, Spleef, Musical Chairs, Color Chaos, Floor is Lava |
 | `Region` / AABB | integer bounds; contains / finish line | Red Light, Race, arenas |
 | `ScoreTracker` | UUID → score; rank by score | Laser Tag |
@@ -120,7 +120,7 @@ Collision is always server-authoritative. Do not build Spleef on fake-only floor
 | 8 | `laser_tag` | Laser Tag | 60–90s | Score FFA | Medium |
 
 **Implementation order:**  
-`hot_potato` → `spleef` (+ journal) → `musical_chairs` → `red_light` → `color_chaos` → `floor_is_lava` → `race` → `laser_tag`.
+`hot_potato` → `spleef` → `musical_chairs` → `red_light` → `color_chaos` → `floor_is_lava` → `race` → `laser_tag`.
 
 ---
 
@@ -197,7 +197,7 @@ minigame:
 
 1. Players spawn on a flat multi-layer or single-layer snow/terracotta platform.
 2. Each gets a shovel (instant or fast break on arena materials only).
-3. Breaking floor blocks removes them (real world); players who fall below Y threshold or into void/water are eliminated.
+3. Breaking floor blocks removes them (real world); players who fall below the configured Y threshold or leave the arena world are eliminated.
 4. Optional: snowballs with knockback later (v2).
 5. Last player above the floor wins.
 
@@ -210,24 +210,24 @@ minigame:
 
 | Area | Plan |
 |------|------|
-| State | Alive set, `BlockChangeJournal` |
+| State | Alive set |
 | Events | `BlockBreakEvent` (only arena materials + match players), fall check on move/tick |
-| Blocks | Real break; **no physics**; journal every change |
-| Restore | Batch restore journal on end/cancel |
+| Blocks | Real break; **no physics**; the per-party arena clone is disposable |
+| Restore | `MinigameRunner` unloads the arena clone on end/cancel |
 | Packets | Not for floor |
 
 #### Flow
 
 ```text
-start → snapshot → teleport spawns → fill/ensure platform (or assume prebuilt)
+start → snapshot → load disposable arena clone → teleport spawns → assume prebuilt platform
      → give shovels → listen breaks + fall
      → last alive / timeout (rank by alive then height)
-     → restore journal → result → done
+     → result → unload arena clone → done
 ```
 
 #### Cancel / edge cases
 
-- Timeout: rank remaining by Y height then random.
+- Timeout: survivors keep party order through `EliminationTracker`.
 - Prevent breaking outside pad bounds.
 - Anti-camp (v2): shrink border or damage if idle.
 
@@ -236,9 +236,14 @@ start → snapshot → teleport spawns → fill/ensure platform (or assume prebu
 ```yaml
 minigame:
   spleef:
-    fall-y: <pad minY - 2>
-    tool: DIAMOND_SHOVEL
+    arena:
+      template: spleef_arena
+      spawn: { x: 0.5, y: 70.0, z: 0.5, yaw: 0.0, pitch: 0.0 }
+      boundary: { minX: -40, minY: 40, minZ: -40, maxX: 40, maxY: 140, maxZ: 40 }
     timeout-seconds: 90
+    fall-y: 60.0
+    spawn-radius: 7.0
+    floor-materials: [SNOW_BLOCK, POWDER_SNOW]
 ```
 
 #### References
@@ -702,7 +707,7 @@ Store in `slots.yml` or `minigames.yml` next to board data; remap with `forWorld
 |-----------|-------------|
 | **M0** | Registry + random pick + Dummy fallback |
 | **M1** | `PlayerStateSnapshot` + `MatchScope` + `hot_potato` |
-| **M2** | `BlockChangeJournal` + `spleef` |
+| **M2** | `spleef` on a disposable arena clone |
 | **M3** | `musical_chairs` + `red_light` |
 | **M4** | `color_chaos` (real floor) + `floor_is_lava` |
 | **M5** | `race` (needs finish region) + `laser_tag` |

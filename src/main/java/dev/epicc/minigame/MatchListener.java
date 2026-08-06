@@ -1,6 +1,7 @@
 package dev.epicc.minigame;
 
 import org.bukkit.entity.Player;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -26,6 +27,9 @@ public interface MatchListener {
     }
 
     default void onDropItem(PlayerDropItemEvent event) {
+    }
+
+    default void onBlockBreak(BlockBreakEvent event) {
     }
 
     default void onPickupItem(Player player, EntityPickupItemEvent event) {

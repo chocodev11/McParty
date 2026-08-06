@@ -4,6 +4,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
+import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
@@ -54,6 +55,14 @@ public final class MinigameEventBus implements Listener {
         MatchScope scope = scopeOf(event.getPlayer());
         if (scope != null) {
             scope.listener().onDropItem(event);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockBreak(BlockBreakEvent event) {
+        MatchScope scope = scopeOf(event.getPlayer());
+        if (scope != null) {
+            scope.listener().onBlockBreak(event);
         }
     }
 

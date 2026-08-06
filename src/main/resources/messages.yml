@@ -63,6 +63,9 @@ minigame:
   hot-potato-holding: "<red><bold>BOMB TICKING: <seconds>s</bold>"
   hot-potato-exploded: "{prefix}<red><player> exploded!"
   hot-potato-passed: "{prefix}<yellow><from> threw the potato to <to>!"
+  spleef-started: "{prefix}<aqua>Spleef! Break the floor and stay standing!"
+  spleef-eliminated: "{prefix}<red><player> fell!"
+  spleef-time-left: "<yellow>Spleef: <seconds>s remaining"
 
 admin:
   reload-ok: "{prefix}<green>Config reloaded (resource pack restarted). Slime/seamless need a server restart to change."

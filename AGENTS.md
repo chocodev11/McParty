@@ -291,9 +291,9 @@ Rules:
 - `scope.finish(result)` closes and reports exactly once; `scope.close()` closes without reporting
   (that is what `MinigameSession.cancel()` should call). Both restore every player.
 - Schedule through `scope.repeating(...)` / `scope.later(...)` so tasks die with the match.
-- Block-modifying games (Spleef, Floor is Lava, Color Chaos) still need a `BlockChangeJournal`
-  (pos → old `BlockData`, batched restore, `setBlockData(..., false)`). Not written yet — build it
-  as a shared engine alongside the first such game, not inside it.
+- Block-modifying games (Floor is Lava, Color Chaos) still need a `BlockChangeJournal`
+  (pos → old `BlockData`, batched restore, `setBlockData(..., false)`). Spleef uses a disposable
+  per-party arena clone, so its broken floor dies with the world.
 
 ### Commands & permissions
 

@@ -67,6 +67,29 @@ minigame:
         maxY: 256
         maxZ: 50
 
+  spleef:
+    arena:
+      template: spleef_arena
+      spawn:
+        x: 0.5
+        y: 70.0
+        z: 0.5
+        yaw: 0.0
+        pitch: 0.0
+      boundary:
+        minX: -40
+        minY: 40
+        minZ: -40
+        maxX: 40
+        maxY: 140
+        maxZ: 40
+    timeout-seconds: 90
+    fall-y: 60.0
+    spawn-radius: 7.0
+    floor-materials:
+      - SNOW_BLOCK
+      - POWDER_SNOW
+
 # Suppress dirt "Loading terrain…" on party world teleports (same env + height).
 # Requires PacketEvents plugin on the server. Fail-open if missing.
 seamless-world-change:

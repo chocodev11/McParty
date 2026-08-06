@@ -5,12 +5,14 @@ import dev.epicc.minigame.MinigameRevealSettings;
 import dev.epicc.lobby.parkour.LobbyParkourDefinition;
 import dev.epicc.lobby.parkour.LobbyParkourPoint;
 import org.bukkit.Location;
+import org.bukkit.Material;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 public final class PluginConfig {
@@ -43,6 +45,12 @@ public final class PluginConfig {
     private double hotPotatoThrowVelocity;
     private int hotPotatoMaxCycles;
     private MinigameArenaSpec hotPotatoArena;
+
+    private int spleefTimeoutSeconds;
+    private double spleefFallY;
+    private double spleefSpawnRadius;
+    private List<Material> spleefFloorMaterials;
+    private MinigameArenaSpec spleefArena;
 
     private boolean seamlessWorldChangeEnabled;
 
@@ -161,6 +169,38 @@ public final class PluginConfig {
                 c.getInt("minigame.hot_potato.arena.boundary.maxZ", Integer.MIN_VALUE)
         );
 
+        spleefTimeoutSeconds = c.getInt("minigame.spleef.timeout-seconds", 90);
+        spleefFallY = c.getDouble("minigame.spleef.fall-y", 60.0);
+        spleefSpawnRadius = c.getDouble("minigame.spleef.spawn-radius", 7.0);
+        List<Material> configuredFloorMaterials = new ArrayList<>();
+        for (String name : c.getStringList("minigame.spleef.floor-materials")) {
+            Material material = Material.matchMaterial(name.trim().toUpperCase(Locale.ROOT));
+            if (material == null) {
+                plugin.getLogger().warning("Unknown Spleef floor material: " + name);
+                continue;
+            }
+            if (!configuredFloorMaterials.contains(material)) {
+                configuredFloorMaterials.add(material);
+            }
+        }
+        spleefFloorMaterials = configuredFloorMaterials.isEmpty()
+                ? List.of(Material.SNOW_BLOCK, Material.POWDER_SNOW)
+                : List.copyOf(configuredFloorMaterials);
+        spleefArena = new MinigameArenaSpec(
+                c.getString("minigame.spleef.arena.template", "spleef_arena"),
+                c.getDouble("minigame.spleef.arena.spawn.x", Double.NaN),
+                c.getDouble("minigame.spleef.arena.spawn.y", Double.NaN),
+                c.getDouble("minigame.spleef.arena.spawn.z", Double.NaN),
+                (float) c.getDouble("minigame.spleef.arena.spawn.yaw", 0),
+                (float) c.getDouble("minigame.spleef.arena.spawn.pitch", 0),
+                c.getInt("minigame.spleef.arena.boundary.minX", Integer.MAX_VALUE),
+                c.getInt("minigame.spleef.arena.boundary.minY", Integer.MAX_VALUE),
+                c.getInt("minigame.spleef.arena.boundary.minZ", Integer.MAX_VALUE),
+                c.getInt("minigame.spleef.arena.boundary.maxX", Integer.MIN_VALUE),
+                c.getInt("minigame.spleef.arena.boundary.maxY", Integer.MIN_VALUE),
+                c.getInt("minigame.spleef.arena.boundary.maxZ", Integer.MIN_VALUE)
+        );
+
         seamlessWorldChangeEnabled = c.getBoolean("seamless-world-change.enabled", true);
 
         resourcePackEnabled = c.getBoolean("resource-pack.enabled", true);
@@ -264,6 +304,12 @@ public final class PluginConfig {
     public double hotPotatoThrowVelocity() { return hotPotatoThrowVelocity; }
     public int hotPotatoMaxCycles() { return hotPotatoMaxCycles; }
     public MinigameArenaSpec hotPotatoArena() { return hotPotatoArena; }
+
+    public int spleefTimeoutSeconds() { return spleefTimeoutSeconds; }
+    public double spleefFallY() { return spleefFallY; }
+    public double spleefSpawnRadius() { return spleefSpawnRadius; }
+    public List<Material> spleefFloorMaterials() { return spleefFloorMaterials; }
+    public MinigameArenaSpec spleefArena() { return spleefArena; }
 
     public boolean seamlessWorldChangeEnabled() { return seamlessWorldChangeEnabled; }
 

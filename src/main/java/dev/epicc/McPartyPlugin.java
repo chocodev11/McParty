@@ -18,6 +18,7 @@ import dev.epicc.minigame.HotPotatoMinigame;
 import dev.epicc.minigame.MinigameEventBus;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.minigame.MinigameRegistry;
+import dev.epicc.minigame.SpleefMinigame;
 import dev.epicc.hologram.HologramService;
 import dev.epicc.lobby.parkour.LobbyParkourListener;
 import dev.epicc.lobby.parkour.ParkourLeaderboardStore;
@@ -143,6 +144,16 @@ public final class McPartyPlugin extends JavaPlugin {
             ));
         } else {
             getLogger().severe("Hot Potato is disabled: minigame.hot_potato.arena requires a template, spawn, and valid boundary.");
+        }
+        if (config.spleefArena().isValid()
+                && Double.isFinite(config.spleefFallY())
+                && config.spleefFallY() > config.spleefArena().minY()) {
+            minigameRegistry.register(new SpleefMinigame(
+                    config.spleefTimeoutSeconds(), config.spleefFallY(), config.spleefSpawnRadius(),
+                    config.spleefArena(), config.spleefFloorMaterials(), config.dummyCoinRewards()
+            ));
+        } else {
+            getLogger().severe("Spleef is disabled: minigame.spleef.arena is invalid or fall-y is not above boundary.minY.");
         }
         minigameEvents = new MinigameEventBus();
         minigames = new MinigameManager(
@@ -282,6 +293,17 @@ public final class McPartyPlugin extends JavaPlugin {
             ));
         } else {
             getLogger().severe("Hot Potato remains disabled: minigame.hot_potato.arena is invalid or missing.");
+        }
+        minigames.registry().unregister("spleef");
+        if (config.spleefArena().isValid()
+                && Double.isFinite(config.spleefFallY())
+                && config.spleefFallY() > config.spleefArena().minY()) {
+            minigames.registry().register(new SpleefMinigame(
+                    config.spleefTimeoutSeconds(), config.spleefFallY(), config.spleefSpawnRadius(),
+                    config.spleefArena(), config.spleefFloorMaterials(), config.dummyCoinRewards()
+            ));
+        } else {
+            getLogger().severe("Spleef remains disabled: minigame.spleef.arena is invalid or fall-y is not above boundary.minY.");
         }
 
         resourcePackService.reload();
