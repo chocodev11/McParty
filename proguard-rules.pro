@@ -14,7 +14,10 @@
 # -printusage
 
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,PermittedSubclasses,Record,Exceptions
--keepattributes SourceFile,LineNumberTable
+# ProGuard can remove unused parameters during optimization while retaining stale
+# local-variable entries. Java 25 rejects the resulting class file, so keep
+# source locations for stack traces but explicitly discard local-variable debug data.
+-keepattributes SourceFile,LineNumberTable,!LocalVariableTable,!LocalVariableTypeTable
 -renamesourcefileattribute SourceFile
 
 # Paper loads the main class by name from plugin.yml

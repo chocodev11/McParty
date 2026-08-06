@@ -27,7 +27,7 @@ import java.util.function.IntConsumer;
  * Rolling die rides the player as a passenger (no freestanding teleport while spinning).
  * Entity yaw/pitch stay 0; "in front" is world-space transformation translation on the eye look-ray
  * (updated each tick; passenger attach is player height, so Y is relative to the top of the head).
- * Visible only to the roller. On settle: detach at the current position, face the roller, hold 1s,
+ * Visible only to the roller. On settle: detach onto the current eye ray, face the roller, hold 1s,
  * callback.
  */
 public final class DicePresenter {
@@ -41,7 +41,7 @@ public final class DicePresenter {
     private double spawnDistance;
     private int interactTicks;
     private int spinIntervalTicks;
-    /** Settled size ({@code board.dice-display-scale}); translation stays at click time. */
+    /** Settled floating size ({@code board.dice-display-scale}). */
     private float displayScale;
     /** Spin in front of eyes ({@code board.dice-spin-scale}); usually smaller than settle. */
     private float spinScale;
@@ -198,27 +198,24 @@ public final class DicePresenter {
         Location particleAt = null;
 
         if (session.display != null && session.display.isValid()) {
-            Location stoppedAt = session.display.getLocation().clone();
             session.display.setItemStack(DiceItems.face(session.result));
-            session.display.setTeleportDuration(0);
-            session.display.setInterpolationDelay(0);
-            session.display.setInterpolationDuration(0);
-
-            Transformation current = session.display.getTransformation();
-            session.display.setBillboard(Display.Billboard.CENTER);
-            session.display.setTransformation(new Transformation(
-                    new Vector3f(current.getTranslation()),
-                    new Quaternionf(),
-                    scaleVec(displayScale),
-                    new Quaternionf()
-            ));
 
             Entity vehicle = session.display.getVehicle();
             if (vehicle != null) {
                 vehicle.removePassenger(session.display);
             }
 
-            particleAt = stoppedAt.add(0, 0.05, 0);
+            Location settledAt = player != null && player.isOnline()
+                    ? floatingInFront(player)
+                    : session.display.getLocation().clone();
+            int landAnimTicks = Math.max(1, spinIntervalTicks);
+            session.display.setTeleportDuration(landAnimTicks);
+            session.display.teleport(settledAt);
+            session.display.setInterpolationDelay(0);
+            session.display.setInterpolationDuration(landAnimTicks);
+            session.display.setBillboard(Display.Billboard.CENTER);
+            session.display.setTransformation(floatingPose(displayScale));
+            particleAt = settledAt.clone().add(0, 0.05, 0);
 
             // Private display can drop tracking after dismount — keep roller viewer
             if (player != null && player.isOnline()) {
@@ -236,20 +233,30 @@ public final class DicePresenter {
             spawnPastelSmoke(particleAt);
         }
 
-        // Stay frozen for the hold second, then remove + board callback.
+        // Finish the short detach motion, then hold the floating result for one second.
+        int landAnimTicks = Math.max(1, spinIntervalTicks);
         session.settleTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (session.aborted) {
                 session.settleTask = null;
                 return;
             }
-            session.settleTask = null;
-            cleanupEntities(session);
-            unregister(session);
-            IntConsumer cb = session.onSettled;
-            if (cb != null) {
-                cb.accept(session.result);
+            if (session.display != null && session.display.isValid()) {
+                session.display.setTeleportDuration(0);
+                session.display.setInterpolationDuration(0);
             }
-        }, SETTLE_HOLD_TICKS);
+            session.settleTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                session.settleTask = null;
+                if (session.aborted) {
+                    return;
+                }
+                cleanupEntities(session);
+                unregister(session);
+                IntConsumer cb = session.onSettled;
+                if (cb != null) {
+                    cb.accept(session.result);
+                }
+            }, SETTLE_HOLD_TICKS);
+        }, landAnimTicks);
     }
 
     /**
@@ -281,6 +288,29 @@ public final class DicePresenter {
                 new AxisAngle4f(yaw, 0f, 1f, 0f),
                 scaleVec(spinScale),
                 new AxisAngle4f(pitch, 1f, 0f, 0f)
+        );
+    }
+
+    private Location floatingInFront(Player player) {
+        Location at = player.getEyeLocation();
+        Vector direction = at.getDirection();
+        if (direction.lengthSquared() < 1.0e-6) {
+            direction.setZ(1);
+        } else {
+            direction.normalize();
+        }
+        at.add(direction.multiply(spawnDistance));
+        at.setYaw(0f);
+        at.setPitch(0f);
+        return at;
+    }
+
+    private static Transformation floatingPose(float scale) {
+        return new Transformation(
+                new Vector3f(),
+                new Quaternionf(),
+                scaleVec(scale),
+                new Quaternionf()
         );
     }
 

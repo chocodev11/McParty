@@ -4,7 +4,7 @@ party:
   max-instances: 12
   start-countdown-seconds: 5
   max-turns: 4
-  starting-coins: 10
+  starting-coins: 3
 
 board:
   dice-min: 1

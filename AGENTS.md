@@ -147,6 +147,10 @@ Persistent data at runtime:
 9. `PartyManager`
 10. `MinigameEventBus`, `BoundaryListener`, resource-pack listener, commands
 
+After constructing `PartyManager`, startup removes stale ASP-managed clones matching the configured
+McParty clone prefix. Any occupants are moved to `slime.fallback`; permanent Bukkit worlds and
+slime templates are not targeted.
+
 `onDisable`: stop parkour runs → close SQLite store → `partyManager.shutdown()` → unload slime worlds → stop resource-pack HTTP → save slots.
 
 ### Domain model

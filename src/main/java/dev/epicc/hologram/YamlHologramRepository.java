@@ -18,6 +18,8 @@ import java.util.logging.Level;
 
 public final class YamlHologramRepository {
 
+    private static final String SCOPED_TEMPLATE_WORLD = "__mcparty_scope_template__";
+
     private final JavaPlugin plugin;
     private final File file;
     private final String resourcePath;
@@ -77,7 +79,7 @@ public final class YamlHologramRepository {
             plugin.getLogger().warning("Could not create hologram directory: " + parent);
         }
         FileConfiguration yaml = new YamlConfiguration();
-        yaml.set("schema-version", 1);
+        yaml.set("schema-version", 2);
         for (HologramDefinition definition : definitions) {
             write(yaml, definition);
         }
@@ -93,7 +95,18 @@ public final class YamlHologramRepository {
             throw new IllegalArgumentException("missing definition");
         }
         ConfigurationSection location = required(section, "location");
-        String world = requiredString(section, "world");
+        String scope = string(section, "scope", "global");
+        String world = location.getString("world");
+        if (world == null || world.isBlank()) {
+            String legacyWorld = section.getString("world");
+            if (legacyWorld != null && !legacyWorld.isBlank()) {
+                world = legacyWorld;
+            } else if (scope.equalsIgnoreCase("party") || scope.equalsIgnoreCase("lobby")) {
+                world = SCOPED_TEMPLATE_WORLD;
+            } else {
+                throw new IllegalArgumentException("missing world");
+            }
+        }
         HologramLocation hologramLocation = new HologramLocation(
                 world,
                 location.getDouble("x"),
@@ -138,7 +151,7 @@ public final class YamlHologramRepository {
                 refreshTicks,
                 string(visibility, "mode", "all"),
                 string(visibility, "permission", ""),
-                string(section, "scope", "global")
+                scope
         );
     }
 
@@ -167,7 +180,7 @@ public final class YamlHologramRepository {
         String root = "holograms." + definition.id();
         HologramLocation location = definition.location();
         yaml.set(root + ".scope", definition.scope());
-        yaml.set(root + ".world", location.world());
+        yaml.set(root + ".location.world", location.world().equals(SCOPED_TEMPLATE_WORLD) ? "" : location.world());
         yaml.set(root + ".location.x", location.x());
         yaml.set(root + ".location.y", location.y());
         yaml.set(root + ".location.z", location.z());

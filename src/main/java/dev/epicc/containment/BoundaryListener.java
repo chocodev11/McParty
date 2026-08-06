@@ -88,6 +88,11 @@ public final class BoundaryListener implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        partyManager.leave(event.getPlayer(), true);
+        Player player = event.getPlayer();
+        partyManager.plugin().getServer().getScheduler().runTask(partyManager.plugin(), () -> {
+            if (!player.isOnline()) {
+                partyManager.leave(player, true);
+            }
+        });
     }
 }

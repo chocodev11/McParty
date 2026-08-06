@@ -1,17 +1,16 @@
-schema-version: 1
+schema-version: 2
 
 # Text is MiniMessage. Replaceable values use {{name}} markers; the template is
 # parsed once at load time, so rendering a viewer only resolves those markers.
 # A frame list is optional and loops by duration-ticks. Use scope: party for a
 # copy in every loaded party board world, or scope: lobby for every loaded
-# per-party lobby slime world (the world value is a template value).
+# per-party lobby slime world. Scoped holograms ignore location.world.
 #
 # Example:
 #
 # lobby:
 #   scope: global
-#   world: world
-#   location: {x: 0.5, y: 80.0, z: 0.5, yaw: 0.0, pitch: 0.0}
+#   location: {world: world, x: 0.5, y: 80.0, z: 0.5, yaw: 0.0, pitch: 0.0}
 #   content:
 #     lines:
 #       - "<gold>Welcome, {{mcparty.player_name}}</gold>"
@@ -29,8 +28,7 @@ schema-version: 1
 #
 # board_status:
 #   scope: party
-#   world: board-template
-#   location: {x: 0.5, y: 70.0, z: 0.5}
+#   location: {world: board-template, x: 0.5, y: 70.0, z: 0.5}
 #   content:
 #     frames:
 #       enabled: true
@@ -40,8 +38,7 @@ schema-version: 1
 #
 # lobby_status:
 #   scope: lobby
-#   world: lobby-template
-#   location: {x: 0.5, y: 70.0, z: 0.5}
+#   location: {world: lobby-template, x: 0.5, y: 70.0, z: 0.5}
 #   content:
 #     lines:
 #       - "<gold>Party: {{mcparty.party_id}}</gold>"

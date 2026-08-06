@@ -33,6 +33,8 @@ import dev.epicc.seamless.SeamlessWorldChangeService;
 import dev.epicc.slime.SlimeFallDamageListener;
 import dev.epicc.slime.SlimeWorldService;
 import dev.epicc.store.InMemoryInstanceStore;
+import org.bukkit.Location;
+import org.bukkit.World;
 import org.bukkit.command.PluginCommand;
 import org.bukkit.plugin.java.JavaPlugin;
 
@@ -187,6 +189,7 @@ public final class McPartyPlugin extends JavaPlugin {
                 this, config, messages, store, sessions, slotRegistry, minigames, slimeWorldService, seamless,
                 dicePresenter, diceHats, pathHopMover, resourcePackService, holograms
         );
+        unloadStaleSlimeWorlds();
         holograms.setScopeVisibility((scopeId, player) -> partyManager.instanceOf(player.getUniqueId())
                 .map(instance -> instance.id().equals(scopeId)).orElse(false));
         holograms.registerPlaceholder("mcparty.party_id", context -> partyManager.instanceOf(context.player().getUniqueId())
@@ -250,6 +253,24 @@ public final class McPartyPlugin extends JavaPlugin {
             getLogger().warning("McParty enabled but ASP slime service is not ready — parties fall back to permanent worlds");
         } else {
             getLogger().info("McParty enabled (slime disabled)");
+        }
+    }
+
+    private void unloadStaleSlimeWorlds() {
+        if (!slimeWorldService.isReady()) {
+            return;
+        }
+        World fallbackWorld = getServer().getWorld(config.fallbackWorld());
+        Location fallback = fallbackWorld == null
+                ? getServer().getWorlds().getFirst().getSpawnLocation()
+                : new Location(
+                        fallbackWorld,
+                        config.fallbackX(), config.fallbackY(), config.fallbackZ(),
+                        config.fallbackYaw(), config.fallbackPitch()
+                );
+        int unloaded = slimeWorldService.unloadStaleInstanceWorlds(fallback);
+        if (unloaded > 0) {
+            getLogger().info("Unloaded " + unloaded + " stale McParty slime world(s) during startup.");
         }
     }
 

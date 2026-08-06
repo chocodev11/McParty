@@ -23,7 +23,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class PathSetupService {
 
     private static final Material CENTER_MATERIAL = Material.GOLD_BLOCK;
-    private static final Material RING_MATERIAL = Material.YELLOW_WOOL;
+    private static final Material RING_MATERIAL = Material.YELLOW_CONCRETE;
     private static final int Y_BELOW = 1;
     private static final int Y_ABOVE = 5;
 

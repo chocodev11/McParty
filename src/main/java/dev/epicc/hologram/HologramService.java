@@ -267,6 +267,7 @@ public final class HologramService implements Listener {
         }
         String normalized = normalize(id);
         if (!validId(normalized) || holograms.containsKey(normalized) || partyTemplates.containsKey(normalized)
+                || lobbyTemplates.containsKey(normalized)
                 || location.getWorld() == null) {
             return false;
         }

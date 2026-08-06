@@ -85,6 +85,9 @@ tasks {
     compileJava {
         options.encoding = "UTF-8"
         options.release.set(25)
+        // ProGuard optimizes unused parameters. Keep source/line debug metadata,
+        // but omit local variables so their slot table cannot become stale.
+        options.compilerArgs.add("-g:source,lines")
     }
 
     test {
@@ -97,6 +100,7 @@ val proguardTask = tasks.register<ProGuardTask>("proguard") {
     group = "build"
     description = "Shrink and optimize the shaded McParty jar with ProGuard"
     dependsOn(tasks.jar)
+    inputs.file("proguard-rules.pro")
 
     configuration(files("proguard-rules.pro"))
 

@@ -30,6 +30,7 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
+import java.util.regex.Pattern;
 
 /**
  * Loads / unloads per-party slime worlds via AdvancedSlimePaper.
@@ -304,6 +305,37 @@ public final class SlimeWorldService {
         for (UUID id : instanceWorlds.keySet().toArray(UUID[]::new)) {
             unloadForInstance(id);
         }
+    }
+
+    /** Removes stale McParty clone worlds left behind by an earlier plugin lifecycle. */
+    public int unloadStaleInstanceWorlds(Location fallback) {
+        if (!isReady()) {
+            return 0;
+        }
+        if (!Bukkit.isPrimaryThread()) {
+            throw new IllegalStateException("unloadStaleInstanceWorlds must run on the main thread");
+        }
+        if (fallback == null || fallback.getWorld() == null) {
+            plugin.getLogger().warning("Skipping stale slime-world cleanup because the fallback location is unavailable.");
+            return 0;
+        }
+
+        Pattern cloneName = Pattern.compile(Pattern.quote(worldPrefix) + "[0-9a-f]{8,12}-.+");
+        int unloaded = 0;
+        for (World world : new ArrayList<>(Bukkit.getWorlds())) {
+            if (!cloneName.matcher(world.getName()).matches() || asp.getLoadedWorld(world.getName()) == null) {
+                continue;
+            }
+            for (Player player : new ArrayList<>(world.getPlayers())) {
+                if (player.isOnline()) {
+                    seamless.teleport(player, fallback);
+                }
+            }
+            if (unloadWorld(world.getName())) {
+                unloaded++;
+            }
+        }
+        return unloaded;
     }
 
 
