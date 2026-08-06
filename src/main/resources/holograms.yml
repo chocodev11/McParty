@@ -3,7 +3,8 @@ schema-version: 1
 # Text is MiniMessage. Replaceable values use {{name}} markers; the template is
 # parsed once at load time, so rendering a viewer only resolves those markers.
 # A frame list is optional and loops by duration-ticks. Use scope: party for a
-# copy in every loaded party board world (the world value is a template value).
+# copy in every loaded party board world, or scope: lobby for every loaded
+# per-party lobby slime world (the world value is a template value).
 #
 # Example:
 #
@@ -36,5 +37,13 @@ schema-version: 1
 #       entries:
 #         - {duration-ticks: 20, lines: ["<yellow>Round {{mcparty.turn}}</yellow>"]}
 #         - {duration-ticks: 20, lines: ["<aqua>Coins: {{mcparty.coins}}</aqua>"]}
+#
+# lobby_status:
+#   scope: lobby
+#   world: lobby-template
+#   location: {x: 0.5, y: 70.0, z: 0.5}
+#   content:
+#     lines:
+#       - "<gold>Party: {{mcparty.party_id}}</gold>"
 
 holograms: {}

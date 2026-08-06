@@ -9,6 +9,7 @@ import dev.epicc.board.setup.PathSetupListener;
 import dev.epicc.board.setup.PathSetupService;
 import dev.epicc.command.PartyAdminCommand;
 import dev.epicc.command.PartyCommand;
+import dev.epicc.command.HologramCommand;
 import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.containment.BoundaryListener;
@@ -191,7 +192,7 @@ public final class McPartyPlugin extends JavaPlugin {
         partyManager.setLobbyParkour(lobbyParkour);
         lobbyParkour.refreshConfiguredWorld();
         lobbyMatchmaker = new LobbyMatchmaker(
-                this, partyManager, config, messages, slimeWorldService, seamless, sessions, lobbyParkour
+                this, partyManager, config, messages, slimeWorldService, seamless, sessions, lobbyParkour, holograms
         );
         lobbyMatchmaker.configureFallbackWorld();
 
@@ -217,13 +218,19 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new PathSetupListener(this, pathSetupService), this);
 
         PartyAdminCommand adminCommand = new PartyAdminCommand(
-                this, slotRegistry, pathSetupService, messages, slimeWorldService, minigames, config, lobbyParkour,
-                holograms
+                this, slotRegistry, pathSetupService, messages, slimeWorldService, minigames, config, lobbyParkour
         );
         PluginCommand partyAdmin = getCommand("partyadmin");
         if (partyAdmin != null) {
             partyAdmin.setExecutor(adminCommand);
             partyAdmin.setTabCompleter(adminCommand);
+        }
+
+        HologramCommand hologramCommand = new HologramCommand(messages, holograms);
+        PluginCommand hologram = getCommand("hologram");
+        if (hologram != null) {
+            hologram.setExecutor(hologramCommand);
+            hologram.setTabCompleter(hologramCommand);
         }
 
         if (slimeWorldService.isReady()) {

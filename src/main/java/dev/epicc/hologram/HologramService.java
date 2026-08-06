@@ -34,8 +34,12 @@ public final class HologramService implements Listener {
     private final Map<String, RuntimeHologram> holograms = new ConcurrentHashMap<>();
     private final Map<String, HologramDefinition> partyTemplates = new ConcurrentHashMap<>();
     private final Map<String, TemplateBundle> partyTemplateBundles = new ConcurrentHashMap<>();
+    private final Map<String, HologramDefinition> lobbyTemplates = new ConcurrentHashMap<>();
+    private final Map<String, TemplateBundle> lobbyTemplateBundles = new ConcurrentHashMap<>();
     private final Map<UUID, Map<String, RuntimeHologram>> partyScopes = new ConcurrentHashMap<>();
+    private final Map<UUID, Map<String, RuntimeHologram>> lobbyScopes = new ConcurrentHashMap<>();
     private final Map<UUID, World> partyScopeWorlds = new ConcurrentHashMap<>();
+    private final Map<UUID, World> lobbyScopeWorlds = new ConcurrentHashMap<>();
     private final Map<String, HologramPlaceholder> placeholders = new ConcurrentHashMap<>();
     private BiPredicate<UUID, Player> scopeVisibility = (scopeId, player) -> true;
     private BukkitTask tickTask;
@@ -79,7 +83,10 @@ public final class HologramService implements Listener {
             holograms.clear();
             partyTemplates.clear();
             partyTemplateBundles.clear();
+            lobbyTemplates.clear();
+            lobbyTemplateBundles.clear();
             partyScopes.clear();
+            lobbyScopes.clear();
             return;
         }
 
@@ -118,17 +125,28 @@ public final class HologramService implements Listener {
         holograms.clear();
         partyTemplates.clear();
         partyTemplateBundles.clear();
+        lobbyTemplates.clear();
+        lobbyTemplateBundles.clear();
         partyScopes.clear();
+        lobbyScopes.clear();
         for (HologramDefinition definition : repository.load().values()) {
-            if (definition.scope().equals("party")) {
-                partyTemplates.put(definition.id(), definition);
-                partyTemplateBundles.put(definition.id(), compile(definition));
-            } else {
-                holograms.put(definition.id(), new RuntimeHologram(definition));
+            switch (definition.scope()) {
+                case "party" -> {
+                    partyTemplates.put(definition.id(), definition);
+                    partyTemplateBundles.put(definition.id(), compile(definition));
+                }
+                case "lobby" -> {
+                    lobbyTemplates.put(definition.id(), definition);
+                    lobbyTemplateBundles.put(definition.id(), compile(definition));
+                }
+                default -> holograms.put(definition.id(), new RuntimeHologram(definition));
             }
         }
         for (Map.Entry<UUID, World> entry : partyScopeWorlds.entrySet()) {
             bindPartyScope(entry.getKey(), entry.getValue());
+        }
+        for (Map.Entry<UUID, World> entry : lobbyScopeWorlds.entrySet()) {
+            bindLobbyScope(entry.getKey(), entry.getValue());
         }
     }
 
@@ -143,12 +161,34 @@ public final class HologramService implements Listener {
         }
     }
 
+    /** Binds the file's {@code scope: lobby} definitions to a loaded lobby clone. */
+    public void openLobbyScope(UUID partyId, World world) {
+        if (partyId == null || world == null) {
+            return;
+        }
+        lobbyScopeWorlds.put(partyId, world);
+        if (enabled) {
+            bindLobbyScope(partyId, world);
+        }
+    }
+
     public void closePartyScope(UUID partyId) {
         if (partyId == null) {
             return;
         }
         partyScopeWorlds.remove(partyId);
         Map<String, RuntimeHologram> scope = partyScopes.remove(partyId);
+        if (scope != null) {
+            scope.values().forEach(RuntimeHologram::hideAll);
+        }
+    }
+
+    public void closeLobbyScope(UUID partyId) {
+        if (partyId == null) {
+            return;
+        }
+        lobbyScopeWorlds.remove(partyId);
+        Map<String, RuntimeHologram> scope = lobbyScopes.remove(partyId);
         if (scope != null) {
             scope.values().forEach(RuntimeHologram::hideAll);
         }
@@ -161,6 +201,7 @@ public final class HologramService implements Listener {
     public List<String> allIds() {
         java.util.Set<String> ids = new java.util.TreeSet<>(holograms.keySet());
         ids.addAll(partyTemplates.keySet());
+        ids.addAll(lobbyTemplates.keySet());
         return List.copyOf(ids);
     }
 
@@ -168,6 +209,7 @@ public final class HologramService implements Listener {
         String normalized = normalize(id);
         if (holograms.containsKey(normalized)) return Optional.of("global");
         if (partyTemplates.containsKey(normalized)) return Optional.of("party");
+        if (lobbyTemplates.containsKey(normalized)) return Optional.of("lobby");
         return Optional.empty();
     }
 
@@ -300,6 +342,7 @@ public final class HologramService implements Listener {
     public void save() {
         if (!enabled) return;
         List<HologramDefinition> definitions = new ArrayList<>(partyTemplates.values());
+        definitions.addAll(lobbyTemplates.values());
         definitions.addAll(holograms.values().stream().map(runtime -> runtime.definition).toList());
         repository.save(definitions);
     }
@@ -313,8 +356,12 @@ public final class HologramService implements Listener {
         holograms.clear();
         partyTemplates.clear();
         partyTemplateBundles.clear();
+        lobbyTemplates.clear();
+        lobbyTemplateBundles.clear();
         partyScopes.clear();
+        lobbyScopes.clear();
         partyScopeWorlds.clear();
+        lobbyScopeWorlds.clear();
     }
 
     @EventHandler
@@ -406,6 +453,9 @@ public final class HologramService implements Listener {
         for (Map<String, RuntimeHologram> scope : partyScopes.values()) {
             scope.values().forEach(RuntimeHologram::hideAll);
         }
+        for (Map<String, RuntimeHologram> scope : lobbyScopes.values()) {
+            scope.values().forEach(RuntimeHologram::hideAll);
+        }
     }
 
     private void registerBuiltins() {
@@ -418,19 +468,33 @@ public final class HologramService implements Listener {
     }
 
     private void bindPartyScope(UUID partyId, World world) {
-        Map<String, RuntimeHologram> previous = partyScopes.remove(partyId);
+        bindScope(partyId, world, partyTemplates, partyTemplateBundles, partyScopes);
+    }
+
+    private void bindLobbyScope(UUID partyId, World world) {
+        bindScope(partyId, world, lobbyTemplates, lobbyTemplateBundles, lobbyScopes);
+    }
+
+    private void bindScope(
+            UUID scopeId,
+            World world,
+            Map<String, HologramDefinition> templates,
+            Map<String, TemplateBundle> bundles,
+            Map<UUID, Map<String, RuntimeHologram>> scopes
+    ) {
+        Map<String, RuntimeHologram> previous = scopes.remove(scopeId);
         if (previous != null) {
             previous.values().forEach(RuntimeHologram::hideAll);
         }
         Map<String, RuntimeHologram> scope = new ConcurrentHashMap<>();
-        for (HologramDefinition template : partyTemplates.values()) {
+        for (HologramDefinition template : templates.values()) {
             HologramDefinition bound = new HologramDefinition(
                     template.id(), template.location().inWorld(world.getName()), template.lines(), template.frames(),
-                    template.style(), template.refreshTicks(), template.visibilityMode(), template.permission(), "party"
+                    template.style(), template.refreshTicks(), template.visibilityMode(), template.permission(), template.scope()
             );
-            scope.put(bound.id(), new RuntimeHologram(bound, partyId, partyTemplateBundles.get(template.id())));
+            scope.put(bound.id(), new RuntimeHologram(bound, scopeId, bundles.get(template.id())));
         }
-        partyScopes.put(partyId, scope);
+        scopes.put(scopeId, scope);
     }
 
     private void forEachRuntime(Consumer<RuntimeHologram> consumer) {
@@ -438,11 +502,17 @@ public final class HologramService implements Listener {
         for (Map<String, RuntimeHologram> scope : partyScopes.values()) {
             scope.values().forEach(consumer);
         }
+        for (Map<String, RuntimeHologram> scope : lobbyScopes.values()) {
+            scope.values().forEach(consumer);
+        }
     }
 
     private List<RuntimeHologram> runtimeSnapshot() {
         List<RuntimeHologram> result = new ArrayList<>(holograms.values());
         for (Map<String, RuntimeHologram> scope : partyScopes.values()) {
+            result.addAll(scope.values());
+        }
+        for (Map<String, RuntimeHologram> scope : lobbyScopes.values()) {
             result.addAll(scope.values());
         }
         return result;

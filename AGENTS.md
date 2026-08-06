@@ -98,7 +98,7 @@ src/main/java/dev/epicc/
   McPartyPlugin.java          # Bootstrap: wire services, register commands/listeners
   board/                      # Board slots, path, turns, dice
     setup/                    # Path stick (blaze rod) builder (gold/yellow 3x3 pads)
-  command/                    # /party, /partyadmin
+  command/                    # /party, /partyadmin, /hologram
   config/PluginConfig.java    # Typed config from config.yml
   containment/                # Slot boundary clamp (move/teleport)
   minigame/                   # Minigame SPI, shared match engines, dummy + hot potato, manager
@@ -123,6 +123,7 @@ Persistent data at runtime:
 |-------------|---------|
 | `plugins/McParty/config.yml` | Defaults from resources; `PluginConfig` reads once on enable |
 | `plugins/McParty/messages.yml` | All player-facing text (MiniMessage); `MessageService` — reloaded with `/partyadmin reload` |
+| `plugins/McParty/holograms.yml` | Persistent packet hologram definitions and dynamic content |
 | `plugins/McParty/slots.yml` | Board slots (world name, bounds, path, spawn) — `BoardSlotRegistry` |
 | `plugins/McParty/parkour.db` | SQLite parkour best times and attempt counts; schema versioned with SQLite `user_version` |
 | `plugins/McParty/slime_worlds/*.slime` | Template worlds for ASP FileLoader |
@@ -301,6 +302,7 @@ Rules:
 | `/party create\|join\|leave\|start\|list\|roll` | `mcparty.party` (default true) | Players |
 | `/party end [id]` | `mcparty.admin` | Force end |
 | `/partyadmin path\|slot\|minigame\|reload` (alias `padmin`) | `mcparty.admin` | Board setup, minigame testing + config reload |
+| `/hologram ...` (alias `holo`) | `mcparty.admin.hologram` | Create, edit, reload, and remove packet holograms |
 | Bypass boundary | `mcparty.admin.bypass` | Ops |
 
 Admin board setup (path builder):
@@ -526,6 +528,7 @@ Prefer incremental features that fit the current single-process, in-memory desig
 | `PluginConfig` | Typed settings |
 | `MessageService` | `messages.yml` MiniMessage lookup + placeholders |
 | `ResourcePackService` | Dice pack host + prompt |
+| `HologramService` / `HologramCommand` | Packet text displays, YAML definitions, global/party/lobby scopes, and hologram administration |
 | `LobbyParkourService` | Pressure-plate start/checkpoints, goal ArmorStand + touch hitbox, and goal launch |
 | `ParkourLeaderboardStore` / `SqliteParkourLeaderboardStore` | Async persistent best times; replace the adapter for MySQL later |
 

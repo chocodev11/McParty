@@ -4,6 +4,7 @@ import com.infernalsuite.asp.api.world.SlimeWorld;
 import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.containment.SlotBoundary;
+import dev.epicc.hologram.HologramService;
 import dev.epicc.player.PlayerSessionService;
 import dev.epicc.lobby.parkour.LobbyParkourService;
 import dev.epicc.seamless.SeamlessWorldChangeService;
@@ -32,6 +33,7 @@ public final class LobbyMatchmaker implements Listener {
     private final SeamlessWorldChangeService seamless;
     private final PlayerSessionService sessions;
     private final LobbyParkourService lobbyParkour;
+    private final HologramService holograms;
 
     public LobbyMatchmaker(
             JavaPlugin plugin,
@@ -41,7 +43,8 @@ public final class LobbyMatchmaker implements Listener {
             SlimeWorldService slime,
             SeamlessWorldChangeService seamless,
             PlayerSessionService sessions,
-            LobbyParkourService lobbyParkour
+            LobbyParkourService lobbyParkour,
+            HologramService holograms
     ) {
         this.plugin = plugin;
         this.partyManager = partyManager;
@@ -51,6 +54,7 @@ public final class LobbyMatchmaker implements Listener {
         this.seamless = seamless;
         this.sessions = sessions;
         this.lobbyParkour = lobbyParkour;
+        this.holograms = holograms;
     }
 
     @EventHandler
@@ -129,6 +133,7 @@ public final class LobbyMatchmaker implements Listener {
                 }
 
                 configureLobbyWorld(lobbyWorld.get());
+                holograms.openLobbyScope(instanceId, lobbyWorld.get());
                 // Lobby loaded! Teleport host (and anyone who joined while it was loading)
                 for (PartyPlayer pp : newInstance.players()) {
                     Player p = plugin.getServer().getPlayer(pp.uuid());

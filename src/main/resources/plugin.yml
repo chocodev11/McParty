@@ -14,9 +14,14 @@ commands:
     permission: mcparty.party
   partyadmin:
     description: Board, minigame, and lobby parkour setup admin commands
-    usage: /partyadmin <path|slot|minigame|hologram|setlobby|parkour <start|checkpoint|goal|leaderboard|remove-checkpoint|clear>|reload>
+    usage: /partyadmin <path|slot|minigame|setlobby|parkour <start|checkpoint|goal|leaderboard|remove-checkpoint|clear>|reload>
     permission: mcparty.admin
     aliases: [padmin]
+  hologram:
+    description: Manage packet holograms
+    usage: /hologram <list|create|remove|move|setline|addline|removeline|reload>
+    permission: mcparty.admin.hologram
+    aliases: [holo]
 
 permissions:
   mcparty.party:
@@ -25,6 +30,8 @@ permissions:
   mcparty.admin:
     description: Admin board setup and force end
     default: op
+    children:
+      mcparty.admin.hologram: true
   mcparty.admin.bypass:
     description: Bypass slot boundary
     default: op

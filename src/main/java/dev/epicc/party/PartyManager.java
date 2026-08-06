@@ -406,6 +406,7 @@ public final class PartyManager {
             cleanup(instance);
             return;
         }
+        holograms.closeLobbyScope(instance.id());
         holograms.openPartyScope(instance.id(), slot.world());
 
         Title startTitle = Title.title(
@@ -500,6 +501,7 @@ public final class PartyManager {
 
     public void cleanup(PartyInstance instance) {
         if (!instance.beginCleanup()) return;
+        holograms.closeLobbyScope(instance.id());
         holograms.closePartyScope(instance.id());
         instance.cancelPendingTasks();
         BoardTurnController controller = controllers.remove(instance.id());
