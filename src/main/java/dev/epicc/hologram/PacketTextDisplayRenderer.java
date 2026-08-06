@@ -1,6 +1,7 @@
 package dev.epicc.hologram;
 
 import com.github.retrooper.packetevents.PacketEvents;
+import com.github.retrooper.packetevents.wrapper.PacketWrapper;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityData;
 import com.github.retrooper.packetevents.protocol.entity.data.EntityDataTypes;
 import com.github.retrooper.packetevents.protocol.entity.type.EntityTypes;
@@ -52,31 +53,32 @@ public final class PacketTextDisplayRenderer implements HologramRenderer {
         send(player, new WrapperPlayServerDestroyEntities(handle.entityId()));
     }
 
-    private static List<EntityData> metadata(HologramView view) {
+    private static List<EntityData<?>> metadata(HologramView view) {
         HologramStyle style = view.definition().style();
-        List<EntityData> data = new ArrayList<>();
+        List<EntityData<?>> data = new ArrayList<>();
 
         // Display metadata indices for the target Paper 26.1.2 protocol.
         data.add(new EntityData(8, EntityDataTypes.INT, 0));
         data.add(new EntityData(9, EntityDataTypes.INT, 0));
-        data.add(new EntityData(10, EntityDataTypes.VECTOR3F, new Vector3f()));
-        data.add(new EntityData(11, EntityDataTypes.VECTOR3F,
+        data.add(new EntityData(10, EntityDataTypes.INT, 0));
+        data.add(new EntityData(11, EntityDataTypes.VECTOR3F, new Vector3f()));
+        data.add(new EntityData(12, EntityDataTypes.VECTOR3F,
                 new Vector3f(style.scale(), style.scale(), style.scale())));
-        data.add(new EntityData(12, EntityDataTypes.QUATERNION, new Quaternion4f(0, 0, 0, 1)));
         data.add(new EntityData(13, EntityDataTypes.QUATERNION, new Quaternion4f(0, 0, 0, 1)));
-        data.add(new EntityData(14, EntityDataTypes.BYTE, billboard(style.billboard())));
+        data.add(new EntityData(14, EntityDataTypes.QUATERNION, new Quaternion4f(0, 0, 0, 1)));
+        data.add(new EntityData(15, EntityDataTypes.BYTE, billboard(style.billboard())));
         if (style.brightnessBlock() >= 0 && style.brightnessSky() >= 0) {
             int brightness = style.brightnessBlock() << 4 | style.brightnessSky() << 20;
-            data.add(new EntityData(15, EntityDataTypes.INT, brightness));
+            data.add(new EntityData(16, EntityDataTypes.INT, brightness));
         }
-        data.add(new EntityData(16, EntityDataTypes.FLOAT, style.viewRange()));
-        data.add(new EntityData(17, EntityDataTypes.FLOAT, 0.0f));
+        data.add(new EntityData(17, EntityDataTypes.FLOAT, style.viewRange()));
         data.add(new EntityData(18, EntityDataTypes.FLOAT, 0.0f));
-        data.add(new EntityData(22, EntityDataTypes.ADV_COMPONENT, view.text()));
-        data.add(new EntityData(23, EntityDataTypes.INT, style.lineWidth()));
-        data.add(new EntityData(24, EntityDataTypes.INT, style.backgroundArgb()));
-        data.add(new EntityData(25, EntityDataTypes.BYTE, style.textOpacity()));
-        data.add(new EntityData(26, EntityDataTypes.BYTE, styleFlags(style)));
+        data.add(new EntityData(19, EntityDataTypes.FLOAT, 0.0f));
+        data.add(new EntityData(23, EntityDataTypes.ADV_COMPONENT, view.text()));
+        data.add(new EntityData(24, EntityDataTypes.INT, style.lineWidth()));
+        data.add(new EntityData(25, EntityDataTypes.INT, style.backgroundArgb()));
+        data.add(new EntityData(26, EntityDataTypes.BYTE, style.textOpacity()));
+        data.add(new EntityData(27, EntityDataTypes.BYTE, styleFlags(style)));
         return data;
     }
 
@@ -99,7 +101,7 @@ public final class PacketTextDisplayRenderer implements HologramRenderer {
         return flags;
     }
 
-    private static void send(Player player, Object packet) {
+    private static void send(Player player, PacketWrapper<?> packet) {
         PacketEvents.getAPI().getPlayerManager().sendPacket(player, packet);
     }
 }

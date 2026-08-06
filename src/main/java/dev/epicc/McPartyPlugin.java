@@ -207,7 +207,7 @@ public final class McPartyPlugin extends JavaPlugin {
         partyManager.setLobbyParkour(lobbyParkour);
         lobbyParkour.refreshConfiguredWorld();
         lobbyMatchmaker = new LobbyMatchmaker(
-                this, partyManager, config, messages, slimeWorldService, seamless, sessions, lobbyParkour, holograms
+                this, partyManager, config, messages, slimeWorldService, sessions, lobbyParkour, holograms
         );
         lobbyMatchmaker.configureFallbackWorld();
 

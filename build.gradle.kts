@@ -50,7 +50,7 @@ dependencies {
     // Embedded persistent storage for parkour records
     implementation("org.xerial:sqlite-jdbc:3.51.1.1")
     // Soft-depend at runtime (plugin.yml); not shaded
-    compileOnly("com.github.retrooper:packetevents-spigot:2.7.0")
+    compileOnly("com.github.retrooper:packetevents-spigot:2.13.0")
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

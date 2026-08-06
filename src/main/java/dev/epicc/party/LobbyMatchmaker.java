@@ -7,7 +7,6 @@ import dev.epicc.containment.SlotBoundary;
 import dev.epicc.hologram.HologramService;
 import dev.epicc.player.PlayerSessionService;
 import dev.epicc.lobby.parkour.LobbyParkourService;
-import dev.epicc.seamless.SeamlessWorldChangeService;
 import dev.epicc.slime.SlimeWorldService;
 import org.bukkit.Location;
 import org.bukkit.GameRule;
@@ -30,7 +29,6 @@ public final class LobbyMatchmaker implements Listener {
     private final PluginConfig config;
     private final MessageService messages;
     private final SlimeWorldService slime;
-    private final SeamlessWorldChangeService seamless;
     private final PlayerSessionService sessions;
     private final LobbyParkourService lobbyParkour;
     private final HologramService holograms;
@@ -41,7 +39,6 @@ public final class LobbyMatchmaker implements Listener {
             PluginConfig config,
             MessageService messages,
             SlimeWorldService slime,
-            SeamlessWorldChangeService seamless,
             PlayerSessionService sessions,
             LobbyParkourService lobbyParkour,
             HologramService holograms
@@ -51,7 +48,6 @@ public final class LobbyMatchmaker implements Listener {
         this.config = config;
         this.messages = messages;
         this.slime = slime;
-        this.seamless = seamless;
         this.sessions = sessions;
         this.lobbyParkour = lobbyParkour;
         this.holograms = holograms;
@@ -155,7 +151,22 @@ public final class LobbyMatchmaker implements Listener {
     private void teleportToLobby(Player player, World world) {
         configureLobbyWorld(world);
         preparePlayer(player);
-        seamless.teleport(player, lobbySpawn(world));
+        Location destination = lobbySpawn(world);
+        // ASP clone registration can send a respawn packet immediately after load. Suppressing
+        // that packet leaves the client at the clone's world spawn, so lobby teleports must use
+        // the normal Bukkit path and complete the dimension transition reliably.
+        player.teleport(destination);
+        plugin.getServer().getScheduler().runTask(plugin, () -> {
+            if (!player.isOnline() || player.getWorld() != world) {
+                return;
+            }
+            if (player.getLocation().distanceSquared(destination) <= 4.0) {
+                return;
+            }
+            partyManager.instanceOf(player.getUniqueId())
+                    .filter(instance -> instance.state() == PartyState.WAITING)
+                    .ifPresent(instance -> player.teleport(destination));
+        });
     }
 
     public void configureFallbackWorld() {

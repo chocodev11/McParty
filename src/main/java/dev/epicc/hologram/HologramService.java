@@ -289,55 +289,128 @@ public final class HologramService implements Listener {
 
     public boolean remove(String id) {
         if (!enabled) return false;
-        RuntimeHologram removed = holograms.remove(normalize(id));
-        if (removed == null) return false;
-        removed.hideAll();
+        String normalized = normalize(id);
+        RuntimeHologram removed = holograms.remove(normalized);
+        if (removed != null) {
+            removed.hideAll();
+            save();
+            return true;
+        }
+        if (partyTemplates.remove(normalized) != null) {
+            partyTemplateBundles.remove(normalized);
+            rebindPartyScopes();
+            save();
+            return true;
+        }
+        if (lobbyTemplates.remove(normalized) != null) {
+            lobbyTemplateBundles.remove(normalized);
+            rebindLobbyScopes();
+            save();
+            return true;
+        }
+        return false;
+    }
+
+    private void rebindPartyScopes() {
+        for (Map.Entry<UUID, World> entry : partyScopeWorlds.entrySet()) {
+            bindPartyScope(entry.getKey(), entry.getValue());
+        }
+    }
+
+    private void rebindLobbyScopes() {
+        for (Map.Entry<UUID, World> entry : lobbyScopeWorlds.entrySet()) {
+            bindLobbyScope(entry.getKey(), entry.getValue());
+        }
+    }
+
+    private Optional<HologramDefinition> editableDefinition(String id) {
+        String normalized = normalize(id);
+        RuntimeHologram runtime = holograms.get(normalized);
+        if (runtime != null) {
+            return Optional.of(runtime.definition);
+        }
+        HologramDefinition party = partyTemplates.get(normalized);
+        if (party != null) {
+            return Optional.of(party);
+        }
+        return Optional.ofNullable(lobbyTemplates.get(normalized));
+    }
+
+    private boolean replaceEditableDefinition(HologramDefinition definition) {
+        String id = definition.id();
+        RuntimeHologram runtime = holograms.get(id);
+        if (runtime != null) {
+            runtime.replace(definition);
+            return true;
+        }
+        if (partyTemplates.containsKey(id)) {
+            partyTemplates.put(id, definition);
+            partyTemplateBundles.put(id, compile(definition));
+            rebindPartyScopes();
+            return true;
+        }
+        if (lobbyTemplates.containsKey(id)) {
+            lobbyTemplates.put(id, definition);
+            lobbyTemplateBundles.put(id, compile(definition));
+            rebindLobbyScopes();
+            return true;
+        }
+        return false;
+    }
+
+    private boolean replaceLines(String id, java.util.function.UnaryOperator<List<String>> updater) {
+        if (!enabled) return false;
+        Optional<HologramDefinition> current = editableDefinition(id);
+        if (current.isEmpty()) return false;
+        List<String> lines = new ArrayList<>(current.get().lines());
+        List<String> updated = updater.apply(lines);
+        if (updated == null) return false;
+        if (!replaceEditableDefinition(copy(current.get(), current.get().location(), updated))) {
+            return false;
+        }
         save();
         return true;
     }
 
     public boolean move(String id, Location location) {
         if (!enabled || location == null) return false;
-        RuntimeHologram runtime = holograms.get(normalize(id));
-        if (runtime == null || location.getWorld() == null) return false;
-        runtime.replace(copy(runtime.definition, HologramLocation.from(location), runtime.definition.lines()));
+        if (location.getWorld() == null) return false;
+        Optional<HologramDefinition> current = editableDefinition(id);
+        if (current.isEmpty()) return false;
+        HologramLocation moved = HologramLocation.from(location);
+        if (!current.get().scope().equals("global")) {
+            moved = moved.inWorld(current.get().location().world());
+        }
+        if (!replaceEditableDefinition(copy(current.get(), moved, current.get().lines()))) {
+            return false;
+        }
         save();
         return true;
     }
 
     public boolean setLine(String id, int oneBasedLine, String text) {
-        if (!enabled) return false;
-        RuntimeHologram runtime = holograms.get(normalize(id));
-        if (runtime == null || oneBasedLine < 1) return false;
-        List<String> lines = new ArrayList<>(runtime.definition.lines());
-        if (oneBasedLine > lines.size()) return false;
-        lines.set(oneBasedLine - 1, text == null ? "" : text);
-        runtime.replace(copy(runtime.definition, runtime.definition.location(), lines));
-        save();
-        return true;
+        if (oneBasedLine < 1) return false;
+        return replaceLines(id, lines -> {
+            if (oneBasedLine > lines.size()) return null;
+            lines.set(oneBasedLine - 1, text == null ? "" : text);
+            return lines;
+        });
     }
 
     public boolean addLine(String id, String text) {
-        if (!enabled) return false;
-        RuntimeHologram runtime = holograms.get(normalize(id));
-        if (runtime == null) return false;
-        List<String> lines = new ArrayList<>(runtime.definition.lines());
-        lines.add(text == null ? "" : text);
-        runtime.replace(copy(runtime.definition, runtime.definition.location(), lines));
-        save();
-        return true;
+        return replaceLines(id, lines -> {
+            lines.add(text == null ? "" : text);
+            return lines;
+        });
     }
 
     public boolean removeLine(String id, int oneBasedLine) {
-        if (!enabled) return false;
-        RuntimeHologram runtime = holograms.get(normalize(id));
-        if (runtime == null || oneBasedLine < 1) return false;
-        List<String> lines = new ArrayList<>(runtime.definition.lines());
-        if (oneBasedLine > lines.size()) return false;
-        lines.remove(oneBasedLine - 1);
-        runtime.replace(copy(runtime.definition, runtime.definition.location(), lines));
-        save();
-        return true;
+        if (oneBasedLine < 1) return false;
+        return replaceLines(id, lines -> {
+            if (oneBasedLine > lines.size()) return null;
+            lines.remove(oneBasedLine - 1);
+            return lines;
+        });
     }
 
     public void save() {

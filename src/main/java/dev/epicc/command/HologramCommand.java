@@ -143,7 +143,7 @@ public final class HologramCommand implements CommandExecutor, TabCompleter {
             return filter(SUBCOMMANDS, args[0]);
         }
         if (args.length == 2 && List.of("remove", "move", "setline", "addline", "removeline").contains(args[0].toLowerCase(Locale.ROOT))) {
-            return filter(holograms.ids(), args[1]);
+            return filter(holograms.allIds(), args[1]);
         }
         return List.of();
     }

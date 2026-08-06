@@ -159,8 +159,8 @@ lobby:
   slime-template: lobby_template
   spawn:
     x: 0.5
-    y: 64.0
-    z: 0.5
+    y: 75.0
+    z: -56.5
     yaw: 0.0
     pitch: 0.0
   boundary:
@@ -170,17 +170,28 @@ lobby:
     maxX: 50
     maxY: 256
     maxZ: 50
-  # Start and checkpoints are pressure plates; the goal is an entity. Set while standing on each location:
-  # /partyadmin parkour start|checkpoint|goal|leaderboard
   parkour:
-    # Stable identifier used by the leaderboard store; change only when creating a separate course.
     course-id: lobby
-    # Permanent MCA lobby world used when Slime is unavailable. Commands set this automatically.
-    world: ""
-    start: null
-    checkpoints: []
-    goal: null
-    leaderboard: null
+    world: lobby
+    start:
+      x: 8
+      y: 73
+      z: -38
+    checkpoints:
+      - x: 6
+        y: 82
+        z: -16
+      - x: -4
+        y: 90
+        z: -34
+    goal:
+      x: 0
+      y: 95
+      z: -14
+    leaderboard:
+      x: 0
+      y: 158
+      z: 2
 
 holograms:
   enabled: true
