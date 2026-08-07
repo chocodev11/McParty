@@ -1,7 +1,7 @@
 # McParty — Minigame Design & Implementation Plan
 
 **Version:** 1.0  
-**Updated:** 2026-08-06
+**Updated:** 2026-08-07
 **Scope:** Launch set of **12 free-for-all** minigames between board dice rounds
 **Parent docs:** `mcparty.md` (product vision), `AGENTS.md` (current plugin architecture)
 
@@ -109,23 +109,25 @@ Collision is always server-authoritative. Do not build Spleef on fake-only floor
 
 ## 4. Launch minigames overview
 
-| # | Id | Display name | Length | Engine | Difficulty to build |
-|---|-----|--------------|--------|--------|---------------------|
-| 1 | `hot_potato` | Hot Potato | 45–60s | Pass + eliminate | Low |
-| 2 | `spleef` | Spleef | 60–90s | Floor break + last standing | Low–med |
-| 3 | `elytra_race` | Elytra Race | 45–75s | Flight checkpoints | Medium |
-| 4 | `color_chaos` | Color Chaos | 45–75s | Color floor vanish | Medium |
-| 5 | `king_of_the_hill` | King of the Hill | 60–90s | Floating-island bridge + hill capture | Medium |
-| 6 | `floor_is_lava` | Floor is Lava | 60–90s | Trail vanish | Medium |
-| 7 | `warden_escape` | Warden Escape | 60–90s | Stealth escape race | Medium–high |
-| 8 | `mini_skywars` | Mini Skywars | 60–90s | Loot + PvP elimination | Medium |
-| 9 | `antwar` | Antwar (MineBattle) | 60–90s | Mine resources + PvP | Medium |
-| 10 | `hopper` | Hopper (Whirlybird) | 45–75s | Auto-jump platform survival | Medium |
-| 11 | `laser_tag` | Laser Tag | 60–90s | Hitscan score FFA | Medium |
-| 12 | `speed_race` | Speed Race | 45–75s | Boost + checkpoint race | Low–med |
+| # | Id | Display name | Length | Reusable foundation | Difficulty to build |
+|---|-----|--------------|--------|---------------------|---------------------|
+| 1 | `hot_potato` | Hot Potato | 45–60s | MatchScope + elimination | Low |
+| 2 | `speed_race` | Speed Race | 45–75s | Region + checkpoints | Low–med |
+| 3 | `spleef` | Spleef | 60–90s | Disposable arena + elimination | Low–med |
+| 4 | `elytra_race` | Elytra Race | 45–75s | Checkpoints + player flight state | Medium |
+| 5 | `floor_is_lava` | Floor is Lava | 60–90s | BlockChangeJournal + movement queue | Medium |
+| 6 | `color_chaos` | Color Chaos | 45–75s | BlockChangeJournal + color grid | Medium |
+| 7 | `laser_tag` | Laser Tag | 60–90s | ScoreTracker + routed combat | Medium |
+| 8 | `king_of_the_hill` | King of the Hill | 60–90s | Checkpoints + scoring + block placement | Medium–high |
+| 9 | `hopper` | Hopper (Whirlybird) | 45–75s | Platform physics + checkpoints | Medium–high |
+| 10 | `mini_skywars` | Mini Skywars | 60–90s | Disposable arena + loot + PvP | High |
+| 11 | `warden_escape` | Warden Escape | 60–90s | Arena + checkpoints + entity lifecycle | High |
+| 12 | `antwar` | Antwar (MineBattle) | 60–90s | Mining regeneration + economy + queen cores | High |
 
 **Implementation order:**  
-`hot_potato` → `spleef` → `elytra_race` → `king_of_the_hill` → `color_chaos` → `floor_is_lava` → `warden_escape` → `mini_skywars` → `antwar` → `hopper` → `laser_tag` → `speed_race`.
+`hot_potato` → `speed_race` → `spleef` → `elytra_race` → `floor_is_lava` → `color_chaos` → `laser_tag` → `king_of_the_hill` → `hopper` → `mini_skywars` → `warden_escape` → `antwar`.
+
+This is a reuse-first order: each stage introduces a small amount of new match logic, then gives later games a foundation to reuse. The detailed plans retain stable minigame IDs so config and implementation references do not drift.
 
 ---
 
@@ -911,29 +913,29 @@ minigame:
   dummy-duration-seconds: 5
   enabled:
     - hot_potato
+    - speed_race
     - spleef
     - elytra_race
-    - color_chaos
-    - king_of_the_hill
     - floor_is_lava
-    - warden_escape
-    - mini_skywars
-    - antwar
-    - hopper
+    - color_chaos
     - laser_tag
-    - speed_race
+    - king_of_the_hill
+    - hopper
+    - mini_skywars
+    - warden_escape
+    - antwar
   hot_potato: { ... }
+  speed_race: { ... }
   spleef: { ... }
   elytra_race: { ... }
-  color_chaos: { ... }
-  king_of_the_hill: { ... }
   floor_is_lava: { ... }
-  warden_escape: { ... }
-  mini_skywars: { ... }
-  antwar: { ... }
-  hopper: { ... }
+  color_chaos: { ... }
   laser_tag: { ... }
-  speed_race: { ... }
+  king_of_the_hill: { ... }
+  hopper: { ... }
+  mini_skywars: { ... }
+  warden_escape: { ... }
+  antwar: { ... }
 ```
 
 Wire new keys through `PluginConfig` + default `config.yml` together (per `AGENTS.md`).
@@ -999,13 +1001,14 @@ Store in `slots.yml` or `minigames.yml` next to board data; remap with `forWorld
 |-----------|-------------|
 | **M0** | Registry + random pick + Dummy fallback |
 | **M1** | `PlayerStateSnapshot` + `MatchScope` + `hot_potato` |
-| **M2** | `spleef` on a disposable arena clone |
-| **M3** | `elytra_race` + `king_of_the_hill` |
-| **M4** | `color_chaos` (real floor) + `floor_is_lava` |
-| **M5** | `warden_escape` + `mini_skywars` (disposable arenas) |
-| **M6** | `antwar` + `hopper` (disposable arenas) |
-| **M7** | `laser_tag` + `speed_race` |
-| **M8** | Config toggles, polish FX, admin pad setup |
+| **M2** | `speed_race` + `spleef` on a disposable arena clone |
+| **M3** | `elytra_race` + `floor_is_lava` |
+| **M4** | `color_chaos` + `laser_tag` |
+| **M5** | `king_of_the_hill` + `hopper` |
+| **M6** | `mini_skywars` (disposable arena with loot/PvP) |
+| **M7** | `warden_escape` (disposable arena with Warden lifecycle) |
+| **M8** | `antwar` (mining regeneration, economy, queen cores) |
+| **M9** | Config toggles, polish FX, admin pad setup |
 
 ---
 
@@ -1014,17 +1017,17 @@ Store in `slots.yml` or `minigames.yml` next to board data; remap with `forWorld
 | Id | One-line rule |
 |----|----------------|
 | `hot_potato` | Pass the potato; holder at boom is out |
+| `speed_race` | Chain boosts and checkpoints to finish first |
 | `spleef` | Break floor; last above wins |
 | `elytra_race` | Fly through ordered rings to finish |
-| `color_chaos` | Stand on the announced color |
-| `king_of_the_hill` | Bridge across islands and hold the final hill |
 | `floor_is_lava` | Floor vanishes behind you |
-| `warden_escape` | Escape the deep dark before the Warden gets you |
-| `mini_skywars` | Loot, bridge, fight, and be last alive |
-| `antwar` | Mine resources, fortify your burrow, and destroy rival queens |
-| `hopper` | Bounce upward through platforms without falling |
+| `color_chaos` | Stand on the announced color |
 | `laser_tag` | Score hits with a blaster before time ends |
-| `speed_race` | Chain boosts and checkpoints to finish first |
+| `king_of_the_hill` | Bridge across islands and hold the final hill |
+| `hopper` | Bounce upward through platforms without falling |
+| `mini_skywars` | Loot, bridge, fight, and be last alive |
+| `warden_escape` | Escape the deep dark before the Warden gets you |
+| `antwar` | Mine resources, fortify your burrow, and destroy rival queens |
 
 ---
 
