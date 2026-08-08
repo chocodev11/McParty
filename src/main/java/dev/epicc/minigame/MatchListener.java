@@ -2,6 +2,7 @@ package dev.epicc.minigame;
 
 import org.bukkit.entity.Player;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -33,6 +34,10 @@ public interface MatchListener {
     }
 
     default void onPickupItem(Player player, EntityPickupItemEvent event) {
+    }
+
+    /** {@code attacker} is the match player who caused the entity damage. */
+    default void onDamageByEntity(Player attacker, EntityDamageByEntityEvent event) {
     }
 
     /** {@code shooter} is the match player who fired the projectile. */

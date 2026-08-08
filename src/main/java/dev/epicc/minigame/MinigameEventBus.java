@@ -106,8 +106,11 @@ public final class MinigameEventBus implements Listener {
             return;
         }
         MatchScope scope = scopeOf(attacker);
-        if (scope != null && scope.damageProtected()) {
-            event.setCancelled(true);
+        if (scope != null) {
+            scope.listener().onDamageByEntity(attacker, event);
+            if (scope.damageProtected()) {
+                event.setCancelled(true);
+            }
         }
     }
 

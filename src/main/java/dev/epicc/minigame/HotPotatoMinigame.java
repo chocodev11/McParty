@@ -14,6 +14,7 @@ import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.entity.Snowball;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -227,7 +228,8 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Match
     }
 
     private boolean isHolder(Player player) {
-        return elimination.isAlive(player.getUniqueId())
+        return !potatoInFlight
+                && elimination.isAlive(player.getUniqueId())
                 && Objects.equals(player.getUniqueId(), currentHolder);
     }
 
@@ -260,6 +262,17 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Match
     }
 
     @Override
+    public void onDamageByEntity(Player attacker, EntityDamageByEntityEvent event) {
+        if (!(event.getEntity() instanceof Player hitPlayer)
+                || !isHolder(attacker)
+                || !elimination.isAlive(hitPlayer.getUniqueId())
+                || attacker.getUniqueId().equals(hitPlayer.getUniqueId())) {
+            return;
+        }
+        passTo(attacker, hitPlayer.getUniqueId());
+    }
+
+    @Override
     public void onProjectileHit(Player shooter, ProjectileHitEvent event) {
         if (!(event.getEntity() instanceof Snowball snowball)
                 || !snowball.getPersistentDataContainer().has(potatoKey, PersistentDataType.BYTE)) {
@@ -277,12 +290,8 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Match
             return;
         }
 
-        // Hit a block or missed — pass to the nearest alive player
-        Location hitLoc = event.getHitBlock() != null
-                ? event.getHitBlock().getLocation().add(0.5, 1.1, 0.5)
-                : snowball.getLocation();
-        Player target = findNearestAlivePlayer(hitLoc, shooter.getUniqueId());
-        passTo(shooter, target != null ? target.getUniqueId() : shooter.getUniqueId());
+        // Hit a block or missed — return the potato to the thrower.
+        passTo(shooter, shooter.getUniqueId());
     }
 
     private void passTo(Player from, UUID toId) {
@@ -326,30 +335,6 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Match
         activeThrownPotato = projectile;
         potatoInFlight = true;
         shooter.playSound(shooter.getLocation(), Sound.ENTITY_SNOWBALL_THROW, 1.0f, 1.0f);
-    }
-
-    private Player findNearestAlivePlayer(Location targetLoc, UUID shooterId) {
-        Player nearestOther = null;
-        double nearestOtherDistSq = Double.MAX_VALUE;
-        Player nearestAny = null;
-        double nearestAnyDistSq = Double.MAX_VALUE;
-
-        for (UUID uuid : elimination.alive()) {
-            Player p = Bukkit.getPlayer(uuid);
-            if (p == null || !p.isOnline() || !p.getWorld().equals(targetLoc.getWorld())) {
-                continue;
-            }
-            double distSq = p.getLocation().distanceSquared(targetLoc);
-            if (distSq < nearestAnyDistSq) {
-                nearestAnyDistSq = distSq;
-                nearestAny = p;
-            }
-            if (!uuid.equals(shooterId) && distSq < nearestOtherDistSq) {
-                nearestOtherDistSq = distSq;
-                nearestOther = p;
-            }
-        }
-        return nearestOther != null ? nearestOther : nearestAny;
     }
 
     private void clearThrownPotato() {
