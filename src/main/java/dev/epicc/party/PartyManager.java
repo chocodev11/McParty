@@ -58,6 +58,7 @@ public final class PartyManager {
     private final PartyTransitionService transitions;
     private final Map<UUID, BoardTurnController> controllers = new ConcurrentHashMap<>();
     private LobbyParkourService lobbyParkour;
+    private LobbyMatchmaker lobbyMatchmaker;
 
 
     public PartyManager(
@@ -105,6 +106,10 @@ public final class PartyManager {
         this.lobbyParkour = lobbyParkour;
     }
 
+    public void setLobbyMatchmaker(LobbyMatchmaker lobbyMatchmaker) {
+        this.lobbyMatchmaker = lobbyMatchmaker;
+    }
+
     public Optional<PartyInstance> instanceOf(UUID playerId) {
         return sessions.instanceOf(playerId).flatMap(store::get);
     }
@@ -139,7 +144,6 @@ public final class PartyManager {
         PartySettings settings = new PartySettings(
                 config.minPlayers(),
                 config.maxPlayers(),
-                config.maxTurns(),
                 config.startingCoins(),
                 config.diceMin(),
                 config.diceMax()
@@ -447,8 +451,7 @@ public final class PartyManager {
             if (instance.state() != PartyState.PLAYING) return;
             result.coinRewards().forEach((uuid, coins) -> instance.player(uuid).ifPresent(pp -> pp.addCoins(coins)));
             instance.incrementRound();
-            if (instance.round() >= instance.settings().maxTurns()) instance.requestEnd("Max turns reached");
-            else Optional.ofNullable(controllers.get(instance.id())).ifPresent(BoardTurnController::beginRound);
+            Optional.ofNullable(controllers.get(instance.id())).ifPresent(BoardTurnController::beginRound);
         }, new ArenaTransitions(
                 arena -> enterArena(instance, arena),
                 () -> exitArena(instance)
@@ -470,6 +473,10 @@ public final class PartyManager {
     }
 
     private void endInternal(PartyInstance instance) {
+        boolean requeuePlayers = instance.state() == PartyState.PLAYING;
+        List<UUID> playerIds = requeuePlayers
+                ? onlinePlayers(instance).stream().map(Player::getUniqueId).toList()
+                : List.of();
         if (!instance.beginEnding()) return;
         instance.cancelPendingTasks();
         BoardTurnController controller = controllers.remove(instance.id());
@@ -478,6 +485,10 @@ public final class PartyManager {
         }
         announcePodium(instance);
         cleanup(instance);
+
+        if (!playerIds.isEmpty() && lobbyMatchmaker != null) {
+            plugin.getServer().getScheduler().runTask(plugin, () -> lobbyMatchmaker.requeue(playerIds));
+        }
     }
 
     private void announcePodium(PartyInstance instance) {

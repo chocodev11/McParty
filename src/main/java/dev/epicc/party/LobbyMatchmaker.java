@@ -21,6 +21,9 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.util.Vector;
 
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -101,48 +104,85 @@ public final class LobbyMatchmaker implements Listener {
             return; // Should not happen
         }
         PartyInstance newInstance = newInstanceOpt.get();
-        final UUID instanceId = newInstance.id();
+        loadLobby(newInstance);
+    }
 
-        if (!slime.isReady()) {
-            // Slime not enabled, just leave them where they are (WAITING state in memory)
+    /** Moves the online players from a finished game into one fresh party. */
+    public void requeue(Collection<UUID> playerIds) {
+        if (playerIds == null || playerIds.isEmpty()) {
             return;
         }
 
-        // 3. Clone and load the lobby template
-        final String template = config.lobbySlimeTemplate();
+        List<Player> onlinePlayers = new ArrayList<>();
+        for (UUID playerId : playerIds) {
+            Player player = plugin.getServer().getPlayer(playerId);
+            if (player != null && player.isOnline() && partyManager.instanceOf(playerId).isEmpty()) {
+                onlinePlayers.add(player);
+            }
+        }
+        if (onlinePlayers.isEmpty()) {
+            return;
+        }
 
+        Player host = onlinePlayers.getFirst();
+        if (partyManager.create(host).isPresent()) {
+            messages.send(host, "party.limit-reached");
+            return;
+        }
+
+        PartyInstance instance = partyManager.instanceOf(host.getUniqueId()).orElse(null);
+        if (instance == null) {
+            return;
+        }
+        for (int i = 1; i < onlinePlayers.size(); i++) {
+            Player player = onlinePlayers.get(i);
+            partyManager.join(player, instance.shortId());
+        }
+        instance.broadcast(messages.get("party.requeued", "id", instance.shortId()));
+        loadLobby(instance);
+    }
+
+    private void loadLobby(PartyInstance instance) {
+        if (!slime.isReady() || instance.state() != PartyState.WAITING) {
+            // With slime disabled, the waiting party remains in the configured fallback world.
+            return;
+        }
+
+        final UUID instanceId = instance.id();
+        final String template = config.lobbySlimeTemplate();
         plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
             Optional<SlimeWorld> lobbyClone = slime.prepareClone(instanceId, template);
 
             plugin.getServer().getScheduler().runTask(plugin, () -> {
-                if (newInstance.state() != PartyState.WAITING) {
-                    slime.unloadForInstance(instanceId);
+                if (instance.state() != PartyState.WAITING) {
+                    slime.getLoadedWorld(instanceId, template)
+                            .ifPresent(world -> slime.unloadWorldForInstance(instanceId, world));
                     return;
                 }
                 if (lobbyClone.isEmpty()) {
-                    newInstance.broadcast(messages.get("party.slime-load-failed"));
-                    partyManager.cleanup(newInstance);
+                    instance.broadcast(messages.get("party.slime-load-failed"));
+                    partyManager.cleanup(instance);
                     return;
                 }
 
                 Optional<World> lobbyWorld = slime.loadClone(instanceId, template, lobbyClone.get());
                 if (lobbyWorld.isEmpty()) {
-                    newInstance.broadcast(messages.get("party.slime-register-failed"));
-                    partyManager.cleanup(newInstance);
+                    instance.broadcast(messages.get("party.slime-register-failed"));
+                    partyManager.cleanup(instance);
                     return;
                 }
 
                 configureLobbyWorld(lobbyWorld.get());
                 holograms.openLobbyScope(instanceId, lobbyWorld.get());
-                // Lobby loaded! Teleport host (and anyone who joined while it was loading)
-                for (PartyPlayer pp : newInstance.players()) {
-                    Player p = plugin.getServer().getPlayer(pp.uuid());
-                    if (p != null && p.isOnline()) {
-                        teleportToLobby(p, lobbyWorld.get());
+                // Lobby loaded! Teleport host and anyone who joined while it was loading.
+                for (PartyPlayer pp : instance.players()) {
+                    Player player = plugin.getServer().getPlayer(pp.uuid());
+                    if (player != null && player.isOnline()) {
+                        teleportToLobby(player, lobbyWorld.get());
                     }
                 }
-                // Only clamp once everyone is inside — the boundary lives in the clone world
-                bindLobbyArea(newInstance, lobbyWorld.get());
+                // Only clamp once everyone is inside — the boundary lives in the clone world.
+                bindLobbyArea(instance, lobbyWorld.get());
             });
         });
     }

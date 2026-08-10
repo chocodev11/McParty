@@ -23,7 +23,6 @@ public final class PluginConfig {
     private int maxPlayers;
     private int maxInstances;
     private int startCountdownSeconds;
-    private int maxTurns;
     private int startingCoins;
     private int diceMin;
     private int diceMax;
@@ -126,7 +125,6 @@ public final class PluginConfig {
         maxPlayers = c.getInt("party.max-players", 8);
         maxInstances = c.getInt("party.max-instances", 12);
         startCountdownSeconds = c.getInt("party.start-countdown-seconds", 5);
-        maxTurns = c.getInt("party.max-turns", 10);
         startingCoins = c.getInt("party.starting-coins", 10);
         diceMin = c.getInt("board.dice-min", 1);
         diceMax = c.getInt("board.dice-max", 6);
@@ -304,7 +302,6 @@ public final class PluginConfig {
     public int maxPlayers() { return maxPlayers; }
     public int maxInstances() { return maxInstances; }
     public int startCountdownSeconds() { return startCountdownSeconds; }
-    public int maxTurns() { return maxTurns; }
     public int startingCoins() { return startingCoins; }
     public int diceMin() { return diceMin; }
     public int diceMax() { return diceMax; }

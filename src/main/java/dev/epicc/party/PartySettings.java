@@ -4,15 +4,13 @@ public final class PartySettings {
 
     private final int minPlayers;
     private final int maxPlayers;
-    private final int maxTurns;
     private final int startingCoins;
     private final int diceMin;
     private final int diceMax;
 
-    public PartySettings(int minPlayers, int maxPlayers, int maxTurns, int startingCoins, int diceMin, int diceMax) {
+    public PartySettings(int minPlayers, int maxPlayers, int startingCoins, int diceMin, int diceMax) {
         this.minPlayers = minPlayers;
         this.maxPlayers = maxPlayers;
-        this.maxTurns = maxTurns;
         this.startingCoins = startingCoins;
         this.diceMin = diceMin;
         this.diceMax = diceMax;
@@ -20,7 +18,6 @@ public final class PartySettings {
 
     public int minPlayers() { return minPlayers; }
     public int maxPlayers() { return maxPlayers; }
-    public int maxTurns() { return maxTurns; }
     public int startingCoins() { return startingCoins; }
     public int diceMin() { return diceMin; }
     public int diceMax() { return diceMax; }

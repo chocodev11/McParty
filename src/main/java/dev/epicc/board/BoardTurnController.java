@@ -132,11 +132,6 @@ public final class BoardTurnController {
         if (instance == null || instance.state() != PartyState.PLAYING) {
             return;
         }
-        if (instance.round() >= instance.settings().maxTurns()) {
-            instance.requestEnd("Max turns reached");
-            return;
-        }
-
         pendingRollers.clear();
         settledRolls.clear();
         moveQueue = List.of();
@@ -250,8 +245,8 @@ public final class BoardTurnController {
             return;
         }
 
-        int maxIndex = Math.max(0, instance.slot().path().size() - 1);
-        int next = Math.min(partyPlayer.boardIndex() + roll, maxIndex);
+        int lastPathIndex = Math.max(0, instance.slot().path().size() - 1);
+        int next = Math.min(partyPlayer.boardIndex() + roll, lastPathIndex);
         partyPlayer.setBoardIndex(next);
         Location dest = instance.slot().path().get(next);
 
@@ -265,6 +260,13 @@ public final class BoardTurnController {
         moving = true;
         pathHopMover.hop(player, dest, () -> {
             moveIndex++;
+            Player landedPlayer = plugin.getServer().getPlayer(id);
+            if (partyPlayer.boardIndex() >= lastPathIndex
+                    && landedPlayer != null
+                    && landedPlayer.isOnline()) {
+                instance.requestEnd("Reached last slot");
+                return;
+            }
             hopNext();
         });
     }

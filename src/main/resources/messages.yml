@@ -13,6 +13,7 @@ party:
   already-in: "{prefix}<red>You are already in a party."
   limit-reached: "{prefix}<red>Server party limit reached."
   created: "{prefix}<green>Created party <id> — others: /party join <id>"
+  requeued: "{prefix}<green>Transferred to a new party <id>."
   no-open: "{prefix}<red>No open party found."
   already-started: "{prefix}<red>That party already started."
   join-failed: "{prefix}<red>Could not join (full or invalid)."

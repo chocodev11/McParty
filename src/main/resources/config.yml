@@ -3,7 +3,6 @@ party:
   max-players: 8
   max-instances: 12
   start-countdown-seconds: 5
-  max-turns: 4
   starting-coins: 3
 
 board:

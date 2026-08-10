@@ -216,6 +216,7 @@ public final class McPartyPlugin extends JavaPlugin {
         lobbyMatchmaker = new LobbyMatchmaker(
                 this, partyManager, config, messages, slimeWorldService, sessions, lobbyParkour, holograms
         );
+        partyManager.setLobbyMatchmaker(lobbyMatchmaker);
         lobbyMatchmaker.configureFallbackWorld();
 
         // One shared listener for every running minigame session (see MinigameEventBus)
