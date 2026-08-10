@@ -398,6 +398,12 @@ Add player-facing text only through `MessageService` + default `messages.yml` to
 
 ## 8. Coding conventions
 
+### Localization and visual style
+
+- The accent color is `#fcca32`; use the MiniMessage `<#fcca32>` tag for McParty branding and accent text.
+- The native language for player-facing messages is Vietnamese. Keep message keys and placeholder names stable when rewriting `messages.yml`.
+- Use white as the message base color, with red for errors, green for success, yellow for warnings/highlights, and aqua/blue for information. Keep `#fcca32` for branding and important values, but do not add a status label or color tag to every message. Use MiniMessage `<bold>` only when emphasis is genuinely needed.
+
 Match existing style; do not reformat unrelated code.
 
 | Topic | Convention |
