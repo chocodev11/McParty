@@ -7,11 +7,14 @@ import dev.epicc.board.setup.PathSetupService;
 import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.lobby.parkour.LobbyParkourService;
+import dev.epicc.minigame.ElytraCourse;
+import dev.epicc.minigame.ElytraCourseStore;
 import dev.epicc.minigame.Minigame;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.slime.SlimeWorldService;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
@@ -21,9 +24,12 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
@@ -36,6 +42,11 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
     private final MinigameManager minigames;
     private final PluginConfig config;
     private final LobbyParkourService lobbyParkour;
+    private final ElytraCourseStore elytraCourses;
+    private final Map<UUID, Location> elytraPos1 = new HashMap<>();
+    private final Map<UUID, Location> elytraPos2 = new HashMap<>();
+    private final Map<UUID, String> elytraPos1Course = new HashMap<>();
+    private final Map<UUID, String> elytraPos2Course = new HashMap<>();
 
     public PartyAdminCommand(
             McPartyPlugin plugin,
@@ -45,7 +56,8 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             SlimeWorldService slime,
             MinigameManager minigames,
             PluginConfig config,
-            LobbyParkourService lobbyParkour
+            LobbyParkourService lobbyParkour,
+            ElytraCourseStore elytraCourses
     ) {
         this.plugin = plugin;
         this.slots = slots;
@@ -55,6 +67,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         this.minigames = minigames;
         this.config = config;
         this.lobbyParkour = lobbyParkour;
+        this.elytraCourses = elytraCourses;
     }
 
     @Override
@@ -91,6 +104,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             case "path" -> handlePath(player, args);
             case "setlobby" -> setLobby(player);
             case "parkour" -> handleParkour(player, args);
+            case "elytra" -> handleElytra(player, args);
             default -> help(player);
         }
         return true;
@@ -229,6 +243,179 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         err.ifPresent(player::sendMessage);
     }
 
+    private void handleElytra(Player player, String[] args) {
+        if (args.length < 2) {
+            messages.send(player, "admin.elytra-usage");
+            return;
+        }
+        String sub = args[1].toLowerCase(Locale.ROOT);
+        switch (sub) {
+            case "create" -> {
+                if (args.length < 4) {
+                    messages.send(player, "admin.elytra-create-usage");
+                    return;
+                }
+                String id = args[2].toLowerCase(Locale.ROOT);
+                String template = args[3].trim();
+                if (elytraCourses.create(id, player.getWorld().getName(), template)) {
+                    messages.send(player, "admin.elytra-created", "id", id, "template", template);
+                } else {
+                    messages.send(player, "admin.elytra-create-failed", "id", id);
+                }
+            }
+            case "delete" -> {
+                if (args.length < 3) {
+                    messages.send(player, "admin.elytra-delete-usage");
+                    return;
+                }
+                String id = args[2].toLowerCase(Locale.ROOT);
+                if (elytraCourses.delete(id)) {
+                    messages.send(player, "admin.elytra-deleted", "id", id);
+                } else {
+                    messages.send(player, "admin.elytra-not-found", "id", id);
+                }
+            }
+            case "list" -> {
+                if (elytraCourses.all().isEmpty()) {
+                    messages.send(player, "admin.elytra-none");
+                    return;
+                }
+                for (ElytraCourse course : elytraCourses.all()) {
+                    messages.send(player, "admin.elytra-entry",
+                            MessageService.ph("id", course.id()),
+                            MessageService.ph("template", course.arenaSpec().template()),
+                            MessageService.ph("rings", Integer.toString(course.rings().size())),
+                            MessageService.ph("ready", Boolean.toString(course.isReady())),
+                            MessageService.ph("active", Boolean.toString(course.id().equals(config.elytraCourseId()))));
+                }
+            }
+            case "activate" -> {
+                if (args.length < 3) {
+                    messages.send(player, "admin.elytra-activate-usage");
+                    return;
+                }
+                String id = args[2].toLowerCase(Locale.ROOT);
+                Optional<ElytraCourse> course = elytraCourses.get(id);
+                if (course.isEmpty()) {
+                    messages.send(player, "admin.elytra-not-found", "id", id);
+                    return;
+                }
+                config.setElytraCourseId(id);
+                plugin.reloadPluginConfig();
+                messages.send(player, "admin.elytra-activated", "id", id);
+            }
+            case "spawn" -> {
+                Optional<ElytraCourse> course = editableCourse(player, args);
+                if (course.isEmpty()) {
+                    return;
+                }
+                String id = args[2].toLowerCase(Locale.ROOT);
+                elytraCourses.update(id, current -> current.withSpawn(player.getLocation()));
+                messages.send(player, "admin.elytra-spawn-set", "id", id);
+            }
+            case "pos1", "pos2" -> {
+                Optional<ElytraCourse> course = editableCourse(player, args);
+                if (course.isEmpty()) {
+                    return;
+                }
+                String id = args[2].toLowerCase(Locale.ROOT);
+                Map<UUID, Location> selection = sub.equals("pos1") ? elytraPos1 : elytraPos2;
+                Map<UUID, String> selectionCourse = sub.equals("pos1") ? elytraPos1Course : elytraPos2Course;
+                selection.put(player.getUniqueId(), player.getLocation().clone());
+                selectionCourse.put(player.getUniqueId(), id);
+                messages.send(player, "admin.elytra-position-set", "position", sub, "id", id);
+            }
+            case "boundary" -> {
+                if (args.length < 3) {
+                    messages.send(player, "admin.elytra-course-required");
+                    return;
+                }
+                String id = args[2].toLowerCase(Locale.ROOT);
+                Optional<ElytraCourse> course = elytraCourses.get(id);
+                Location first = elytraPos1.get(player.getUniqueId());
+                Location second = elytraPos2.get(player.getUniqueId());
+                if (course.isEmpty()) {
+                    messages.send(player, "admin.elytra-not-found", "id", id);
+                } else if (first == null || second == null
+                        || !id.equals(elytraPos1Course.get(player.getUniqueId()))
+                        || !id.equals(elytraPos2Course.get(player.getUniqueId()))) {
+                    messages.send(player, "admin.elytra-boundary-required");
+                } else if (!sameWorld(course.get(), first) || !sameWorld(course.get(), second)) {
+                    messages.send(player, "admin.elytra-wrong-world", "world", course.get().setupWorldName());
+                } else {
+                    elytraCourses.update(id, current -> current.withBoundary(first, second));
+                    messages.send(player, "admin.elytra-boundary-set", "id", id);
+                }
+            }
+            case "ring", "finish" -> {
+                Optional<ElytraCourse> course = editableCourse(player, args);
+                if (course.isEmpty()) {
+                    return;
+                }
+                String id = args[2].toLowerCase(Locale.ROOT);
+                double radius = config.elytraDefaultRingRadius();
+                if (args.length >= 4) {
+                    try {
+                        radius = Double.parseDouble(args[3]);
+                    } catch (NumberFormatException exception) {
+                        messages.send(player, "admin.elytra-invalid-radius");
+                        return;
+                    }
+                }
+                if (!Double.isFinite(radius) || radius <= 0.0) {
+                    messages.send(player, "admin.elytra-invalid-radius");
+                    return;
+                }
+                double ringRadius = radius;
+                elytraCourses.update(id, current -> current.withRing(player.getEyeLocation(), ringRadius));
+                messages.send(player, sub.equals("finish")
+                        ? "admin.elytra-finish-added"
+                        : "admin.elytra-ring-added", "id", id,
+                        "count", Integer.toString(course.get().rings().size() + 1));
+            }
+            case "undo" -> {
+                if (args.length < 3) {
+                    messages.send(player, "admin.elytra-course-required");
+                    return;
+                }
+                String id = args[2].toLowerCase(Locale.ROOT);
+                Optional<ElytraCourse> course = elytraCourses.get(id);
+                if (course.isEmpty()) {
+                    messages.send(player, "admin.elytra-not-found", "id", id);
+                } else if (course.get().rings().isEmpty()) {
+                    messages.send(player, "admin.elytra-no-rings");
+                } else {
+                    elytraCourses.update(id, ElytraCourse::withoutLastRing);
+                    messages.send(player, "admin.elytra-ring-removed", "id", id);
+                }
+            }
+            default -> messages.send(player, "admin.elytra-usage");
+        }
+    }
+
+    private Optional<ElytraCourse> editableCourse(Player player, String[] args) {
+        if (args.length < 3) {
+            messages.send(player, "admin.elytra-course-required");
+            return Optional.empty();
+        }
+        String id = args[2].toLowerCase(Locale.ROOT);
+        Optional<ElytraCourse> course = elytraCourses.get(id);
+        if (course.isEmpty()) {
+            messages.send(player, "admin.elytra-not-found", "id", id);
+            return Optional.empty();
+        }
+        if (!player.getWorld().getName().equals(course.get().setupWorldName())) {
+            messages.send(player, "admin.elytra-wrong-world", "world", course.get().setupWorldName());
+            return Optional.empty();
+        }
+        return course;
+    }
+
+    private static boolean sameWorld(ElytraCourse course, Location location) {
+        return location.getWorld() != null
+                && location.getWorld().getName().equals(course.setupWorldName());
+    }
+
     private void handleParkour(Player player, String[] args) {
         if (args.length < 2) {
             messages.send(player, "admin.parkour-usage");
@@ -290,13 +477,14 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         messages.send(sender, "admin.help-minigame");
         messages.send(sender, "admin.help-setlobby");
         messages.send(sender, "admin.help-parkour");
+        messages.send(sender, "admin.help-elytra");
         messages.send(sender, "admin.help-reload");
     }
 
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filter(List.of("slot", "path", "setlobby", "parkour", "minigame", "reload"), args[0]);
+            return filter(List.of("slot", "path", "setlobby", "parkour", "elytra", "minigame", "reload"), args[0]);
         }
         if (args.length == 2) {
             String g = args[0].toLowerCase(Locale.ROOT);
@@ -308,6 +496,10 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             }
             if (g.equals("parkour")) {
                 return filter(List.of("start", "checkpoint", "goal", "leaderboard", "remove-checkpoint", "clear"), args[1]);
+            }
+            if (g.equals("elytra")) {
+                return filter(List.of("create", "delete", "list", "activate", "spawn", "pos1", "pos2",
+                        "boundary", "ring", "finish", "undo"), args[1]);
             }
             if (g.equals("minigame") || g.equals("mg")) {
                 return filter(minigames.registry().ids(), args[1]);
@@ -326,6 +518,10 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
                 List<String> names = Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
                 return filter(names, args[2]);
             }
+            if (g.equals("elytra") && !s.equals("create")) {
+                List<String> ids = elytraCourses.all().stream().map(ElytraCourse::id).toList();
+                return filter(ids, args[2]);
+            }
             if (g.equals("parkour") && s.equals("remove-checkpoint")) {
                 List<String> indices = new ArrayList<>();
                 for (int i = 1; i <= config.lobbyParkour().checkpoints().size(); i++) {
@@ -339,6 +535,9 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             String g = args[0].toLowerCase(Locale.ROOT);
             String s = args[1].toLowerCase(Locale.ROOT);
             if (g.equals("path") && s.equals("slime")) {
+                return filter(slime.listTemplates(), args[3]);
+            }
+            if (g.equals("elytra") && s.equals("create")) {
                 return filter(slime.listTemplates(), args[3]);
             }
         }

@@ -54,6 +54,11 @@ public final class PluginConfig {
     private int spleefMultishotSeconds;
     private String spleefPowerupItemModel;
 
+    private String elytraCourseId;
+    private int elytraTimeoutSeconds;
+    private int elytraCenterBonusCoins;
+    private double elytraDefaultRingRadius;
+
     private boolean seamlessWorldChangeEnabled;
 
     private boolean resourcePackEnabled;
@@ -210,6 +215,14 @@ public final class PluginConfig {
                 c.getInt("minigame.spleef.arena.boundary.maxZ", Integer.MIN_VALUE)
         );
 
+        elytraCourseId = nullToEmpty(c.getString("minigame.elytra_race.course", "default"));
+        if (elytraCourseId.isBlank()) {
+            elytraCourseId = "default";
+        }
+        elytraTimeoutSeconds = Math.max(30, c.getInt("minigame.elytra_race.timeout-seconds", 120));
+        elytraCenterBonusCoins = Math.max(0, c.getInt("minigame.elytra_race.center-bonus-coins", 2));
+        elytraDefaultRingRadius = Math.max(0.5, c.getDouble("minigame.elytra_race.default-ring-radius", 3.0));
+
         seamlessWorldChangeEnabled = c.getBoolean("seamless-world-change.enabled", true);
 
         resourcePackEnabled = c.getBoolean("resource-pack.enabled", true);
@@ -322,6 +335,11 @@ public final class PluginConfig {
     public int spleefMultishotSeconds() { return spleefMultishotSeconds; }
     public String spleefPowerupItemModel() { return spleefPowerupItemModel; }
 
+    public String elytraCourseId() { return elytraCourseId; }
+    public int elytraTimeoutSeconds() { return elytraTimeoutSeconds; }
+    public int elytraCenterBonusCoins() { return elytraCenterBonusCoins; }
+    public double elytraDefaultRingRadius() { return elytraDefaultRingRadius; }
+
     public boolean seamlessWorldChangeEnabled() { return seamlessWorldChangeEnabled; }
 
     public boolean resourcePackEnabled() { return resourcePackEnabled; }
@@ -385,6 +403,12 @@ public final class PluginConfig {
         plugin.getConfig().set("lobby.spawn.z", lobbySpawnZ);
         plugin.getConfig().set("lobby.spawn.yaw", lobbySpawnYaw);
         plugin.getConfig().set("lobby.spawn.pitch", lobbySpawnPitch);
+        plugin.saveConfig();
+    }
+
+    public void setElytraCourseId(String courseId) {
+        elytraCourseId = courseId.trim().toLowerCase();
+        plugin.getConfig().set("minigame.elytra_race.course", elytraCourseId);
         plugin.saveConfig();
     }
 

@@ -14,6 +14,9 @@ import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.containment.BoundaryListener;
 import dev.epicc.minigame.DummyMinigame;
+import dev.epicc.minigame.ElytraCourse;
+import dev.epicc.minigame.ElytraCourseStore;
+import dev.epicc.minigame.ElytraMinigame;
 import dev.epicc.minigame.HotPotatoMinigame;
 import dev.epicc.minigame.MinigameEventBus;
 import dev.epicc.minigame.MinigameManager;
@@ -63,11 +66,14 @@ public final class McPartyPlugin extends JavaPlugin {
     private ParkourLeaderboardStore parkourLeaderboard;
     private LobbyMatchmaker lobbyMatchmaker;
     private HologramService holograms;
+    private ElytraCourseStore elytraCourses;
 
     @Override
     public void onEnable() {
         config = new PluginConfig(this);
         messages = new MessageService(this);
+        elytraCourses = new ElytraCourseStore(this);
+        elytraCourses.load();
         try {
             parkourLeaderboard = new SqliteParkourLeaderboardStore(
                     getDataFolder().toPath().resolve(config.databaseSqliteFile()),
@@ -159,6 +165,7 @@ public final class McPartyPlugin extends JavaPlugin {
         } else {
             getLogger().severe("Spleef is disabled: minigame.spleef.arena is invalid or fall-y is not above boundary.minY.");
         }
+        registerElytraMinigame(minigameRegistry);
         minigameEvents = new MinigameEventBus();
         minigames = new MinigameManager(
                 this,
@@ -233,7 +240,8 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new PathSetupListener(this, pathSetupService), this);
 
         PartyAdminCommand adminCommand = new PartyAdminCommand(
-                this, slotRegistry, pathSetupService, messages, slimeWorldService, minigames, config, lobbyParkour
+                this, slotRegistry, pathSetupService, messages, slimeWorldService, minigames, config, lobbyParkour,
+                elytraCourses
         );
         PluginCommand partyAdmin = getCommand("partyadmin");
         if (partyAdmin != null) {
@@ -328,11 +336,28 @@ public final class McPartyPlugin extends JavaPlugin {
         } else {
             getLogger().severe("Spleef remains disabled: minigame.spleef.arena is invalid or fall-y is not above boundary.minY.");
         }
+        registerElytraMinigame(minigames.registry());
 
         resourcePackService.reload();
         lobbyParkour.refreshConfiguredWorld();
         lobbyMatchmaker.configureFallbackWorld();
         getLogger().info("Config reloaded");
+    }
+
+    private void registerElytraMinigame(MinigameRegistry registry) {
+        registry.unregister("elytra_race");
+        ElytraCourse course = elytraCourses.get(config.elytraCourseId()).orElse(null);
+        if (course != null && course.isReady()) {
+            registry.register(new ElytraMinigame(
+                    course,
+                    config.elytraTimeoutSeconds(),
+                    config.elytraCenterBonusCoins(),
+                    config.dummyCoinRewards()
+            ));
+        } else {
+            getLogger().warning("Elytra Race is disabled: configure a ready course named '"
+                    + config.elytraCourseId() + "' in elytra-courses.yml.");
+        }
     }
 
     @Override
@@ -360,6 +385,9 @@ public final class McPartyPlugin extends JavaPlugin {
         }
         if (slotRegistry != null) {
             slotRegistry.save();
+        }
+        if (elytraCourses != null) {
+            elytraCourses.save();
         }
         getLogger().info("McParty disabled");
     }

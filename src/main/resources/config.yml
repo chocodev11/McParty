@@ -93,6 +93,13 @@ minigame:
       # Item model id under the mcparty namespace.
       item-model: tnt_multishot
 
+  elytra_race:
+    # Course definitions are stored in plugins/McParty/elytra-courses.yml.
+    course: default
+    timeout-seconds: 120
+    center-bonus-coins: 2
+    default-ring-radius: 3.0
+
 # Suppress dirt "Loading terrain…" on party world teleports (same env + height).
 # Requires PacketEvents plugin on the server. Fail-open if missing.
 seamless-world-change:
