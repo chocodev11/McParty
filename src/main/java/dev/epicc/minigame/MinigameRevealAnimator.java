@@ -28,8 +28,10 @@ final class MinigameRevealAnimator {
     private static final Duration STAY_HOLD = Duration.ofSeconds(2);
     private static final Duration FADE_OUT_HOLD = Duration.ofMillis(400);
 
-    /** One tick per frame with no fade-in; the last unchanged frame can fade out. */
-    private static final Title.Times FRAME = Title.Times.times(FADE_IN, FRAME_STAY, FRAME_FADE_OUT);
+    /** One tick per frame with no transition while the content changes. */
+    private static final Title.Times FRAME = Title.Times.times(FADE_IN, FRAME_STAY, Duration.ZERO);
+    /** Used only after the final yellow color step has appeared. */
+    private static final Title.Times COLOR_END = Title.Times.times(FADE_IN, FRAME_STAY, FRAME_FADE_OUT);
     /** Final selected game hold with a short fade-in and fade-out. */
     private static final Title.Times HOLD = Title.Times.times(FINAL_FADE_IN, STAY_HOLD, FADE_OUT_HOLD);
 
@@ -42,6 +44,7 @@ final class MinigameRevealAnimator {
     private static final int EXPAND_INTERVAL_TICKS = 1;
     private static final int COLOR_STEPS = 8;
     private static final int COLOR_INTERVAL_TICKS = 1;
+    private static final int COLOR_FADE_OUT_WAIT_TICKS = 3;
 
     private final JavaPlugin plugin;
     private final MessageService messages;
@@ -74,6 +77,7 @@ final class MinigameRevealAnimator {
         int[] expandWait = {0};
         int[] colorStep = {0};
         int[] colorWait = {0};
+        int[] colorFadeOutWait = {0};
 
         showSpinFrame(audience, currentSubtitle[0]);
 
@@ -130,6 +134,10 @@ final class MinigameRevealAnimator {
             }
 
             // COLOR — full name white → yellow on subtitle (few steps, longer pause)
+            if (colorFadeOutWait[0] > 0) {
+                colorFadeOutWait[0]--;
+                return;
+            }
             colorWait[0]++;
             if (colorWait[0] < COLOR_INTERVAL_TICKS) {
                 return;
@@ -143,7 +151,13 @@ final class MinigameRevealAnimator {
                 return;
             }
             float t = (float) colorStep[0] / COLOR_STEPS;
-            showNameFrame(audience, finalName, lerp(WHITE, YELLOW, t));
+            TextColor color = lerp(WHITE, YELLOW, t);
+            if (colorStep[0] == COLOR_STEPS) {
+                showNameFrame(audience, finalName, color, COLOR_END);
+                colorFadeOutWait[0] = COLOR_FADE_OUT_WAIT_TICKS;
+                return;
+            }
+            showNameFrame(audience, finalName, color);
         }, 1L, 1L);
     }
 
@@ -225,10 +239,14 @@ final class MinigameRevealAnimator {
     }
 
     private void showNameFrame(List<Player> players, String subtitle, TextColor color) {
+        showNameFrame(players, subtitle, color, FRAME);
+    }
+
+    private void showNameFrame(List<Player> players, String subtitle, TextColor color, Title.Times times) {
         show(players, Title.title(
                 messages.get("minigame.reveal-ready-title"),
                 Component.text(subtitle == null ? "" : subtitle, color),
-                FRAME
+                times
         ));
     }
 

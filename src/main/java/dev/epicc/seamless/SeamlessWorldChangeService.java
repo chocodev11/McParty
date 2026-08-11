@@ -33,9 +33,9 @@ public final class SeamlessWorldChangeService {
     public static final long TRANSITION_DURATION_TICKS = 40L;
 
     private static final int MARK_TIMEOUT_TICKS = 5;
-    private static final Duration FADE_IN = Duration.ofMillis(750);
-    private static final Duration HOLD = Duration.ZERO;
-    private static final Duration FADE_OUT = Duration.ofMillis(750);
+    private static final Duration FADE_IN = Duration.ofSeconds(1);
+    private static final Duration HOLD = Duration.ofMillis(250);
+    private static final Duration FADE_OUT = Duration.ofSeconds(1);
 
     private final JavaPlugin plugin;
     private final FontImageService fontImages;
