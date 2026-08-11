@@ -6,10 +6,24 @@ public record FontImageDefinition(
         String texture,
         int codepoint,
         int scale,
-        int yPosition
+        int yPosition,
+        int xOffset,
+        int xOffsetCodepoint
 ) {
 
     public String glyph() {
         return Character.toString((char) codepoint);
+    }
+
+    public boolean hasXOffset() {
+        return xOffset != 0;
+    }
+
+    public String xOffsetGlyph() {
+        return Character.toString((char) xOffsetCodepoint);
+    }
+
+    public FontImageDefinition withXOffsetCodepoint(int codepoint) {
+        return new FontImageDefinition(id, texture, this.codepoint, scale, yPosition, xOffset, codepoint);
     }
 }

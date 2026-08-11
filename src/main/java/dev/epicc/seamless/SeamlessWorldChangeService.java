@@ -25,12 +25,12 @@ import java.util.logging.Level;
 public final class SeamlessWorldChangeService {
 
     /** Ticks needed to reach full opacity before the world change. */
-    public static final long TELEPORT_DELAY_TICKS = 10L;
+    public static final long TELEPORT_DELAY_TICKS = 21L;
 
     private static final int MARK_TIMEOUT_TICKS = 5;
-    private static final Duration FADE_IN = Duration.ofMillis(500);
-    private static final Duration HOLD = Duration.ofMillis(100);
-    private static final Duration FADE_OUT = Duration.ofMillis(500);
+    private static final Duration FADE_IN = Duration.ofSeconds(1);
+    private static final Duration HOLD = Duration.ofMillis(250);
+    private static final Duration FADE_OUT = Duration.ofSeconds(1);
 
     private final JavaPlugin plugin;
     private final FontImageService fontImages;

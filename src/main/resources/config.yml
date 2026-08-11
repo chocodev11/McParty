@@ -122,7 +122,7 @@ resource-pack:
     port: 31232
     # Full URL clients use. Required for remote players (not 127.0.0.1).
     # Example: http://play.example.com:8163/mcparty.zip
-    public-url: "160.250.134.179:31232/mcparty.zip"
+    public-url: "http://160.250.134.179:31232/mcparty.zip"
 
 # Component-based tab-list rendering. Text is configured in messages.yml.
 tablist:

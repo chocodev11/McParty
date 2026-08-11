@@ -444,7 +444,7 @@ public final class PartyManager {
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             Optional<World> lobbyOpt = slime.getLoadedWorld(instance.id(), config.lobbySlimeTemplate());
             lobbyOpt.ifPresent(lobbyWorld -> slime.unloadWorldForInstance(instance.id(), lobbyWorld));
-        }, 20L); // wait 1 second to ensure teleports complete
+        }, SeamlessWorldChangeService.TELEPORT_DELAY_TICKS + 2L);
 
         BoardTurnController controller = new BoardTurnController(
                 plugin,

@@ -196,7 +196,8 @@ public final class BoardTurnController {
         Player player = plugin.getServer().getPlayer(playerId);
         if (player != null && player.isOnline()) {
             player.sendActionBar(
-                    messages.image("dice_" + roll)
+                    Component.empty()
+                            .append(messages.image("dice_" + roll))
                             .append(Component.space())
                             .append(messages.get("board.rolled-actionbar", "roll", Integer.toString(roll)))
             );

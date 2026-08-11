@@ -77,6 +77,7 @@ public final class FontImageService {
 
             int scale = image.getInt("scale", 8);
             int yPosition = image.getInt("y-position", scale);
+            int xOffset = image.getInt("x-offset", 0);
             if (scale < 1 || scale > MAX_SCALE) {
                 warn("Ignoring font image '" + id + "': scale must be between 1 and " + MAX_SCALE);
                 continue;
@@ -84,6 +85,11 @@ public final class FontImageService {
             if (yPosition < -MAX_SCALE || yPosition > MAX_SCALE || yPosition > scale) {
                 warn("Ignoring font image '" + id + "': y-position must be between -"
                         + MAX_SCALE + " and scale");
+                continue;
+            }
+            if (xOffset < -MAX_SCALE || xOffset > MAX_SCALE) {
+                warn("Ignoring font image '" + id + "': x-offset must be between -"
+                        + MAX_SCALE + " and " + MAX_SCALE);
                 continue;
             }
 
@@ -100,7 +106,7 @@ public final class FontImageService {
                 warn("Ignoring font image '" + id + "': duplicate codepoint " + formatCodepoint(codepoint));
                 continue;
             }
-            loaded.put(id, new FontImageDefinition(id, texture, codepoint, scale, yPosition));
+            loaded.put(id, new FontImageDefinition(id, texture, codepoint, scale, yPosition, xOffset, 0));
         }
 
         int nextCodepoint = PRIVATE_USE_START;
@@ -120,8 +126,10 @@ public final class FontImageService {
             String texture = image.getString("texture", "");
             int scale = image.getInt("scale", 8);
             int yPosition = image.getInt("y-position", scale);
+            int xOffset = image.getInt("x-offset", 0);
             if (!isSafeTexturePath(texture) || scale < 1 || scale > MAX_SCALE
-                    || yPosition < -MAX_SCALE || yPosition > MAX_SCALE || yPosition > scale) {
+                    || yPosition < -MAX_SCALE || yPosition > MAX_SCALE || yPosition > scale
+                    || xOffset < -MAX_SCALE || xOffset > MAX_SCALE) {
                 continue;
             }
 
@@ -134,7 +142,24 @@ public final class FontImageService {
             }
             int codepoint = nextCodepoint++;
             usedCodepoints.add(codepoint);
-            loaded.put(id, new FontImageDefinition(id, texture, codepoint, scale, yPosition));
+            loaded.put(id, new FontImageDefinition(id, texture, codepoint, scale, yPosition, xOffset, 0));
+        }
+
+        for (Map.Entry<String, FontImageDefinition> entry : loaded.entrySet()) {
+            FontImageDefinition image = entry.getValue();
+            if (!image.hasXOffset()) {
+                continue;
+            }
+            while (nextCodepoint <= PRIVATE_USE_END && usedCodepoints.contains(nextCodepoint)) {
+                nextCodepoint++;
+            }
+            if (nextCodepoint > PRIVATE_USE_END) {
+                warn("Ignoring x-offset for font image '" + image.id() + "': no private-use codepoints remain");
+                continue;
+            }
+            int offsetCodepoint = nextCodepoint++;
+            usedCodepoints.add(offsetCodepoint);
+            entry.setValue(image.withXOffsetCodepoint(offsetCodepoint));
         }
 
         images.clear();
@@ -156,7 +181,7 @@ public final class FontImageService {
             warnUnknownAlias(normalized);
             return Component.text("%img_" + id + "%");
         }
-        return Component.text(image.glyph()).font(FONT_KEY);
+        return Component.text(renderedGlyph(image)).font(FONT_KEY);
     }
 
     /** Generate the dedicated font file inside the runtime local resource-pack source. */
@@ -166,6 +191,22 @@ public final class FontImageService {
 
         StringBuilder json = new StringBuilder("{\n  \"providers\": [\n");
         int written = 0;
+        for (FontImageDefinition image : images.values()) {
+            if (!image.hasXOffset()) {
+                continue;
+            }
+            if (written++ > 0) {
+                json.append(",\n");
+            }
+            json.append("    {\n")
+                    .append("      \"type\": \"space\",\n")
+                    .append("      \"advances\": {\"")
+                    .append(unicodeEscape(image.xOffsetCodepoint()))
+                    .append("\": ")
+                    .append(image.xOffset())
+                    .append("}\n")
+                    .append("    }");
+        }
         for (FontImageDefinition image : images.values()) {
             Path texture = sourceDir.resolve("assets/mcparty/textures").resolve(image.texture()).normalize();
             if (!texture.startsWith(sourceDir.resolve("assets/mcparty/textures").normalize())
@@ -234,11 +275,15 @@ public final class FontImageService {
                 continue;
             }
             FontImageDefinition image = images.get(id);
-            String replacement = "<font:mcparty:images>" + image.glyph() + "</font>";
+            String replacement = "<font:mcparty:images>" + renderedGlyph(image) + "</font>";
             matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
         }
         matcher.appendTail(result);
         return result.toString();
+    }
+
+    private static String renderedGlyph(FontImageDefinition image) {
+        return (image.hasXOffset() ? image.xOffsetGlyph() : "") + image.glyph();
     }
 
     private static Integer parseCodepoint(String value) {
