@@ -22,14 +22,14 @@ import java.util.concurrent.ThreadLocalRandom;
 final class MinigameRevealAnimator {
 
     private static final Duration FADE_IN = Duration.ZERO;
+    private static final Duration FRAME_FADE_OUT = Duration.ofMillis(150);
     private static final Duration FINAL_FADE_IN = Duration.ofMillis(250);
-    private static final Duration STAY = Duration.ofMillis(800);
-    private static final Duration FADE_OUT = Duration.ofMillis(250);
+    private static final Duration FRAME_STAY = Duration.ofMillis(50);
     private static final Duration STAY_HOLD = Duration.ofSeconds(2);
     private static final Duration FADE_OUT_HOLD = Duration.ofMillis(400);
 
-    /** Instant in, soft out — used while frames still update. */
-    private static final Title.Times SNAP = Title.Times.times(FADE_IN, STAY, FADE_OUT);
+    /** One tick per frame with no fade-in; the last unchanged frame can fade out. */
+    private static final Title.Times FRAME = Title.Times.times(FADE_IN, FRAME_STAY, FRAME_FADE_OUT);
     /** Final selected game hold with a short fade-in and fade-out. */
     private static final Title.Times HOLD = Title.Times.times(FINAL_FADE_IN, STAY_HOLD, FADE_OUT_HOLD);
 
@@ -39,9 +39,9 @@ final class MinigameRevealAnimator {
     private static final int SPIN_DURATION_TICKS = 100;
     private static final int INTERVAL_MIN_TICKS = 1;
     private static final int INTERVAL_MAX_TICKS = 8;
-    private static final int EXPAND_INTERVAL_TICKS = 2;
-    private static final int COLOR_STEPS = 5;
-    private static final int COLOR_INTERVAL_TICKS = 2;
+    private static final int EXPAND_INTERVAL_TICKS = 1;
+    private static final int COLOR_STEPS = 8;
+    private static final int COLOR_INTERVAL_TICKS = 1;
 
     private final JavaPlugin plugin;
     private final MessageService messages;
@@ -99,7 +99,7 @@ final class MinigameRevealAnimator {
                     interval = Math.max(1, interval);
 
 
-                    boolean nearEnd = spinTick[0] + interval >= SPIN_DURATION_TICKS || progress >= 0.85;
+                    boolean nearEnd = spinTick[0] + interval >= SPIN_DURATION_TICKS;
                     if (nearEnd) {
                         currentSubtitle[0] = finalName;
                     } else {
@@ -216,7 +216,7 @@ final class MinigameRevealAnimator {
         show(players, Title.title(
                 messages.get("minigame.reveal-spin-title"),
                 Component.text(subtitle == null ? "" : subtitle, WHITE),
-                SNAP
+                FRAME
         ));
     }
 
@@ -228,7 +228,7 @@ final class MinigameRevealAnimator {
         show(players, Title.title(
                 messages.get("minigame.reveal-ready-title"),
                 Component.text(subtitle == null ? "" : subtitle, color),
-                SNAP
+                FRAME
         ));
     }
 
