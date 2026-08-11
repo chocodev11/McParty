@@ -1,5 +1,7 @@
 package dev.epicc.resourcepack;
 
+import net.kyori.adventure.key.Key;
+import net.kyori.adventure.text.Component;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -24,6 +26,8 @@ public final class FontImageService {
 
     private static final int PRIVATE_USE_START = 0xE000;
     private static final int PRIVATE_USE_END = 0xF8FF;
+    private static final int MAX_SCALE = 256;
+    private static final Key FONT_KEY = Key.key("mcparty", "images");
     private static final Pattern PLACEHOLDER_ALIAS = Pattern.compile("%img_([a-z0-9_-]+)%");
     private static final Pattern VALID_ID = Pattern.compile("[a-z0-9_-]{1,64}");
 
@@ -73,12 +77,13 @@ public final class FontImageService {
 
             int scale = image.getInt("scale", 8);
             int yPosition = image.getInt("y-position", scale);
-            if (scale < 1 || scale > 256) {
-                warn("Ignoring font image '" + id + "': scale must be between 1 and 256");
+            if (scale < 1 || scale > MAX_SCALE) {
+                warn("Ignoring font image '" + id + "': scale must be between 1 and " + MAX_SCALE);
                 continue;
             }
-            if (yPosition < -256 || yPosition > 256 || yPosition > scale) {
-                warn("Ignoring font image '" + id + "': y-position must be between -256 and scale");
+            if (yPosition < -MAX_SCALE || yPosition > MAX_SCALE || yPosition > scale) {
+                warn("Ignoring font image '" + id + "': y-position must be between -"
+                        + MAX_SCALE + " and scale");
                 continue;
             }
 
@@ -115,8 +120,8 @@ public final class FontImageService {
             String texture = image.getString("texture", "");
             int scale = image.getInt("scale", 8);
             int yPosition = image.getInt("y-position", scale);
-            if (!isSafeTexturePath(texture) || scale < 1 || scale > 256
-                    || yPosition < -256 || yPosition > 256 || yPosition > scale) {
+            if (!isSafeTexturePath(texture) || scale < 1 || scale > MAX_SCALE
+                    || yPosition < -MAX_SCALE || yPosition > MAX_SCALE || yPosition > scale) {
                 continue;
             }
 
@@ -141,6 +146,17 @@ public final class FontImageService {
             return raw;
         }
         return replaceKnownAliases(raw, PLACEHOLDER_ALIAS);
+    }
+
+    /** Render a configured image directly for dynamic values such as a dice face. */
+    public Component image(String id) {
+        String normalized = id == null ? "" : id.toLowerCase(Locale.ROOT);
+        FontImageDefinition image = images.get(normalized);
+        if (image == null) {
+            warnUnknownAlias(normalized);
+            return Component.text("%img_" + id + "%");
+        }
+        return Component.text(image.glyph()).font(FONT_KEY);
     }
 
     /** Generate the dedicated font file inside the runtime local resource-pack source. */
@@ -204,6 +220,7 @@ public final class FontImageService {
         } catch (IOException exception) {
             warn("Could not load font-images.yml defaults: " + exception.getMessage());
         }
+        yaml.options().copyDefaults(true);
         return yaml;
     }
 

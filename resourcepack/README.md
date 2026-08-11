@@ -22,6 +22,8 @@ images:
 
 The same image can be used in `messages.yml` as `%img_coin%`. This works in
 chat, action bars, and the configurable tab list.
+The bundled `dice_1` … `dice_6` images are also used automatically for the
+post-roll action-bar result.
 Local mode generates `assets/mcparty/font/images.json` before each ZIP is
 created. External mode requires the hosted ZIP to contain a matching generated
 font file.

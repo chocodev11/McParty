@@ -105,7 +105,7 @@ public final class McPartyPlugin extends JavaPlugin {
         slotRegistry.load();
 
         SeamlessWorldChangeService seamless = new SeamlessWorldChangeService(
-                this, config.seamlessWorldChangeEnabled()
+                this, config.seamlessWorldChangeEnabled(), fontImages
         );
 
         resourcePackService = new ResourcePackService(this, config, messages, fontImages);
@@ -119,8 +119,7 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.slimeWorldPrefix(),
                 config.slimeAllowMonsters(),
                 config.slimeAllowAnimals(),
-                config.slimePvp(),
-                seamless
+                config.slimePvp()
         );
 
         // Five dummy entries so the reveal roulette has distinct names to spin through

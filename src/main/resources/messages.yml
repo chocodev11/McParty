@@ -55,6 +55,7 @@ board:
   turn: "{prefix}Lượt của <player> — nhấp vào xúc xắc (hoặc /party roll)"
   roll-all: "{prefix}Mọi người cùng đổ xúc xắc! Nhấp vào xúc xắc của bạn (hoặc /party roll)"
   rolled-face: "{prefix}<player> đã đổ <roll>"
+  rolled-actionbar: "<gray>Kết quả:</gray> <#fcca32><bold><roll></bold></#fcca32>"
   rolled: "{prefix}<player> đi <roll> ô → ô <space>"
   round-complete: "{prefix}Vòng chơi kết thúc — đang chọn minigame…"
 

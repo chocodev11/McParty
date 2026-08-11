@@ -49,7 +49,6 @@ public final class PartyManager {
     private final BoardSlotRegistry slots;
     private final MinigameManager minigames;
     private final SlimeWorldService slime;
-    private final SeamlessWorldChangeService seamless;
     private final DicePresenter dicePresenter;
     private final DiceHatService diceHats;
     private final PathHopMover pathHopMover;
@@ -86,13 +85,12 @@ public final class PartyManager {
         this.slots = slots;
         this.minigames = minigames;
         this.slime = slime;
-        this.seamless = seamless;
         this.dicePresenter = dicePresenter;
         this.diceHats = diceHats;
         this.pathHopMover = pathHopMover;
         this.resourcePacks = resourcePacks;
         this.holograms = holograms;
-        this.transitions = new PartyTransitionService(plugin, seamless);
+        this.transitions = new PartyTransitionService(seamless);
     }
 
     public JavaPlugin plugin() {
@@ -130,8 +128,7 @@ public final class PartyManager {
         lobbyParkour.stopSilently(player);
 
         Location destination = lobbySpawn(player);
-        transitions.permit(player, destination);
-        seamless.teleport(player, destination);
+        transitions.teleport(player, destination);
         messages.send(player, "parkour.left");
     }
 
@@ -231,10 +228,12 @@ public final class PartyManager {
 
         if (instance.state() != PartyState.WAITING && player.isOnline()) {
             Location fallback = fallbackLocation();
-            transitions.permit(player, fallback);
-            seamless.teleport(player, fallback);
+            if (isBoardWorld(instance, player)) {
+                transitions.teleportSeamlessly(player, fallback);
+            } else {
+                transitions.teleport(player, fallback);
+            }
         }
-        transitions.clear(playerId);
         sessions.unbind(playerId);
         instance.removePlayer(playerId);
         tabListRefresh.run();
@@ -398,7 +397,7 @@ public final class PartyManager {
 
     public void shutdown() {
         for (UUID id : new ArrayList<>(store.all().stream().map(PartyInstance::id).toList())) {
-            store.get(id).ifPresent(this::cleanup);
+            store.get(id).ifPresent(instance -> cleanup(instance, false));
         }
         controllers.clear();
         dicePresenter.cancelAll();
@@ -406,6 +405,7 @@ public final class PartyManager {
         pathHopMover.cancelAll();
         sessions.clearAll();
         slots.releaseAll();
+        transitions.flushPendingTeleports();
         slime.unloadAll();
     }
 
@@ -439,7 +439,7 @@ public final class PartyManager {
                 p.showTitle(startTitle);
             }
         }
-        transitions.transition(online, boardArea);
+        transitions.transitionSeamlessly(online, boardArea);
 
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             Optional<World> lobbyOpt = slime.getLoadedWorld(instance.id(), config.lobbySlimeTemplate());
@@ -518,7 +518,13 @@ public final class PartyManager {
     }
 
     public void cleanup(PartyInstance instance) {
+        cleanup(instance, true);
+    }
+
+    private void cleanup(PartyInstance instance, boolean animateBoardTransitions) {
         if (!instance.beginCleanup()) return;
+        boolean animateTransitions = animateBoardTransitions && plugin.isEnabled();
+        boolean hadBoardWorld = instance.boardPlayArea() != null;
         holograms.closeLobbyScope(instance.id());
         holograms.closePartyScope(instance.id());
         instance.cancelPendingTasks();
@@ -539,15 +545,26 @@ public final class PartyManager {
                     lobbyParkour.stopSilently(player);
                 }
                 Location fallback = fallbackLocation();
-                transitions.permit(player, fallback);
-                seamless.teleport(player, fallback);
+                if (animateTransitions && isBoardWorld(instance, player)) {
+                    transitions.teleportSeamlessly(player, fallback);
+                } else {
+                    transitions.teleport(player, fallback);
+                }
             }
         }
 
         sessions.clearInstance(instance.id());
 
         // Players were explicitly evacuated to the configured persistent fallback above.
-        slime.unloadForInstance(instance.id());
+        if (animateTransitions && hadBoardWorld) {
+            plugin.getServer().getScheduler().runTaskLater(
+                    plugin,
+                    () -> slime.unloadForInstance(instance.id()),
+                    SeamlessWorldChangeService.TELEPORT_DELAY_TICKS + 2L
+            );
+        } else {
+            slime.unloadForInstance(instance.id());
+        }
 
         if (instance.slot() != null) {
             // Release the template slot (runtime copy may not be in the registry)
@@ -579,9 +596,13 @@ public final class PartyManager {
             }
             // Path setup stores the administrator's pitch; board returns should stay level.
             destination.setPitch(0f);
-            transitions.permit(player, destination);
-            seamless.teleport(player, destination);
+            transitions.teleport(player, destination);
         }
+    }
+
+    private boolean isBoardWorld(PartyInstance instance, Player player) {
+        PartyPlayArea board = instance.boardPlayArea();
+        return board != null && board.world().equals(player.getWorld());
     }
 
     private List<Player> onlinePlayers(PartyInstance instance) {

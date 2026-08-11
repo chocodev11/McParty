@@ -3,7 +3,6 @@ package dev.epicc.party;
 import dev.epicc.seamless.SeamlessWorldChangeService;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
-import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.Collection;
 import java.util.Map;
@@ -17,14 +16,44 @@ public final class PartyTransitionService {
     private final SeamlessWorldChangeService seamless;
     private final Map<UUID, Permit> permits = new ConcurrentHashMap<>();
 
-    public PartyTransitionService(JavaPlugin plugin, SeamlessWorldChangeService seamless) {
+    public PartyTransitionService(SeamlessWorldChangeService seamless) {
         this.seamless = seamless;
     }
 
     public void transition(Collection<Player> players, PartyPlayArea destination) {
+        transition(players, destination, false);
+    }
+
+    public void transitionSeamlessly(Collection<Player> players, PartyPlayArea destination) {
+        transition(players, destination, true);
+    }
+
+    public void teleport(Player player, Location destination) {
+        teleport(player, destination, false);
+    }
+
+    public void teleportSeamlessly(Player player, Location destination) {
+        teleport(player, destination, true);
+    }
+
+    public void flushPendingTeleports() {
+        seamless.flushPendingTeleports();
+    }
+
+    private void transition(Collection<Player> players, PartyPlayArea destination, boolean seamlessTransition) {
         for (Player player : players) {
-            permit(player, destination.spawn());
-            seamless.teleport(player, destination.spawn());
+            teleport(player, destination.spawn(), seamlessTransition);
+        }
+    }
+
+    private void teleport(Player player, Location destination, boolean seamlessTransition) {
+        permit(player, destination);
+        Runnable clearPermit = () -> clear(player.getUniqueId());
+        if (seamlessTransition) {
+            seamless.teleport(player, destination, clearPermit);
+        } else {
+            player.teleport(destination);
+            clearPermit.run();
         }
     }
 

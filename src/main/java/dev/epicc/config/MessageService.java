@@ -82,6 +82,10 @@ public final class MessageService {
         return get(path, ph(k1, v1));
     }
 
+    public Component image(String id) {
+        return fontImages.image(id);
+    }
+
     public Component get(String path, String k1, String v1, String k2, String v2) {
         return get(path, ph(k1, v1), ph(k2, v2));
     }

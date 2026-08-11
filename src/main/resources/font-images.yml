@@ -9,9 +9,43 @@
 #
 # Aliases are available as %img_id%.
 images:
-  coin:
-    # Replace this example with hud/coin.png when adding your own texture.
+  dice_1:
     texture: item/dice_1.png
-    scale: 8
+    scale: 10
     y-position: 8
-    codepoint: E000
+    codepoint: E001
+  dice_2:
+    texture: item/dice_2.png
+    scale: 10
+    y-position: 8
+    codepoint: E002
+  dice_3:
+    texture: item/dice_3.png
+    scale: 10
+    y-position: 8
+    codepoint: E003
+  dice_4:
+    texture: item/dice_4.png
+    scale: 10
+    y-position: 8
+    codepoint: E004
+  dice_5:
+    texture: item/dice_5.png
+    scale: 10
+    y-position: 8
+    codepoint: E005
+  dice_6:
+    texture: item/dice_6.png
+    scale: 10
+    y-position: 8
+    codepoint: E006
+  background:
+    texture: misc/background.png
+    scale: 256
+    y-position: 256
+    codepoint: E007
+  logo:
+    texture: misc/logo.png
+    scale: 128
+    y-position: 128
+    codepoint: E008

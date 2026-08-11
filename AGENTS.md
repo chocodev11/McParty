@@ -392,7 +392,7 @@ Add player-facing text only through `MessageService` + default `messages.yml` to
 
 ### Seamless world change
 
-`SeamlessWorldChangeService` marks a player only when McParty teleports them (`PartyManager.beginPlaying`, slime unload evacuations). PacketEvents cancels the next `RESPAWN` if environments and world heights match. No chunk-unload fan-out. Fail-open if PE missing or config off. Same-world board steps (`BoardTurnController`) do not need this.
+`SeamlessWorldChangeService` is used only for lobby↔board transitions (`PartyManager.beginPlaying` and board-world leave/cleanup). Compatible transitions show the resource-pack background/logo title, wait for the fade-in, teleport, then let it fade out; PacketEvents cancels the next `RESPAWN` if environments and world heights match. Arena, parkour, and stale-world teleports use the normal path. No chunk-unload fan-out. Fail-open if PE missing or config off. Same-world board steps (`BoardTurnController`) do not need this.
 
 ---
 

@@ -14,7 +14,7 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 /**
- * Minigame pick reveal (name on subtitle; no fade-in, yes fade-out):
+ * Minigame pick reveal (name on subtitle; final selection fades in and out):
  * 1) Spin: title "???", subtitle cycles names (slow → fast → stop)
  * 2) Expand: title "Get ready!", subtitle grows middle → sides
  * 3) Tint: full subtitle white → yellow
@@ -22,6 +22,7 @@ import java.util.concurrent.ThreadLocalRandom;
 final class MinigameRevealAnimator {
 
     private static final Duration FADE_IN = Duration.ZERO;
+    private static final Duration FINAL_FADE_IN = Duration.ofMillis(250);
     private static final Duration STAY = Duration.ofMillis(800);
     private static final Duration FADE_OUT = Duration.ofMillis(250);
     private static final Duration STAY_HOLD = Duration.ofSeconds(2);
@@ -29,8 +30,8 @@ final class MinigameRevealAnimator {
 
     /** Instant in, soft out — used while frames still update. */
     private static final Title.Times SNAP = Title.Times.times(FADE_IN, STAY, FADE_OUT);
-    /** Final hold with fade-out only. */
-    private static final Title.Times HOLD = Title.Times.times(FADE_IN, STAY_HOLD, FADE_OUT_HOLD);
+    /** Final selected game hold with a short fade-in and fade-out. */
+    private static final Title.Times HOLD = Title.Times.times(FINAL_FADE_IN, STAY_HOLD, FADE_OUT_HOLD);
 
     private static final TextColor WHITE = TextColor.color(255, 255, 255);
     private static final TextColor YELLOW = TextColor.color(255, 255, 85);

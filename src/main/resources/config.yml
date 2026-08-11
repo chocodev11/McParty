@@ -88,7 +88,7 @@ minigame:
     center-bonus-coins: 2
     default-ring-radius: 3.0
 
-# Suppress dirt "Loading terrain…" on party world teleports (same env + height).
+# Suppress dirt "Loading terrain…" on lobby↔board party teleports (same env + height).
 # Requires PacketEvents plugin on the server. Fail-open if missing.
 seamless-world-change:
   enabled: true
@@ -119,10 +119,10 @@ resource-pack:
     # Written as plugins/McParty/output/<zip-name>
     zip-name: mcparty.zip
     bind: "0.0.0.0"
-    port: 8163
+    port: 31232
     # Full URL clients use. Required for remote players (not 127.0.0.1).
     # Example: http://play.example.com:8163/mcparty.zip
-    public-url: ""
+    public-url: "160.250.134.179:31232/mcparty.zip"
 
 # Component-based tab-list rendering. Text is configured in messages.yml.
 tablist:

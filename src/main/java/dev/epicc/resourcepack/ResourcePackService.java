@@ -282,7 +282,7 @@ public final class ResourcePackService {
     private void ensureSourcePack(Path sourceDir) throws IOException {
         Path meta = sourceDir.resolve("pack.mcmeta");
         if (Files.isRegularFile(meta)) {
-            ensureParkourModels(sourceDir);
+            ensureBuiltInPackAssets(sourceDir);
             return;
         }
         if (Files.exists(sourceDir) && !Files.isDirectory(sourceDir)) {
@@ -290,7 +290,7 @@ public final class ResourcePackService {
         }
         Files.createDirectories(sourceDir);
         if (extractBundledPack(sourceDir)) {
-            ensureParkourModels(sourceDir);
+            ensureBuiltInPackAssets(sourceDir);
             plugin.getLogger().info("Extracted bundled resource pack to " + sourceDir);
             return;
         }
@@ -299,11 +299,13 @@ public final class ResourcePackService {
         );
     }
 
-    /** Add new built-in marker models without overwriting an administrator's customized pack. */
-    private void ensureParkourModels(Path sourceDir) throws IOException {
+    /** Add new built-in assets without overwriting an administrator's customized pack. */
+    private void ensureBuiltInPackAssets(Path sourceDir) throws IOException {
         for (String relative : List.of(
                 "assets/mcparty/items/parkour_goal.json",
-                "assets/mcparty/models/item/parkour_goal.json"
+                "assets/mcparty/models/item/parkour_goal.json",
+                "assets/mcparty/textures/misc/background.png",
+                "assets/mcparty/textures/misc/logo.png"
         )) {
             Path target = sourceDir.resolve(relative);
             if (Files.isRegularFile(target)) {

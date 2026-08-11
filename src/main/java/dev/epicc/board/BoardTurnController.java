@@ -9,6 +9,7 @@ import dev.epicc.minigame.ArenaTransitions;
 import dev.epicc.party.PartyInstance;
 import dev.epicc.party.PartyPlayer;
 import dev.epicc.party.PartyState;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -192,6 +193,15 @@ public final class BoardTurnController {
             ));
         }
 
+        Player player = plugin.getServer().getPlayer(playerId);
+        if (player != null && player.isOnline()) {
+            player.sendActionBar(
+                    messages.image("dice_" + roll)
+                            .append(Component.space())
+                            .append(messages.get("board.rolled-actionbar", "roll", Integer.toString(roll)))
+            );
+        }
+
         // Wait until everyone who started a roll has finished (presenter already held 1s)
         if (!pendingRollers.isEmpty()) {
             return;
@@ -330,6 +340,10 @@ public final class BoardTurnController {
             return;
         }
         for (PartyPlayer pp : instance.players()) {
+            Player player = plugin.getServer().getPlayer(pp.uuid());
+            if (player != null && player.isOnline()) {
+                player.sendActionBar(Component.empty());
+            }
             diceHats.clear(pp.uuid());
         }
     }
