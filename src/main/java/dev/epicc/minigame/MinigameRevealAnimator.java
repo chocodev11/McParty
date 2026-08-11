@@ -24,7 +24,7 @@ final class MinigameRevealAnimator {
     private static final Duration FADE_IN = Duration.ZERO;
     private static final Duration FRAME_FADE_OUT = Duration.ofMillis(150);
     private static final Duration FINAL_FADE_IN = Duration.ofMillis(250);
-    private static final Duration FRAME_STAY = Duration.ofMillis(50);
+    private static final Duration FRAME_STAY = Duration.ofMillis(800);
     private static final Duration STAY_HOLD = Duration.ofSeconds(2);
     private static final Duration FADE_OUT_HOLD = Duration.ofMillis(400);
 
@@ -44,7 +44,7 @@ final class MinigameRevealAnimator {
     private static final int EXPAND_INTERVAL_TICKS = 1;
     private static final int COLOR_STEPS = 8;
     private static final int COLOR_INTERVAL_TICKS = 1;
-    private static final int COLOR_FADE_OUT_WAIT_TICKS = 3;
+    private static final int COLOR_FADE_OUT_WAIT_TICKS = 19;
 
     private final JavaPlugin plugin;
     private final MessageService messages;
