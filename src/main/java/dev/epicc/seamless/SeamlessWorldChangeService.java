@@ -26,6 +26,8 @@ public final class SeamlessWorldChangeService {
 
     /** Ticks needed to reach full opacity before the world change. */
     public static final long TELEPORT_DELAY_TICKS = 21L;
+    /** Total title transition time: fade-in, hold, and fade-out. */
+    public static final long TRANSITION_DURATION_TICKS = 45L;
 
     private static final int MARK_TIMEOUT_TICKS = 5;
     private static final Duration FADE_IN = Duration.ofSeconds(1);

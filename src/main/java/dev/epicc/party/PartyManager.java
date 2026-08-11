@@ -41,6 +41,8 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public final class PartyManager {
 
+    private static final long FIRST_BOARD_DICE_DELAY_TICKS = 100L;
+
     private final JavaPlugin plugin;
     private final PluginConfig config;
     private final MessageService messages;
@@ -465,8 +467,8 @@ public final class PartyManager {
                 () -> exitArena(instance)
         ));
         controllers.put(instance.id(), controller);
-        // Delay first dice: private ItemDisplay passengers often fail same-tick as slime/world TP
-        // (spawn = "first slot", no pad — later rounds on pads already have client tracking).
+        // Give the player five seconds in the board before adding dice passengers.
+        // Cross-world player teleports with passengers are not supported by Paper.
         final UUID instanceId = instance.id();
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (instance.state() != PartyState.PLAYING) {
@@ -477,7 +479,7 @@ public final class PartyManager {
                 return;
             }
             live.startTurns();
-        }, 10L);
+        }, SeamlessWorldChangeService.TRANSITION_DURATION_TICKS + FIRST_BOARD_DICE_DELAY_TICKS);
     }
 
     private void endInternal(PartyInstance instance) {
