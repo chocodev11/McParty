@@ -42,12 +42,7 @@ public final class MinigameRunner {
         if (!loadArena(definition, instance, runGeneration, arenaReady, revealFinished, online, transitions, done)) {
             return; // arena unusable — done already accepted, must not also start the reveal
         }
-        if (manager.reveal().skip()) {
-            revealFinished.set(true);
-            if (arenaReady.get()) startIfCurrent(definition, instance, runGeneration, online, transitions, done);
-            return;
-        }
-        reveal = new MinigameRevealAnimator(manager.plugin(), manager.messages(), manager.reveal());
+        reveal = new MinigameRevealAnimator(manager.plugin(), manager.messages());
         reveal.start(online, definition, manager.registry().displayNames(), () -> {
             if (!isCurrent(runGeneration)) return;
             reveal = null;

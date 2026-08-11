@@ -19,26 +19,19 @@ public final class MinigameManager {
     private final MinigameRegistry registry;
     private final SlimeWorldService slime;
     private final MinigameEventBus events;
-    private MinigameRevealSettings reveal;
 
     public MinigameManager(
             JavaPlugin plugin,
             MessageService messages,
             MinigameRegistry registry,
             SlimeWorldService slime,
-            MinigameEventBus events,
-            MinigameRevealSettings reveal
+            MinigameEventBus events
     ) {
         this.plugin = plugin;
         this.messages = messages;
         this.registry = registry;
         this.slime = slime;
         this.events = events;
-        this.reveal = reveal;
-    }
-
-    public void reconfigure(MinigameRevealSettings reveal) {
-        this.reveal = reveal;
     }
 
     public MinigameRegistry registry() {
@@ -70,7 +63,4 @@ public final class MinigameManager {
         return slime;
     }
 
-    MinigameRevealSettings reveal() {
-        return reveal;
-    }
 }

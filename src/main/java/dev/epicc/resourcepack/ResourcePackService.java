@@ -49,6 +49,7 @@ public final class ResourcePackService {
     private final JavaPlugin plugin;
     private final PluginConfig config;
     private final MessageService messages;
+    private final FontImageService fontImages;
     private final AtomicBoolean ready = new AtomicBoolean(false);
 
     private String packUrl = "";
@@ -56,10 +57,16 @@ public final class ResourcePackService {
     private byte[] packBytes = new byte[0];
     private HttpServer httpServer;
 
-    public ResourcePackService(JavaPlugin plugin, PluginConfig config, MessageService messages) {
+    public ResourcePackService(
+            JavaPlugin plugin,
+            PluginConfig config,
+            MessageService messages,
+            FontImageService fontImages
+    ) {
         this.plugin = plugin;
         this.config = config;
         this.messages = messages;
+        this.fontImages = fontImages;
     }
 
     public UUID packId() {
@@ -178,6 +185,7 @@ public final class ResourcePackService {
         }
         this.packUrl = url;
         this.packSha1 = sha1;
+        fontImages.warnExternalPackRequirement();
     }
 
     private void startLocal() throws IOException, NoSuchAlgorithmException {
@@ -192,6 +200,7 @@ public final class ResourcePackService {
                     "Local pack source missing pack.mcmeta under " + sourceDir
             );
         }
+        fontImages.prepareResourcePack(sourceDir);
 
         String zipName = sanitizeZipName(config.resourcePackLocalZipName());
         // Written under plugins/McParty/output/ for easy fetch / external hosting

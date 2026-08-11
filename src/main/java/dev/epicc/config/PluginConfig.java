@@ -1,7 +1,6 @@
 package dev.epicc.config;
 
 import dev.epicc.minigame.MinigameArenaSpec;
-import dev.epicc.minigame.MinigameRevealSettings;
 import dev.epicc.lobby.parkour.LobbyParkourDefinition;
 import dev.epicc.lobby.parkour.LobbyParkourPoint;
 import org.bukkit.Location;
@@ -36,7 +35,6 @@ public final class PluginConfig {
     private double hopFallMaxSeconds;
     private int dummyDurationSeconds;
     private List<Integer> dummyCoinRewards;
-    private MinigameRevealSettings minigameReveal;
 
     private String hotPotatoSlimeTemplate;
     private int hotPotatoBombSeconds;
@@ -73,6 +71,9 @@ public final class PluginConfig {
     private String resourcePackLocalBind;
     private int resourcePackLocalPort;
     private String resourcePackLocalPublicUrl;
+
+    private boolean tabListEnabled;
+    private int tabListRefreshTicks;
 
     private String databaseSqliteFile;
 
@@ -140,19 +141,6 @@ public final class PluginConfig {
         dummyDurationSeconds = c.getInt("minigame.dummy-duration-seconds", 5);
         List<Integer> rewards = c.getIntegerList("minigame.dummy-coin-rewards");
         dummyCoinRewards = rewards.isEmpty() ? List.of(10, 7, 5, 3) : new ArrayList<>(rewards);
-        int revealIntervalMin = c.getInt("minigame.reveal-interval-min-ticks", 2);
-        // Legacy key fallback if min not set in older configs
-        if (!c.isSet("minigame.reveal-interval-min-ticks") && c.isSet("minigame.reveal-interval-ticks")) {
-            revealIntervalMin = c.getInt("minigame.reveal-interval-ticks", 2);
-        }
-        minigameReveal = new MinigameRevealSettings(
-                c.getInt("minigame.reveal-duration-ticks", 60),
-                revealIntervalMin,
-                c.getInt("minigame.reveal-interval-max-ticks", 14),
-                c.getInt("minigame.reveal-expand-interval-ticks", 4),
-                c.getInt("minigame.reveal-color-steps", 5),
-                c.getInt("minigame.reveal-color-interval-ticks", 3)
-        );
 
         hotPotatoSlimeTemplate = c.getString("minigame.hot_potato.slime-template", "hot_potato_arena");
         hotPotatoBombSeconds = c.getInt("minigame.hot_potato.bomb-seconds", 20);
@@ -237,6 +225,9 @@ public final class PluginConfig {
         resourcePackLocalPort = c.getInt("resource-pack.local.port", 8163);
         resourcePackLocalPublicUrl = nullToEmpty(c.getString("resource-pack.local.public-url"));
 
+        tabListEnabled = c.getBoolean("tablist.enabled", true);
+        tabListRefreshTicks = Math.max(1, c.getInt("tablist.refresh-ticks", 20));
+
         databaseSqliteFile = nullToEmpty(c.getString("database.sqlite-file", "parkour.db"));
         if (databaseSqliteFile.isBlank()) {
             databaseSqliteFile = "parkour.db";
@@ -315,7 +306,6 @@ public final class PluginConfig {
     public double hopFallMaxSeconds() { return hopFallMaxSeconds; }
     public int dummyDurationSeconds() { return dummyDurationSeconds; }
     public List<Integer> dummyCoinRewards() { return dummyCoinRewards; }
-    public MinigameRevealSettings minigameReveal() { return minigameReveal; }
 
     public String hotPotatoSlimeTemplate() { return hotPotatoSlimeTemplate; }
     public int hotPotatoBombSeconds() { return hotPotatoBombSeconds; }
@@ -352,6 +342,9 @@ public final class PluginConfig {
     public String resourcePackLocalBind() { return resourcePackLocalBind; }
     public int resourcePackLocalPort() { return resourcePackLocalPort; }
     public String resourcePackLocalPublicUrl() { return resourcePackLocalPublicUrl; }
+
+    public boolean tabListEnabled() { return tabListEnabled; }
+    public int tabListRefreshTicks() { return tabListRefreshTicks; }
 
     public String databaseSqliteFile() { return databaseSqliteFile; }
 

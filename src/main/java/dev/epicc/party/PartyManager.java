@@ -59,6 +59,7 @@ public final class PartyManager {
     private final Map<UUID, BoardTurnController> controllers = new ConcurrentHashMap<>();
     private LobbyParkourService lobbyParkour;
     private LobbyMatchmaker lobbyMatchmaker;
+    private Runnable tabListRefresh = () -> { };
 
 
     public PartyManager(
@@ -110,6 +111,10 @@ public final class PartyManager {
         this.lobbyMatchmaker = lobbyMatchmaker;
     }
 
+    public void setTabListRefresh(Runnable tabListRefresh) {
+        this.tabListRefresh = tabListRefresh == null ? () -> { } : tabListRefresh;
+    }
+
     public Optional<PartyInstance> instanceOf(UUID playerId) {
         return sessions.instanceOf(playerId).flatMap(store::get);
     }
@@ -156,6 +161,7 @@ public final class PartyManager {
         sessions.bind(host.getUniqueId(), instance.id());
         messages.send(host, "party.created", "id", instance.shortId());
         offerResourcePack(host);
+        tabListRefresh.run();
         return Optional.empty();
     }
 
@@ -189,6 +195,7 @@ public final class PartyManager {
                 "max", Integer.toString(instance.settings().maxPlayers())
         ));
         offerResourcePack(player);
+        tabListRefresh.run();
 
         if (instance.playerCount() >= instance.settings().maxPlayers()) {
             Player host = plugin.getServer().getPlayer(instance.hostId());
@@ -230,6 +237,7 @@ public final class PartyManager {
         transitions.clear(playerId);
         sessions.unbind(playerId);
         instance.removePlayer(playerId);
+        tabListRefresh.run();
 
         if (!silent) {
             messages.send(player, "party.left-self");
@@ -548,6 +556,7 @@ public final class PartyManager {
         }
         instance.clearPlayAreas();
         store.remove(instance.id());
+        tabListRefresh.run();
     }
 
     private void enterArena(PartyInstance instance, MinigameArena arena) {

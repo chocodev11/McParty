@@ -35,29 +35,24 @@ final class MinigameRevealAnimator {
     private static final TextColor WHITE = TextColor.color(255, 255, 255);
     private static final TextColor YELLOW = TextColor.color(255, 255, 85);
 
+    private static final int SPIN_DURATION_TICKS = 100;
+    private static final int INTERVAL_MIN_TICKS = 1;
+    private static final int INTERVAL_MAX_TICKS = 8;
+    private static final int EXPAND_INTERVAL_TICKS = 2;
+    private static final int COLOR_STEPS = 5;
+    private static final int COLOR_INTERVAL_TICKS = 2;
+
     private final JavaPlugin plugin;
     private final MessageService messages;
-    private final int spinDurationTicks;
-    private final int intervalMinTicks;
-    private final int intervalMaxTicks;
-    private final int expandIntervalTicks;
-    private final int colorSteps;
-    private final int colorIntervalTicks;
 
     private BukkitTask task;
     private boolean stopped;
 
     private enum Phase { SPIN, EXPAND, COLOR }
 
-    MinigameRevealAnimator(JavaPlugin plugin, MessageService messages, MinigameRevealSettings settings) {
+    MinigameRevealAnimator(JavaPlugin plugin, MessageService messages) {
         this.plugin = plugin;
         this.messages = messages;
-        this.spinDurationTicks = Math.max(1, settings.durationTicks());
-        this.intervalMinTicks = settings.intervalMinTicks();
-        this.intervalMaxTicks = settings.intervalMaxTicks();
-        this.expandIntervalTicks = settings.expandIntervalTicks();
-        this.colorSteps = settings.colorSteps();
-        this.colorIntervalTicks = settings.colorIntervalTicks();
     }
 
     void start(List<Player> players, Minigame picked, List<String> poolNames, Runnable onDone) {
@@ -88,7 +83,7 @@ final class MinigameRevealAnimator {
 
             if (phase[0] == Phase.SPIN) {
                 spinTick[0]++;
-                if (spinTick[0] >= spinDurationTicks) {
+                if (spinTick[0] >= SPIN_DURATION_TICKS) {
                     phase[0] = Phase.EXPAND;
                     expandStep[0] = 0;
                     expandWait[0] = 0;
@@ -96,14 +91,14 @@ final class MinigameRevealAnimator {
                     return;
                 }
                 if (spinTick[0] >= nextSwapAt[0]) {
-                    double progress = (double) spinTick[0] / spinDurationTicks;
+                    double progress = (double) spinTick[0] / SPIN_DURATION_TICKS;
                     double eased = (1.0 - progress) * (1.0 - progress);
-                    int interval = intervalMinTicks
-                            + (int) Math.round((intervalMaxTicks - intervalMinTicks) * eased);
+                    int interval = INTERVAL_MIN_TICKS
+                            + (int) Math.round((INTERVAL_MAX_TICKS - INTERVAL_MIN_TICKS) * eased);
                     interval = Math.max(1, interval);
 
 
-                    boolean nearEnd = spinTick[0] + interval >= spinDurationTicks || progress >= 0.85;
+                    boolean nearEnd = spinTick[0] + interval >= SPIN_DURATION_TICKS || progress >= 0.85;
                     if (nearEnd) {
                         currentSubtitle[0] = finalName;
                     } else {
@@ -117,7 +112,7 @@ final class MinigameRevealAnimator {
 
             if (phase[0] == Phase.EXPAND) {
                 expandWait[0]++;
-                if (expandWait[0] < expandIntervalTicks) {
+                if (expandWait[0] < EXPAND_INTERVAL_TICKS) {
                     return;
                 }
                 expandWait[0] = 0;
@@ -135,18 +130,18 @@ final class MinigameRevealAnimator {
 
             // COLOR — full name white → yellow on subtitle (few steps, longer pause)
             colorWait[0]++;
-            if (colorWait[0] < colorIntervalTicks) {
+            if (colorWait[0] < COLOR_INTERVAL_TICKS) {
                 return;
             }
             colorWait[0] = 0;
             colorStep[0]++;
-            if (colorStep[0] > colorSteps) {
+            if (colorStep[0] > COLOR_STEPS) {
                 stopTaskOnly();
                 showFinal(audience, picked);
                 onDone.run();
                 return;
             }
-            float t = (float) colorStep[0] / colorSteps;
+            float t = (float) colorStep[0] / COLOR_STEPS;
             showNameFrame(audience, finalName, lerp(WHITE, YELLOW, t));
         }, 1L, 1L);
     }

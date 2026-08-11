@@ -31,11 +31,13 @@ import dev.epicc.party.LobbyMatchmaker;
 import dev.epicc.party.PartyManager;
 import dev.epicc.player.PlayerSessionService;
 import dev.epicc.resourcepack.ResourcePackListener;
+import dev.epicc.resourcepack.FontImageService;
 import dev.epicc.resourcepack.ResourcePackService;
 import dev.epicc.seamless.SeamlessWorldChangeService;
 import dev.epicc.slime.SlimeFallDamageListener;
 import dev.epicc.slime.SlimeWorldService;
 import dev.epicc.store.InMemoryInstanceStore;
+import dev.epicc.tablist.TabListService;
 import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.command.PluginCommand;
@@ -51,6 +53,7 @@ public final class McPartyPlugin extends JavaPlugin {
 
     private PluginConfig config;
     private MessageService messages;
+    private FontImageService fontImages;
     private PartyManager partyManager;
     private BoardSlotRegistry slotRegistry;
     private PathSetupService pathSetupService;
@@ -67,11 +70,13 @@ public final class McPartyPlugin extends JavaPlugin {
     private LobbyMatchmaker lobbyMatchmaker;
     private HologramService holograms;
     private ElytraCourseStore elytraCourses;
+    private TabListService tabList;
 
     @Override
     public void onEnable() {
         config = new PluginConfig(this);
-        messages = new MessageService(this);
+        fontImages = new FontImageService(this);
+        messages = new MessageService(this, fontImages);
         elytraCourses = new ElytraCourseStore(this);
         elytraCourses.load();
         try {
@@ -103,7 +108,7 @@ public final class McPartyPlugin extends JavaPlugin {
                 this, config.seamlessWorldChangeEnabled()
         );
 
-        resourcePackService = new ResourcePackService(this, config, messages);
+        resourcePackService = new ResourcePackService(this, config, messages, fontImages);
         resourcePackService.start();
 
         slimeWorldService = new SlimeWorldService(
@@ -172,8 +177,7 @@ public final class McPartyPlugin extends JavaPlugin {
                 messages,
                 minigameRegistry,
                 slimeWorldService,
-                minigameEvents,
-                config.minigameReveal()
+                minigameEvents
         );
 
 
@@ -197,6 +201,8 @@ public final class McPartyPlugin extends JavaPlugin {
                 this, config, messages, store, sessions, slotRegistry, minigames, slimeWorldService, seamless,
                 dicePresenter, diceHats, pathHopMover, resourcePackService, holograms
         );
+        tabList = new TabListService(this, config, messages, partyManager);
+        partyManager.setTabListRefresh(tabList::refreshAll);
         unloadStaleSlimeWorlds();
         holograms.setScopeVisibility((scopeId, player) -> partyManager.instanceOf(player.getUniqueId())
                 .map(instance -> instance.id().equals(scopeId)).orElse(false));
@@ -226,9 +232,11 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(pathHopMover, this);
         getServer().getPluginManager().registerEvents(new SlimeFallDamageListener(slimeWorldService), this);
         getServer().getPluginManager().registerEvents(new ResourcePackListener(resourcePackService), this);
+        getServer().getPluginManager().registerEvents(tabList, this);
         getServer().getPluginManager().registerEvents(lobbyMatchmaker, this);
         getServer().getPluginManager().registerEvents(new LobbyParkourListener(lobbyParkour, partyManager), this);
         getServer().getPluginManager().registerEvents(holograms, this);
+        tabList.start();
 
         PartyCommand partyCommand = new PartyCommand(partyManager, messages);
         PluginCommand party = getCommand("party");
@@ -290,6 +298,7 @@ public final class McPartyPlugin extends JavaPlugin {
      */
     public void reloadPluginConfig() {
         config.reload();
+        fontImages.reload();
         messages.reload();
 
         diceHats.reconfigure(config.diceHatScale());
@@ -304,7 +313,6 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.hopRiseMaxSeconds(),
                 config.hopFallMaxSeconds()
         );
-        minigames.reconfigure(config.minigameReveal());
         if (holograms != null) {
             holograms.reconfigure(
                     config.hologramsEnabled() && Bukkit.getPluginManager().isPluginEnabled("packetevents"),
@@ -340,6 +348,7 @@ public final class McPartyPlugin extends JavaPlugin {
         registerElytraMinigame(minigames.registry());
 
         resourcePackService.reload();
+        tabList.reload();
         lobbyParkour.refreshConfiguredWorld();
         lobbyMatchmaker.configureFallbackWorld();
         getLogger().info("Config reloaded");
@@ -363,6 +372,9 @@ public final class McPartyPlugin extends JavaPlugin {
 
     @Override
     public void onDisable() {
+        if (tabList != null) {
+            tabList.shutdown();
+        }
         if (holograms != null) {
             holograms.shutdown();
         }

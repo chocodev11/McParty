@@ -31,17 +31,6 @@ minigame:
     - 7
     - 5
     - 3
-  # Title roulette before minigame starts (players stay in place — no teleport)
-  # Spin: subtitle swaps fast then slows (min→max interval), then lands on winner
-  reveal-duration-ticks: 60
-  reveal-interval-min-ticks: 2
-  reveal-interval-max-ticks: 14
-  # After spin: chosen name expands middle → sides on subtitle (ticks per letter step)
-  reveal-expand-interval-ticks: 4
-  # Full name tint white → yellow (few steps, longer pause between)
-  reveal-color-steps: 5
-  reveal-color-interval-ticks: 3
-
   hot_potato:
     slime-template: hot_potato_arena
     bomb-seconds: 20
@@ -134,6 +123,12 @@ resource-pack:
     # Full URL clients use. Required for remote players (not 127.0.0.1).
     # Example: http://play.example.com:8163/mcparty.zip
     public-url: ""
+
+# Component-based tab-list rendering. Text is configured in messages.yml.
+tablist:
+  enabled: true
+  # Dynamic placeholders are refreshed at this interval.
+  refresh-ticks: 20
 
 # Persistent plugin data. The SQLite file is created relative to plugins/McParty.
 # Parkour records use a versioned schema so another JDBC backend can replace it later.

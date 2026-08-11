@@ -1,5 +1,6 @@
 package dev.epicc.config;
 
+import dev.epicc.resourcepack.FontImageService;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.minimessage.MiniMessage;
 import net.kyori.adventure.text.minimessage.tag.resolver.Placeholder;
@@ -26,11 +27,13 @@ public final class MessageService {
     private static final MiniMessage MM = MiniMessage.miniMessage();
 
     private final JavaPlugin plugin;
+    private final FontImageService fontImages;
     private FileConfiguration yaml;
     private String prefixRaw = "";
 
-    public MessageService(JavaPlugin plugin) {
+    public MessageService(JavaPlugin plugin, FontImageService fontImages) {
         this.plugin = plugin;
+        this.fontImages = fontImages;
         reload();
     }
 
@@ -68,6 +71,7 @@ public final class MessageService {
         if (raw.contains("{prefix}")) {
             raw = raw.replace("{prefix}", prefixRaw);
         }
+        raw = fontImages.expandAliases(raw);
         if (resolvers.length == 0) {
             return MM.deserialize(raw);
         }

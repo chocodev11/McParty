@@ -1,0 +1,17 @@
+# Reusable custom textures for chat, action bars, and tab lists.
+#
+# Put each texture under:
+#   plugins/McParty/resourcepack/assets/mcparty/textures/<texture>
+#
+# The codepoint is optional. If omitted, McParty assigns a stable private-use
+# character for the current file order. Explicit codepoints are recommended
+# when using resource-pack mode: external.
+#
+# Aliases are available as %img_id%.
+images:
+  coin:
+    # Replace this example with hud/coin.png when adding your own texture.
+    texture: item/dice_1.png
+    scale: 8
+    y-position: 8
+    codepoint: E000

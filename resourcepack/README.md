@@ -5,6 +5,27 @@ Provides custom item models:
 - `mcparty:dice_1` … `mcparty:dice_6`
 - `mcparty:tnt_multishot` for the TNT Spleef Multishot power-up
 
+## Font images
+
+McParty also generates bitmap font glyphs from `plugins/McParty/font-images.yml`.
+Place a texture under `assets/mcparty/textures/` in the local pack source and
+define it by id:
+
+```yaml
+images:
+  coin:
+    texture: hud/coin.png
+    scale: 8
+    y-position: 8
+    codepoint: E000
+```
+
+The same image can be used in `messages.yml` as `%img_coin%`. This works in
+chat, action bars, and the configurable tab list.
+Local mode generates `assets/mcparty/font/images.json` before each ZIP is
+created. External mode requires the hosted ZIP to contain a matching generated
+font file.
+
 Each id is **one cube, one texture** (all 6 sides use that face art). The server
 swaps models while spinning (`DiceItems.face` → `item_model` `mcparty:dice_N`).
 Not a single multi-face die mesh.

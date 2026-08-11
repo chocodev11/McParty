@@ -1,0 +1,285 @@
+package dev.epicc.resourcepack;
+
+import org.bukkit.configuration.ConfigurationSection;
+import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.plugin.java.JavaPlugin;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/** Loads font-image aliases and generates their bitmap font resource. */
+public final class FontImageService {
+
+    private static final int PRIVATE_USE_START = 0xE000;
+    private static final int PRIVATE_USE_END = 0xF8FF;
+    private static final Pattern PLACEHOLDER_ALIAS = Pattern.compile("%img_([a-z0-9_-]+)%");
+    private static final Pattern VALID_ID = Pattern.compile("[a-z0-9_-]{1,64}");
+
+    private final JavaPlugin plugin;
+    private final Map<String, FontImageDefinition> images = new LinkedHashMap<>();
+    private final Set<String> warnedAliases = new LinkedHashSet<>();
+
+    public FontImageService(JavaPlugin plugin) {
+        this.plugin = plugin;
+        reload();
+    }
+
+    public void reload() {
+        FileConfiguration yaml = loadConfiguration();
+        Map<String, FontImageDefinition> loaded = new LinkedHashMap<>();
+        Set<Integer> usedCodepoints = new LinkedHashSet<>();
+        warnedAliases.clear();
+
+        ConfigurationSection section = yaml.getConfigurationSection("images");
+        if (section == null) {
+            images.clear();
+            return;
+        }
+
+        for (String rawId : section.getKeys(false)) {
+            String id = rawId.toLowerCase(Locale.ROOT);
+            if (!VALID_ID.matcher(id).matches()) {
+                warn("Ignoring font image with invalid id '" + rawId + "'");
+                continue;
+            }
+            if (loaded.containsKey(id)) {
+                warn("Ignoring duplicate font image id '" + id + "'");
+                continue;
+            }
+
+            ConfigurationSection image = section.getConfigurationSection(rawId);
+            if (image == null) {
+                warn("Ignoring font image '" + id + "': expected a configuration section");
+                continue;
+            }
+
+            String texture = image.getString("texture", "");
+            if (!isSafeTexturePath(texture)) {
+                warn("Ignoring font image '" + id + "': texture path must be relative and cannot contain '..'");
+                continue;
+            }
+
+            int scale = image.getInt("scale", 8);
+            int yPosition = image.getInt("y-position", scale);
+            if (scale < 1 || scale > 256) {
+                warn("Ignoring font image '" + id + "': scale must be between 1 and 256");
+                continue;
+            }
+            if (yPosition < -256 || yPosition > 256 || yPosition > scale) {
+                warn("Ignoring font image '" + id + "': y-position must be between -256 and scale");
+                continue;
+            }
+
+            String rawCodepoint = image.getString("codepoint");
+            if (rawCodepoint == null || rawCodepoint.isBlank()) {
+                continue;
+            }
+            Integer codepoint = parseCodepoint(rawCodepoint);
+            if (codepoint == null || !isPrivateUse(codepoint)) {
+                warn("Ignoring font image '" + id + "': codepoint must be a BMP private-use value between E000 and F8FF");
+                continue;
+            }
+            if (!usedCodepoints.add(codepoint)) {
+                warn("Ignoring font image '" + id + "': duplicate codepoint " + formatCodepoint(codepoint));
+                continue;
+            }
+            loaded.put(id, new FontImageDefinition(id, texture, codepoint, scale, yPosition));
+        }
+
+        int nextCodepoint = PRIVATE_USE_START;
+        for (String rawId : section.getKeys(false)) {
+            String id = rawId.toLowerCase(Locale.ROOT);
+            if (!VALID_ID.matcher(id).matches() || loaded.containsKey(id)) {
+                continue;
+            }
+            ConfigurationSection image = section.getConfigurationSection(rawId);
+            if (image == null) {
+                continue;
+            }
+            String rawCodepoint = image.getString("codepoint");
+            if (rawCodepoint != null && !rawCodepoint.isBlank()) {
+                continue;
+            }
+            String texture = image.getString("texture", "");
+            int scale = image.getInt("scale", 8);
+            int yPosition = image.getInt("y-position", scale);
+            if (!isSafeTexturePath(texture) || scale < 1 || scale > 256
+                    || yPosition < -256 || yPosition > 256 || yPosition > scale) {
+                continue;
+            }
+
+            while (nextCodepoint <= PRIVATE_USE_END && usedCodepoints.contains(nextCodepoint)) {
+                nextCodepoint++;
+            }
+            if (nextCodepoint > PRIVATE_USE_END) {
+                warn("Ignoring font image '" + id + "': no private-use codepoints remain");
+                continue;
+            }
+            int codepoint = nextCodepoint++;
+            usedCodepoints.add(codepoint);
+            loaded.put(id, new FontImageDefinition(id, texture, codepoint, scale, yPosition));
+        }
+
+        images.clear();
+        images.putAll(loaded);
+    }
+
+    public String expandAliases(String raw) {
+        if (raw == null || raw.isEmpty() || images.isEmpty()) {
+            return raw;
+        }
+        return replaceKnownAliases(raw, PLACEHOLDER_ALIAS);
+    }
+
+    /** Generate the dedicated font file inside the runtime local resource-pack source. */
+    public void prepareResourcePack(Path sourceDir) throws IOException {
+        Path fontFile = sourceDir.resolve("assets/mcparty/font/images.json");
+        Files.createDirectories(fontFile.getParent());
+
+        StringBuilder json = new StringBuilder("{\n  \"providers\": [\n");
+        int written = 0;
+        for (FontImageDefinition image : images.values()) {
+            Path texture = sourceDir.resolve("assets/mcparty/textures").resolve(image.texture()).normalize();
+            if (!texture.startsWith(sourceDir.resolve("assets/mcparty/textures").normalize())
+                    || !Files.isRegularFile(texture)) {
+                warn("Font image '" + image.id() + "' texture is missing from the local pack: " + image.texture());
+                continue;
+            }
+            if (written++ > 0) {
+                json.append(",\n");
+            }
+            json.append("    {\n")
+                    .append("      \"type\": \"bitmap\",\n")
+                    .append("      \"file\": \"mcparty:")
+                    .append(jsonEscape(image.texture()))
+                    .append("\",\n")
+                    .append("      \"ascent\": ")
+                    .append(image.yPosition())
+                    .append(",\n")
+                    .append("      \"height\": ")
+                    .append(image.scale())
+                    .append(",\n")
+                    .append("      \"chars\": [\"")
+                    .append(unicodeEscape(image.codepoint()))
+                    .append("\"]\n")
+                    .append("    }");
+        }
+        json.append("\n  ]\n}\n");
+
+        Files.writeString(fontFile, json, StandardCharsets.UTF_8);
+    }
+
+    public void warnExternalPackRequirement() {
+        if (!images.isEmpty()) {
+            warn("External resource pack must contain assets/mcparty/font/images.json and matching font-image codepoints");
+        }
+    }
+
+    private FileConfiguration loadConfiguration() {
+        FileConfiguration yaml;
+        Path file = plugin.getDataFolder().toPath().resolve("font-images.yml");
+        if (!Files.isRegularFile(file)) {
+            plugin.saveResource("font-images.yml", false);
+        }
+        yaml = YamlConfiguration.loadConfiguration(file.toFile());
+        try (InputStream in = plugin.getResource("font-images.yml")) {
+            if (in != null) {
+                FileConfiguration defaults = YamlConfiguration.loadConfiguration(
+                        new InputStreamReader(in, StandardCharsets.UTF_8)
+                );
+                yaml.setDefaults(defaults);
+            }
+        } catch (IOException exception) {
+            warn("Could not load font-images.yml defaults: " + exception.getMessage());
+        }
+        return yaml;
+    }
+
+    private String replaceKnownAliases(String raw, Pattern pattern) {
+        Matcher matcher = pattern.matcher(raw);
+        StringBuffer result = new StringBuffer();
+        while (matcher.find()) {
+            String id = matcher.group(1).toLowerCase(Locale.ROOT);
+            if (!images.containsKey(id)) {
+                warnUnknownAlias(id);
+                continue;
+            }
+            FontImageDefinition image = images.get(id);
+            String replacement = "<font:mcparty:images>" + image.glyph() + "</font>";
+            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(result);
+        return result.toString();
+    }
+
+    private static Integer parseCodepoint(String value) {
+        String normalized = value.trim().toUpperCase(Locale.ROOT);
+        try {
+            if (normalized.startsWith("U+")) {
+                return Integer.parseInt(normalized.substring(2), 16);
+            }
+            if (normalized.startsWith("0X")) {
+                return Integer.parseInt(normalized.substring(2), 16);
+            }
+            boolean decimal = normalized.chars().allMatch(Character::isDigit);
+            return Integer.parseInt(normalized, decimal ? 10 : 16);
+        } catch (NumberFormatException exception) {
+            return null;
+        }
+    }
+
+    private static boolean isPrivateUse(int codepoint) {
+        return codepoint >= PRIVATE_USE_START && codepoint <= PRIVATE_USE_END;
+    }
+
+    private static String formatCodepoint(int codepoint) {
+        return String.format(Locale.ROOT, "U+%04X", codepoint);
+    }
+
+    private static boolean isSafeTexturePath(String texture) {
+        if (texture == null || texture.isBlank()) {
+            return false;
+        }
+        String normalized = texture.replace('\\', '/');
+        try {
+            Path path = Path.of(normalized).normalize();
+            return !path.isAbsolute()
+                    && !normalized.startsWith("/")
+                    && !normalized.contains(":")
+                    && !path.startsWith("..")
+                    && !normalized.contains("//");
+        } catch (RuntimeException exception) {
+            return false;
+        }
+    }
+
+    private static String unicodeEscape(int codepoint) {
+        return String.format(Locale.ROOT, "\\u%04X", codepoint);
+    }
+
+    private static String jsonEscape(String value) {
+        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+    }
+
+    private void warn(String message) {
+        plugin.getLogger().warning(message);
+    }
+
+    private void warnUnknownAlias(String id) {
+        if (warnedAliases.add(id)) {
+            warn("Unknown font image alias '" + id + "'");
+        }
+    }
+}
