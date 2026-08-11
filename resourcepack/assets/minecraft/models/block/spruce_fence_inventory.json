@@ -1,0 +1,7 @@
+{
+    "parent": "block/whimscape/template_fence_inventory",
+    "textures": {
+        "texture": "block/spruce_fence",
+        "particle": "block/spruce_planks"
+    }
+}

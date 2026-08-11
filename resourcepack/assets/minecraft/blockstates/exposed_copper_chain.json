@@ -1,0 +1,14 @@
+{
+  "variants": {
+    "axis=x": {
+      "model": "minecraft:block/exposed_copper_chain_horizontal",
+      "y": 90
+    },
+    "axis=y": {
+      "model": "minecraft:block/exposed_copper_chain"
+    },
+    "axis=z": {
+      "model": "minecraft:block/exposed_copper_chain_horizontal"
+    }
+  }
+}

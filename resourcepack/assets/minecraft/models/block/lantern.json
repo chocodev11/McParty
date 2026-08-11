@@ -1,0 +1,6 @@
+{
+	"parent": "block/whimscape/template_lantern",
+	"textures": {
+		"lantern": "block/lantern"
+	}
+}

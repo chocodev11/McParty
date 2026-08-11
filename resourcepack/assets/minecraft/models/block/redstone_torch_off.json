@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:block/whimscape/template_torch_unlit",
+  "textures": {
+    "torch": "minecraft:block/redstone_torch_off"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:block/whimscape/template_chain_horizontal",
+  "textures": {
+    "texture": "minecraft:block/weathered_copper_chain"
+  }
+}

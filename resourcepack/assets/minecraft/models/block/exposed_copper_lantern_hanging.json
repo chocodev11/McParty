@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:block/whimscape/template_hanging_lantern",
+  "textures": {
+    "lantern": "minecraft:block/exposed_copper_lantern"
+  }
+}

@@ -1,0 +1,65 @@
+{
+  "customGroups": [
+    {
+      "name": "whimscape_lanterns",
+      "items": [
+        "minecraft:lantern",
+        "minecraft:soul_lantern",
+        "minecraft:copper_lantern",
+        "minecraft:exposed_copper_lantern",
+        "minecraft:weathered_copper_lantern",
+        "minecraft:oxidized_copper_lantern",
+        "minecraft:waxed_copper_lantern",
+        "minecraft:waxed_exposed_copper_lantern",
+        "minecraft:waxed_weathered_copper_lantern",
+        "minecraft:waxed_oxidized_copper_lantern"
+      ]
+    }
+  ],
+
+  "item": {
+    "whimscape_lanterns": {
+      "kind": "LANTERN",
+      "armKind": "LANTERN",
+      "physics": [
+        {
+          "name": "FULL_PENDULUM",
+          "limitDeg": 55.0,
+          "force": 0.1,
+          "speed": 1.0,
+          "cameraSens": 0.25,
+          "gravity": 50.0
+        }
+      ],
+      "disable_sprint_lateral_tilt": true,
+      "transforms": {
+        "right": {
+          "scale": 1.25,
+          "offX": -0.030303001,
+          "offY": -0.5,
+          "offZ": 0.0,
+          "rotX": 0.0,
+          "rotY": 30.0,
+          "rotZ": -90.0,
+          "pivotX": -0.03977275,
+          "pivotY": 0.07196975,
+          "pivotZ": 0.0,
+          "physics": "FULL_PENDULUM"
+        },
+        "left": {
+          "scale": 1.25,
+          "offX": 0.030303001,
+          "offY": -0.5,
+          "offZ": 0.0,
+          "rotX": 0.0,
+          "rotY": -30.0,
+          "rotZ": 90.0,
+          "pivotX": 0.03977275,
+          "pivotY": 0.07196975,
+          "pivotZ": 0.0,
+          "physics": "FULL_PENDULUM"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+    "parent": "item/torch",
+    "textures": {
+        "layer0": "item/copper_torch"
+    }
+}

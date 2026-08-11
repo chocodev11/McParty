@@ -1,0 +1,153 @@
+{
+	"format_version": "1.9.0",
+	"credit": "Made with Blockbench",
+	"parent": "block/block",
+	"textures": {
+		"tray": "farmersdelight:block/tray",
+		"tray_bottom": "farmersdelight:block/tray_bottom",
+		"particle": "farmersdelight:block/honey_glazed_ham",
+		"ham": "farmersdelight:block/honey_glazed_ham",
+		"details": "farmersdelight:block/honey_glazed_ham_details",
+		"side_dish": "farmersdelight:block/honey_glazed_ham_side_dish",
+		"leftovers": "farmersdelight:block/honey_glazed_ham_leftovers"
+	},
+	"elements": [
+		{
+			"name": "base",
+			"from": [1, 0, 1],
+			"to": [15, 1, 15],
+			"faces": {
+				"north": {"uv": [1, 15, 15, 16], "texture": "#tray"},
+				"east": {"uv": [1, 15, 15, 16], "texture": "#tray"},
+				"south": {"uv": [1, 15, 15, 16], "texture": "#tray"},
+				"west": {"uv": [1, 15, 15, 16], "texture": "#tray"},
+				"up": {"uv": [1, 1, 15, 15], "texture": "#leftovers"},
+				"down": {"uv": [1, 1, 15, 15], "texture": "#tray_bottom", "cullface": "down"}
+			}
+		},
+		{
+			"name": "north_edge",
+			"from": [2, 1, 1],
+			"to": [14, 2, 2],
+			"faces": {
+				"north": {"uv": [2, 14, 14, 15], "texture": "#tray"},
+				"south": {"uv": [2, 0, 14, 1], "texture": "#tray_bottom"},
+				"up": {"uv": [2, 0, 14, 1], "texture": "#tray"}
+			}
+		},
+		{
+			"name": "west_edge",
+			"from": [1, 1, 1],
+			"to": [2, 2, 7],
+			"faces": {
+				"north": {"uv": [14, 14, 15, 15], "texture": "#tray"},
+				"east": {"uv": [0, 1, 1, 7], "rotation": 90, "texture": "#tray_bottom"},
+				"west": {"uv": [1, 14, 7, 15], "texture": "#tray"},
+				"up": {"uv": [1, 0, 2, 6], "texture": "#tray"}
+			}
+		},
+		{
+			"name": "east_edge",
+			"from": [14, 1, 1],
+			"to": [15, 2, 7],
+			"faces": {
+				"north": {"uv": [1, 14, 2, 15], "texture": "#tray"},
+				"east": {"uv": [9, 14, 15, 15], "texture": "#tray"},
+				"south": {"uv": [14, 14, 15, 15], "texture": "#tray"},
+				"west": {"uv": [15, 7, 16, 1], "rotation": 90, "texture": "#tray_bottom"},
+				"up": {"uv": [14, 0, 15, 6], "texture": "#tray"}
+			}
+		},
+		{
+			"name": "meat",
+			"from": [3.99, 0.99, 5.99],
+			"to": [12.01, 9.01, 10.01],
+			"faces": {
+				"north": {"uv": [0, 0, 8, 8], "texture": "#ham"},
+				"east": {"uv": [8, 8, 4, 16], "texture": "#ham"},
+				"south": {"uv": [8, 8, 16, 16], "texture": "#ham"},
+				"west": {"uv": [4, 8, 8, 16], "texture": "#ham"},
+				"up": {"uv": [8, 4, 16, 8], "texture": "#ham"}
+			}
+		},
+		{
+			"name": "tail",
+			"from": [5.99, 1.99, 9.99],
+			"to": [10.01, 6.01, 13.01],
+			"faces": {
+				"east": {"uv": [13, 11, 16, 15], "texture": "#details"},
+				"south": {"uv": [9, 11, 13, 15], "texture": "#details"},
+				"west": {"uv": [6, 11, 9, 15], "texture": "#details"},
+				"up": {"uv": [9, 8, 13, 11], "texture": "#details"}
+			}
+		},
+		{
+			"name": "bone",
+			"from": [7, 3, 13],
+			"to": [9, 5, 16],
+			"faces": {
+				"east": {"uv": [6, 2, 3, 4], "texture": "#details"},
+				"south": {"uv": [0, 0, 2, 2], "texture": "#details", "cullface": "south"},
+				"west": {"uv": [3, 0, 6, 2], "texture": "#details"},
+				"up": {"uv": [0, 3, 2, 6], "texture": "#details"},
+				"down": {"uv": [2, 7, 0, 10], "rotation": 180, "texture": "#details"}
+			}
+		},
+		{
+			"name": "full_berry",
+			"from": [12, 2, 9],
+			"to": [14, 3, 11],
+			"faces": {
+				"north": {"uv": [4, 14, 6, 15], "texture": "#details"},
+				"east": {"uv": [2, 14, 4, 15], "texture": "#details"},
+				"south": {"uv": [0, 14, 2, 15], "texture": "#details"},
+				"west": {"uv": [4, 14, 6, 15], "texture": "#details"},
+				"up": {"uv": [0, 12, 2, 14], "rotation": 90, "texture": "#details"}
+			}
+		},
+		{
+			"name": "side_dish",
+			"from": [1, 1, 7],
+			"to": [15, 2, 15],
+			"faces": {
+				"north": {"uv": [15, 7, 1, 8], "texture": "#side_dish"},
+				"east": {"uv": [1, 14, 12, 15], "texture": "#tray"},
+				"south": {"uv": [1, 14, 15, 15], "texture": "#tray"},
+				"west": {"uv": [4, 14, 15, 15], "texture": "#tray"},
+				"up": {"uv": [1, 7, 15, 15], "texture": "#side_dish"}
+			}
+		}
+	],
+	"groups": [
+		{
+			"name": "stage2",
+			"origin": [8, 8, 8],
+			"scope": 0,
+			"color": 0,
+			"children": [
+				{
+					"name": "tray",
+					"origin": [1, 0, 1],
+					"scope": 0,
+					"color": 0,
+					"children": [0, 1, 2, 3]
+				},
+				{
+					"name": "ham",
+					"origin": [0, 0, 0],
+					"scope": 0,
+					"color": 0,
+					"children": [4, 5, 6]
+				},
+				{
+					"name": "east_berries",
+					"origin": [29, 2, -6],
+					"scope": 0,
+					"color": 0,
+					"children": [7]
+				},
+				8
+			]
+		}
+	]
+}

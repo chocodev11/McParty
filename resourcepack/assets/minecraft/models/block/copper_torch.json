@@ -1,0 +1,6 @@
+{
+  "parent": "minecraft:block/whimscape/template_torch",
+  "textures": {
+    "torch": "minecraft:block/copper_torch"
+  }
+}

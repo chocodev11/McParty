@@ -1,0 +1,7 @@
+{
+  "parent": "minecraft:block/whimscape/template_bars_post",
+  "textures": {
+    "bars": "minecraft:block/oxidized_copper_bars",
+    "particle": "minecraft:block/oxidized_copper_bars"
+  }
+}

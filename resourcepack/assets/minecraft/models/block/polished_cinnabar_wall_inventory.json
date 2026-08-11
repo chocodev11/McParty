@@ -1,0 +1,8 @@
+{
+  "parent": "minecraft:block/wall_inventory_custom",
+  "textures": {
+    "wall": "minecraft:block/polished_cinnabar",
+    "wall_top": "minecraft:block/polished_cinnabar_wall_top",
+    "post": "minecraft:block/polished_cinnabar_wall_post"
+  }
+}

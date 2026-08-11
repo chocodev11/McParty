@@ -1,0 +1,7 @@
+{
+	"parent": "minecraft:item/template_bars_held",
+	"textures": {
+		"bars": "block/copper_bars",
+		"particle": "block/copper_bars"
+	}
+}

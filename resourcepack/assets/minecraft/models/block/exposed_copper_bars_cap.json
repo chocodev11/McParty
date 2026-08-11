@@ -1,0 +1,7 @@
+{
+  "parent": "minecraft:block/whimscape/template_bars_cap",
+  "textures": {
+    "bars": "minecraft:block/exposed_copper_bars",
+    "particle": "minecraft:block/exposed_copper_bars"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "texture": {
+      "alpha_cutoff_bias": -0.2,
+      "mipmap_strategy": "cutout"
+  }
+}

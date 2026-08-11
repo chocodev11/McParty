@@ -1,0 +1,7 @@
+{
+  "parent": "minecraft:block/whimscape/template_bars_post_ends",
+  "textures": {
+    "bars": "minecraft:block/weathered_copper_bars",
+    "particle": "minecraft:block/weathered_copper_bars"
+  }
+}
