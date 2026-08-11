@@ -16,23 +16,26 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.logging.Level;
 
 /**
- * Suppresses the client "Loading terrain…" screen on same-environment world changes
+ * Suppresses the client "Loading terrain…" screen on same-environment world
+ * changes
  * by cancelling the outbound RESPAWN packet (PacketEvents).
  * <p>
- * Opt-in only: call {@link #teleport(Player, Location)} for a world change McParty owns.
- * Compatible transitions show the resource-pack overlay before the one-shot mark is sent.
+ * Opt-in only: call {@link #teleport(Player, Location)} for a world change
+ * McParty owns.
+ * Compatible transitions show the resource-pack overlay before the one-shot
+ * mark is sent.
  */
 public final class SeamlessWorldChangeService {
 
     /** Ticks needed to reach full opacity before the world change. */
     public static final long TELEPORT_DELAY_TICKS = 21L;
-    /** Total title transition time: fade-in, hold, and fade-out. */
-    public static final long TRANSITION_DURATION_TICKS = 45L;
+    /** Total title transition time: fade-in followed immediately by fade-out. */
+    public static final long TRANSITION_DURATION_TICKS = 40L;
 
     private static final int MARK_TIMEOUT_TICKS = 5;
-    private static final Duration FADE_IN = Duration.ofSeconds(1);
-    private static final Duration HOLD = Duration.ofMillis(250);
-    private static final Duration FADE_OUT = Duration.ofSeconds(1);
+    private static final Duration FADE_IN = Duration.ofMillis(750);
+    private static final Duration HOLD = Duration.ZERO;
+    private static final Duration FADE_OUT = Duration.ofMillis(750);
 
     private final JavaPlugin plugin;
     private final FontImageService fontImages;
@@ -46,8 +49,7 @@ public final class SeamlessWorldChangeService {
         this.active = enabled && tryRegisterPacketListener();
         if (enabled && !active) {
             plugin.getLogger().warning(
-                    "seamless-world-change enabled but PacketEvents is missing or failed to hook — dirt screen stays"
-            );
+                    "seamless-world-change enabled but PacketEvents is missing or failed to hook — dirt screen stays");
         } else if (active) {
             plugin.getLogger().info("Seamless world-change active (PacketEvents RESPAWN cancel)");
         }
@@ -58,10 +60,12 @@ public final class SeamlessWorldChangeService {
     }
 
     /**
-     * Show the transition overlay, then teleport with a seamless same-env world change when possible.
+     * Show the transition overlay, then teleport with a seamless same-env world
+     * change when possible.
      */
     public void teleport(Player player, Location to) {
-        teleport(player, to, () -> { });
+        teleport(player, to, () -> {
+        });
     }
 
     public void teleport(Player player, Location to, Runnable afterTeleport) {
@@ -156,8 +160,7 @@ public final class SeamlessWorldChangeService {
         return Title.title(
                 fontImages.image("background"),
                 fontImages.image("logo"),
-                Title.Times.times(FADE_IN, HOLD, FADE_OUT)
-        );
+                Title.Times.times(FADE_IN, HOLD, FADE_OUT));
     }
 
     private void cancelPendingTeleport(Player player) {
@@ -176,7 +179,8 @@ public final class SeamlessWorldChangeService {
         if (from.getEnvironment() != to.getEnvironment()) {
             return false;
         }
-        // Different vertical ranges desync client placement without a real dimension reset
+        // Different vertical ranges desync client placement without a real dimension
+        // reset
         return from.getMinHeight() == to.getMinHeight()
                 && from.getMaxHeight() == to.getMaxHeight();
     }
@@ -195,5 +199,6 @@ public final class SeamlessWorldChangeService {
         }
     }
 
-    private record PendingTeleport(long token, Location destination, Runnable afterTeleport) {}
+    private record PendingTeleport(long token, Location destination, Runnable afterTeleport) {
+    }
 }
