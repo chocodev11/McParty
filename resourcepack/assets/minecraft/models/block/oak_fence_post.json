@@ -1,7 +1,0 @@
-{
-    "parent": "block/whimscape/template_fence_post",
-	"textures": {
-		"particle": "block/oak_planks",
-        "texture": "block/oak_fence"
-    }
-}

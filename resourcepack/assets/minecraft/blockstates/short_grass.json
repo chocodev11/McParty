@@ -1,8 +1,0 @@
-{
-  "variants": {
-    "": [
-	  { "model": "minecraft:block/short_grass", "weight": 2 },
-	  { "model": "minecraft:block/short_grass_alt_1", "weight": 1 }
-	]
-  }
-}

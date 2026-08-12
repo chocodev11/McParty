@@ -1,7 +1,0 @@
-{
-    "parent": "block/whimscape/template_fence_gate_wall_open",
-    "textures": {
-		"particle": "block/mangrove_planks",
-        "texture": "block/mangrove_fence"
-    }
-}

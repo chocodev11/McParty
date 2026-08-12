@@ -1,8 +1,0 @@
-{
-	"parent": "block/whimscape/template_spike_middle",
-	"textures": {
-		"spike": "block/pointed_dripstone_model_middle",
-		"spike_top": "block/pointed_dripstone_model_middle_top",
-		"particle": "block/dripstone_block"
-	}
-}

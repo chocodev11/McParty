@@ -1,7 +1,0 @@
-{
-    "parent": "block/whimscape/template_fence_gate_wall",
-    "textures": {
-		"particle": "block/acacia_planks",
-        "texture": "block/acacia_fence"
-    }
-}

@@ -1,9 +1,0 @@
-{
-	"credit": "Made with Blockbench",
-	"parent": "block/template_bushy_leaves",
-	"textures": {
-		"all": "block/birch_leaves_alt_2",
-		"bush_bottom": "block/birch_leaves_bush_bottom_alt_2",
-		"bush_top": "block/birch_leaves_bush_top_alt_2"
-	}
-}

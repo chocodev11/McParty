@@ -1,9 +1,0 @@
-{
-	"credit": "Made with Blockbench",
-	"parent": "block/template_bushy_leaves_untinted",
-	"textures": {
-		"all": "block/azalea_leaves",
-		"bush_bottom": "block/azalea_leaves_bush_bottom",
-		"bush_top": "block/azalea_leaves_bush_top"
-	}
-}

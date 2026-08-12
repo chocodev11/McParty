@@ -1,8 +1,0 @@
-{
-    "parent": "item/template_outlined_block",
-    "textures": {
-        "particle": "block/stone",
-        "block": "block/stone",
-        "outline": "block/infested_block_outline"
-    }
-}

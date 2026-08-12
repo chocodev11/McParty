@@ -1,7 +1,0 @@
-{
-	"parent": "block/whimscape/template_spike_up_base",
-	"textures": {
-		"spike": "block/pointed_dripstone_model_base",
-		"particle": "block/dripstone_block"
-	}
-}

@@ -1,7 +1,0 @@
-{
-  "parent": "minecraft:block/door_bottom_left_open_custom",
-  "textures": {
-    "bottom": "minecraft:block/mangrove_door_bottom",
-    "bottom_right": "minecraft:block/mangrove_door_bottom_right"
-  }
-}

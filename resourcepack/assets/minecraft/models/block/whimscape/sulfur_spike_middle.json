@@ -1,8 +1,0 @@
-{
-	"parent": "block/whimscape/template_spike_middle",
-	"textures": {
-		"spike": "block/sulfur",
-		"spike_top": "block/sulfur",
-		"particle": "block/sulfur"
-	}
-}

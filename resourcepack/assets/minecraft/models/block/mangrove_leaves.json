@@ -1,9 +1,0 @@
-{
-	"credit": "Made with Blockbench",
-	"parent": "block/template_bushy_leaves",
-	"textures": {
-		"all": "block/mangrove_leaves",
-		"bush_bottom": "block/mangrove_leaves_bush_bottom",
-		"bush_top": "block/mangrove_leaves_bush_top"
-	}
-}

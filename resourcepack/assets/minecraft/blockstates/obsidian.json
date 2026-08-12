@@ -1,8 +1,0 @@
-{
-  "variants": {
-    "": [
-      { "model": "minecraft:block/obsidian" },
-      { "model": "minecraft:block/obsidian_alt_1" }
-    ]
-  }
-}

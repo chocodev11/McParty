@@ -1,8 +1,0 @@
-{
-  "parent": "minecraft:block/wall_inventory_custom",
-  "textures": {
-    "wall": "minecraft:block/sulfur_bricks",
-    "wall_top": "minecraft:block/polished_sulfur_wall_top",
-    "post": "minecraft:block/sulfur_brick_wall_post"
-  }
-}

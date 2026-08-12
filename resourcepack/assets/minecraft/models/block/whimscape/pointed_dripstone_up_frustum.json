@@ -1,7 +1,0 @@
-{
-	"parent": "block/whimscape/template_spike_up_frustum",
-	"textures": {
-		"spike": "block/pointed_dripstone_model_frustum",
-		"particle": "block/dripstone_block"
-	}
-}
