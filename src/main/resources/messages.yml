@@ -5,11 +5,6 @@
 # Nội dung mặc định là màu trắng; chỉ dùng màu cho các thành phần thực sự cần nhấn.
 prefix: "<dark_gray>[</dark_gray><#fcca32>McParty</#fcca32><dark_gray>]</dark_gray> <white>"
 
-tablist:
-  header: "%img_coin% <#fcca32><bold>McParty</bold></#fcca32>"
-  footer: "<gray>Online: <online></gray>"
-  player-name: "<#fcca32><player></#fcca32> <gray>| <coins> coins</gray>"
-
 general:
   players-only: "{prefix}Chỉ người chơi mới dùng được lệnh này."
   players-only-except-reload: "{prefix}Chỉ người chơi mới dùng được lệnh này (trừ /partyadmin reload)."

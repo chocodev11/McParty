@@ -1,7 +1,6 @@
 # Reusable custom textures for chat, action bars, and tab lists.
 #
-# Put each texture under:
-#   plugins/McParty/resourcepack/assets/mcparty/textures/<texture>
+# Textures are read from the resource pack bundled in the McParty plugin JAR.
 #
 # The codepoint is optional. If omitted, McParty assigns a stable private-use
 # character for the current file order. Explicit codepoints are recommended
@@ -47,9 +46,9 @@ images:
     codepoint: E007
   logo:
     texture: misc/logo.png
-    scale: 128
+    scale: 112
     # The vanilla subtitle baseline is 5 pixels below screen center.
-    y-position: 69
+    y-position: 65
     # Compensate for transparent left padding counted by bitmap-font glyph width.
     x-offset: -21
     codepoint: E008

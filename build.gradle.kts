@@ -62,7 +62,7 @@ tasks {
         filesMatching("plugin.yml") {
             expand(props)
         }
-        // Bundle dice resource pack for local hosting / first-run extract
+        // Bundle the resource pack in the plugin JAR for local hosting.
         from("resourcepack") {
             into("resourcepack")
             exclude("README.md")

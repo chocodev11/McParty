@@ -68,6 +68,13 @@ public final class MessageService {
         if (raw == null || raw.isEmpty()) {
             return Component.text(path);
         }
+        return render(raw, resolvers);
+    }
+
+    public Component render(String raw, TagResolver... resolvers) {
+        if (raw == null || raw.isEmpty()) {
+            return Component.empty();
+        }
         if (raw.contains("{prefix}")) {
             raw = raw.replace("{prefix}", prefixRaw);
         }

@@ -184,11 +184,8 @@ public final class FontImageService {
         return Component.text(renderedGlyph(image)).font(FONT_KEY);
     }
 
-    /** Generate the dedicated font file inside the runtime local resource-pack source. */
-    public void prepareResourcePack(Path sourceDir) throws IOException {
-        Path fontFile = sourceDir.resolve("assets/mcparty/font/images.json");
-        Files.createDirectories(fontFile.getParent());
-
+    /** Generate the dedicated font file for the bundled local resource pack. */
+    public String resourcePackFontJson(Set<String> packEntries) {
         StringBuilder json = new StringBuilder("{\n  \"providers\": [\n");
         int written = 0;
         for (FontImageDefinition image : images.values()) {
@@ -208,10 +205,9 @@ public final class FontImageService {
                     .append("    }");
         }
         for (FontImageDefinition image : images.values()) {
-            Path texture = sourceDir.resolve("assets/mcparty/textures").resolve(image.texture()).normalize();
-            if (!texture.startsWith(sourceDir.resolve("assets/mcparty/textures").normalize())
-                    || !Files.isRegularFile(texture)) {
-                warn("Font image '" + image.id() + "' texture is missing from the local pack: " + image.texture());
+            String texturePath = "assets/mcparty/textures/" + image.texture().replace('\\', '/');
+            if (!packEntries.contains(texturePath)) {
+                warn("Font image '" + image.id() + "' texture is missing from the bundled pack: " + image.texture());
                 continue;
             }
             if (written++ > 0) {
@@ -234,8 +230,7 @@ public final class FontImageService {
                     .append("    }");
         }
         json.append("\n  ]\n}\n");
-
-        Files.writeString(fontFile, json, StandardCharsets.UTF_8);
+        return json.toString();
     }
 
     public void warnExternalPackRequirement() {

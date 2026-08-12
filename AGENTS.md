@@ -113,7 +113,7 @@ src/main/resources/
   plugin.yml
   config.yml
 
-resourcepack/                 # Dice models (bundled into jar; extracted for local mode)
+resourcepack/                 # Dice models bundled into the plugin JAR
 datapack/                     # `mcparty:mcparty_sky` biome (NOT bundled; copied into the level world by hand)
 ```
 
@@ -223,8 +223,8 @@ WAITING → STARTING → PLAYING → ENDING → CLEANUP
 
 **Resource pack** (`resourcepack/ResourcePackService`)
 
-- Config: `resource-pack.*` — `mode: local` (zip data-folder pack + JDK `HttpServer`) or `mode: external` (URL + SHA-1).
-- Bundled pack ships in the jar under `resourcepack/`; extracted to `plugins/McParty/resourcepack/` if missing.
+- Config: `resource-pack.*` — `mode: local` (zip the JAR-bundled pack + JDK `HttpServer`) or `mode: external` (URL + SHA-1).
+- Bundled pack ships in the jar under `resourcepack/`; local mode writes its ZIP to `plugins/McParty/output/` without a deployed source directory.
 - Local: zip written to `plugins/McParty/output/<zip-name>`; SHA-1 of zip; serve `GET /mcparty.zip`; set `local.public-url` to a client-reachable URL (open firewall port).
 - `/partyadmin reload` reloads `config.yml` + `messages.yml`, re-applies party/board/minigame settings, and restarts the resource pack (re-zip + HTTP). Slime loader and seamless PE hook stay as at enable (server restart to change those).
 - Prompt via `Player#setResourcePack(UUID, url, sha1, prompt, required)`; prompt/kick text from `messages.yml`. Status via `PlayerResourcePackStatusEvent`.

@@ -66,7 +66,6 @@ public final class PluginConfig {
     private int resourcePackSendDelayTicks;
     private String resourcePackExternalUrl;
     private String resourcePackExternalSha1;
-    private String resourcePackLocalSourceFolder;
     private String resourcePackLocalZipName;
     private String resourcePackLocalBind;
     private int resourcePackLocalPort;
@@ -74,6 +73,11 @@ public final class PluginConfig {
 
     private boolean tabListEnabled;
     private int tabListRefreshTicks;
+    private boolean tabListPartyOnly;
+    private String tabListHeader;
+    private String tabListFooter;
+    private String tabListPlayerName;
+    private String tabListHostPlayerName;
 
     private String databaseSqliteFile;
 
@@ -219,7 +223,6 @@ public final class PluginConfig {
         resourcePackSendDelayTicks = Math.max(0, c.getInt("resource-pack.send-delay-ticks", 20));
         resourcePackExternalUrl = nullToEmpty(c.getString("resource-pack.external.url"));
         resourcePackExternalSha1 = nullToEmpty(c.getString("resource-pack.external.sha1")).toLowerCase();
-        resourcePackLocalSourceFolder = c.getString("resource-pack.local.source-folder", "resourcepack");
         resourcePackLocalZipName = c.getString("resource-pack.local.zip-name", "mcparty.zip");
         resourcePackLocalBind = c.getString("resource-pack.local.bind", "0.0.0.0");
         resourcePackLocalPort = c.getInt("resource-pack.local.port", 8163);
@@ -227,6 +230,25 @@ public final class PluginConfig {
 
         tabListEnabled = c.getBoolean("tablist.enabled", true);
         tabListRefreshTicks = Math.max(1, c.getInt("tablist.refresh-ticks", 20));
+        tabListPartyOnly = c.getBoolean("tablist.party-only", true);
+        tabListHeader = nullToEmpty(c.getString(
+                "tablist.header",
+                "<#fcca32>Welcome to <aqua><bold>McParty</bold></aqua>!</#fcca32>"
+        ));
+        tabListFooter = nullToEmpty(c.getString(
+                "tablist.footer",
+                "<#fcca32>Server address: <white>play.mcparty.net</white></#fcca32>\n"
+                        + "<#fcca32>Website: <white>mcparty.net</white></#fcca32>\n"
+                        + "<#fcca32>Store: <white>store.mcparty.net</white></#fcca32>"
+        ));
+        tabListPlayerName = nullToEmpty(c.getString(
+                "tablist.player-name",
+                "<gray>STONE</gray> <dark_gray>|</dark_gray> <white><player></white>"
+        ));
+        tabListHostPlayerName = nullToEmpty(c.getString(
+                "tablist.host-player-name",
+                "<aqua><bold>DIAMOND</bold></aqua> <dark_gray>|</dark_gray> <white><player></white>"
+        ));
 
         databaseSqliteFile = nullToEmpty(c.getString("database.sqlite-file", "parkour.db"));
         if (databaseSqliteFile.isBlank()) {
@@ -337,7 +359,6 @@ public final class PluginConfig {
     public int resourcePackSendDelayTicks() { return resourcePackSendDelayTicks; }
     public String resourcePackExternalUrl() { return resourcePackExternalUrl; }
     public String resourcePackExternalSha1() { return resourcePackExternalSha1; }
-    public String resourcePackLocalSourceFolder() { return resourcePackLocalSourceFolder; }
     public String resourcePackLocalZipName() { return resourcePackLocalZipName; }
     public String resourcePackLocalBind() { return resourcePackLocalBind; }
     public int resourcePackLocalPort() { return resourcePackLocalPort; }
@@ -345,6 +366,11 @@ public final class PluginConfig {
 
     public boolean tabListEnabled() { return tabListEnabled; }
     public int tabListRefreshTicks() { return tabListRefreshTicks; }
+    public boolean tabListPartyOnly() { return tabListPartyOnly; }
+    public String tabListHeader() { return tabListHeader; }
+    public String tabListFooter() { return tabListFooter; }
+    public String tabListPlayerName() { return tabListPlayerName; }
+    public String tabListHostPlayerName() { return tabListHostPlayerName; }
 
     public String databaseSqliteFile() { return databaseSqliteFile; }
 

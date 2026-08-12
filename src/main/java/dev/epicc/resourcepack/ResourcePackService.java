@@ -11,22 +11,22 @@ import com.sun.net.httpserver.HttpServer;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.SimpleFileVisitor;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Enumeration;
-import java.util.List;
+import java.util.LinkedHashSet;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -34,6 +34,7 @@ import java.util.jar.JarEntry;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
+import java.util.logging.Level;
 
 /**
  * Prepares and prompts the McParty dice resource pack.
@@ -97,6 +98,22 @@ public final class ResourcePackService {
         return messages.get("resource-pack.kick");
     }
 
+    /** Remove the obsolete deployed source directory from older versions. */
+    public void removeLegacySourcePack() {
+        Path legacySource = plugin.getDataFolder().toPath().resolve("resourcepack");
+        if (!Files.exists(legacySource, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        try {
+            deleteTree(legacySource);
+            plugin.getLogger().info("Removed obsolete deployed resource pack source: " + legacySource);
+        } catch (IOException exception) {
+            plugin.getLogger().log(Level.WARNING,
+                    "Could not remove obsolete deployed resource pack source: " + legacySource,
+                    exception);
+        }
+    }
+
     public void start() {
         if (!config.resourcePackEnabled()) {
             plugin.getLogger().info("Resource pack disabled");
@@ -125,7 +142,7 @@ public final class ResourcePackService {
         }
     }
 
-    /** Stop HTTP (if any), re-zip from source, and start again using current config. */
+    /** Stop HTTP (if any), re-zip the bundled pack, and start again using current config. */
     public void reload() {
         shutdown();
         start();
@@ -192,22 +209,12 @@ public final class ResourcePackService {
         Path data = plugin.getDataFolder().toPath();
         Files.createDirectories(data);
 
-        Path sourceDir = data.resolve(config.resourcePackLocalSourceFolder());
-        ensureSourcePack(sourceDir);
-
-        if (!Files.isDirectory(sourceDir) || !Files.isRegularFile(sourceDir.resolve("pack.mcmeta"))) {
-            throw new IllegalStateException(
-                    "Local pack source missing pack.mcmeta under " + sourceDir
-            );
-        }
-        fontImages.prepareResourcePack(sourceDir);
-
         String zipName = sanitizeZipName(config.resourcePackLocalZipName());
-        // Written under plugins/McParty/output/ for easy fetch / external hosting
+        // Written under plugins/McParty/output/ for easy fetch / external hosting.
         Path outDir = data.resolve("output");
         Files.createDirectories(outDir);
         Path zipPath = outDir.resolve(zipName);
-        packBytes = zipDirectory(sourceDir);
+        packBytes = zipBundledPack();
         Files.write(zipPath, packBytes);
         packSha1 = sha1Hex(packBytes);
         plugin.getLogger().info("Resource pack zip written to " + zipPath);
@@ -279,97 +286,45 @@ public final class ResourcePackService {
         }
     }
 
-    private void ensureSourcePack(Path sourceDir) throws IOException {
-        Path meta = sourceDir.resolve("pack.mcmeta");
-        if (Files.isRegularFile(meta)) {
-            ensureBuiltInPackAssets(sourceDir);
-            return;
-        }
-        if (Files.exists(sourceDir) && !Files.isDirectory(sourceDir)) {
-            throw new IOException("source-folder exists but is not a directory: " + sourceDir);
-        }
-        Files.createDirectories(sourceDir);
-        if (extractBundledPack(sourceDir)) {
-            ensureBuiltInPackAssets(sourceDir);
-            plugin.getLogger().info("Extracted bundled resource pack to " + sourceDir);
-            return;
-        }
-        throw new IllegalStateException(
-                "No resource pack at " + sourceDir + " and none bundled in the jar"
-        );
-    }
-
-    /** Add new built-in assets without overwriting an administrator's customized pack. */
-    private void ensureBuiltInPackAssets(Path sourceDir) throws IOException {
-        for (String relative : List.of(
-                "assets/mcparty/items/parkour_goal.json",
-                "assets/mcparty/models/item/parkour_goal.json",
-                "assets/mcparty/textures/misc/background.png",
-                "assets/mcparty/textures/misc/logo.png"
-        )) {
-            Path target = sourceDir.resolve(relative);
-            if (Files.isRegularFile(target)) {
-                continue;
-            }
-            try (InputStream source = plugin.getResource("resourcepack/" + relative)) {
-                if (source == null) {
-                    throw new IOException("Bundled parkour model missing: " + relative);
-                }
-                Files.createDirectories(target.getParent());
-                Files.copy(source, target);
-            }
-        }
-    }
-
-    /**
-     * Copy jar entries under {@code resourcepack/} into the data folder source dir.
-     */
-    private boolean extractBundledPack(Path targetDir) throws IOException {
+    /** Zip the resource-pack entries embedded in this plugin JAR. */
+    private byte[] zipBundledPack() throws IOException {
         Path jarPath = pluginJarPath();
         if (jarPath == null || !Files.isRegularFile(jarPath)) {
-            return copyFromClassLoader(targetDir);
+            throw new IOException("Bundled resource pack is unavailable outside the plugin JAR");
         }
-        boolean any = false;
+        ByteArrayOutputStream bos = new ByteArrayOutputStream();
+        Set<String> entries = new LinkedHashSet<>();
         try (JarFile jar = new JarFile(jarPath.toFile())) {
-            Enumeration<JarEntry> entries = jar.entries();
-            while (entries.hasMoreElements()) {
-                JarEntry entry = entries.nextElement();
-                String name = entry.getName();
-                if (!name.startsWith("resourcepack/") || name.endsWith("/")) {
-                    continue;
+            Enumeration<JarEntry> jarEntries = jar.entries();
+            try (ZipOutputStream zos = new ZipOutputStream(bos)) {
+                while (jarEntries.hasMoreElements()) {
+                    JarEntry entry = jarEntries.nextElement();
+                    String name = entry.getName();
+                    if (!name.startsWith("resourcepack/") || name.endsWith("/")) {
+                        continue;
+                    }
+                    String relative = name.substring("resourcepack/".length());
+                    if (relative.isEmpty() || relative.equals("README.md")
+                            || relative.equals("assets/mcparty/font/images.json")) {
+                        continue;
+                    }
+                    zos.putNextEntry(new ZipEntry(relative));
+                    try (var in = jar.getInputStream(entry)) {
+                        in.transferTo(zos);
+                    }
+                    zos.closeEntry();
+                    entries.add(relative);
                 }
-                // Skip docs
-                if (name.equals("resourcepack/README.md")) {
-                    continue;
-                }
-                String relative = name.substring("resourcepack/".length());
-                if (relative.isEmpty()) {
-                    continue;
-                }
-                Path out = targetDir.resolve(relative).normalize();
-                if (!out.startsWith(targetDir)) {
-                    continue;
-                }
-                Files.createDirectories(out.getParent());
-                try (InputStream in = jar.getInputStream(entry)) {
-                    Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING);
-                }
-                any = true;
-            }
-        }
-        return any || Files.isRegularFile(targetDir.resolve("pack.mcmeta"));
-    }
 
-    private boolean copyFromClassLoader(Path targetDir) throws IOException {
-        try (InputStream meta = plugin.getResource("resourcepack/pack.mcmeta")) {
-            if (meta == null) {
-                return false;
+                zos.putNextEntry(new ZipEntry("assets/mcparty/font/images.json"));
+                zos.write(fontImages.resourcePackFontJson(entries).getBytes(StandardCharsets.UTF_8));
+                zos.closeEntry();
             }
-            Files.createDirectories(targetDir);
-            Files.copy(meta, targetDir.resolve("pack.mcmeta"), StandardCopyOption.REPLACE_EXISTING);
         }
-        // Classloader single-file fallback is incomplete for full trees; jar extract is preferred.
-        return Files.isRegularFile(targetDir.resolve("pack.mcmeta"));
+        if (entries.isEmpty()) {
+            throw new IOException("No bundled resource-pack entries found in " + jarPath);
+        }
+        return bos.toByteArray();
     }
 
     private Path pluginJarPath() {
@@ -385,25 +340,27 @@ public final class ResourcePackService {
         }
     }
 
-    private static byte[] zipDirectory(Path root) throws IOException {
-        ByteArrayOutputStream bos = new ByteArrayOutputStream();
-        try (ZipOutputStream zos = new ZipOutputStream(bos)) {
-            Files.walkFileTree(root, new SimpleFileVisitor<>() {
-                @Override
-                public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-                    Path rel = root.relativize(file);
-                    String entryName = rel.toString().replace('\\', '/');
-                    if (entryName.endsWith(".md") || entryName.startsWith(".")) {
-                        return FileVisitResult.CONTINUE;
-                    }
-                    zos.putNextEntry(new ZipEntry(entryName));
-                    Files.copy(file, zos);
-                    zos.closeEntry();
-                    return FileVisitResult.CONTINUE;
-                }
-            });
+    private static void deleteTree(Path path) throws IOException {
+        if (Files.isSymbolicLink(path) || !Files.isDirectory(path, LinkOption.NOFOLLOW_LINKS)) {
+            Files.deleteIfExists(path);
+            return;
         }
-        return bos.toByteArray();
+        Files.walkFileTree(path, new SimpleFileVisitor<>() {
+            @Override
+            public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                Files.delete(file);
+                return FileVisitResult.CONTINUE;
+            }
+
+            @Override
+            public FileVisitResult postVisitDirectory(Path dir, IOException exception) throws IOException {
+                if (exception != null) {
+                    throw exception;
+                }
+                Files.delete(dir);
+                return FileVisitResult.CONTINUE;
+            }
+        });
     }
 
     private static String sha1Hex(byte[] data) throws NoSuchAlgorithmException {

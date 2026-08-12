@@ -110,6 +110,7 @@ public final class McPartyPlugin extends JavaPlugin {
         );
 
         resourcePackService = new ResourcePackService(this, config, messages, fontImages);
+        resourcePackService.removeLegacySourcePack();
         resourcePackService.start();
 
         slimeWorldService = new SlimeWorldService(

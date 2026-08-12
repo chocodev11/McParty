@@ -68,19 +68,16 @@ public final class TabListService implements Listener {
         if (!config.tabListEnabled() || player == null || !player.isOnline()) {
             return;
         }
-        Component header = component(player, "tablist.header");
-        Component footer = component(player, "tablist.footer");
+        updatePlayerListName(player);
+        Component header = component(player, config.tabListHeader());
+        Component footer = component(player, config.tabListFooter());
         player.sendPlayerListHeaderAndFooter(header, footer);
-
-        if (messages.raw("tablist.player-name", "").isBlank()) {
-            player.playerListName(null);
-        } else {
-            player.playerListName(component(player, "tablist.player-name"));
-        }
+        updateVisibility(player);
     }
 
     public void shutdown() {
         stopTask();
+        clearAll();
     }
 
     @EventHandler
@@ -88,11 +85,10 @@ public final class TabListService implements Listener {
         if (!config.tabListEnabled()) {
             return;
         }
-        plugin.getServer().getScheduler().runTask(plugin, () -> refresh(event.getPlayer()));
+        plugin.getServer().getScheduler().runTask(plugin, this::refreshAll);
     }
 
-    private Component component(Player viewer, String path) {
-        String raw = messages.raw(path, "");
+    private Component component(Player viewer, String raw) {
         if (raw.isBlank()) {
             return Component.empty();
         }
@@ -100,8 +96,8 @@ public final class TabListService implements Listener {
         int coins = party.flatMap(instance -> instance.player(viewer.getUniqueId()))
                 .map(player -> player.coins())
                 .orElse(0);
-        return messages.get(
-                path,
+        return messages.render(
+                raw,
                 MessageService.ph("player", viewer.getName()),
                 MessageService.ph("uuid", viewer.getUniqueId().toString()),
                 MessageService.ph("world", viewer.getWorld().getName()),
@@ -109,6 +105,33 @@ public final class TabListService implements Listener {
                 MessageService.ph("party", party.map(PartyInstance::shortId).orElse("")),
                 MessageService.ph("coins", coins)
         );
+    }
+
+    private void updatePlayerListName(Player player) {
+        String raw = parties.instanceOf(player.getUniqueId())
+                .filter(instance -> instance.isHost(player.getUniqueId()))
+                .map(instance -> config.tabListHostPlayerName())
+                .filter(template -> !template.isBlank())
+                .orElse(config.tabListPlayerName());
+        if (raw.isBlank()) {
+            player.playerListName(null);
+        } else {
+            player.playerListName(component(player, raw));
+        }
+    }
+
+    private void updateVisibility(Player viewer) {
+        Optional<PartyInstance> viewerParty = parties.instanceOf(viewer.getUniqueId());
+        for (Player target : Bukkit.getOnlinePlayers()) {
+            boolean shouldList = target.equals(viewer)
+                    || !config.tabListPartyOnly()
+                    || viewerParty.map(instance -> instance.player(target.getUniqueId()).isPresent()).orElse(false);
+            if (shouldList) {
+                viewer.listPlayer(target);
+            } else {
+                viewer.unlistPlayer(target);
+            }
+        }
     }
 
     private void stopTask() {
@@ -122,6 +145,9 @@ public final class TabListService implements Listener {
         for (Player player : Bukkit.getOnlinePlayers()) {
             player.sendPlayerListHeaderAndFooter(Component.empty(), Component.empty());
             player.playerListName(null);
+            for (Player target : Bukkit.getOnlinePlayers()) {
+                player.listPlayer(target);
+            }
         }
     }
 }
