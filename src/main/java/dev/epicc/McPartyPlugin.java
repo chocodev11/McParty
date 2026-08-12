@@ -28,6 +28,7 @@ import dev.epicc.lobby.parkour.ParkourLeaderboardStore;
 import dev.epicc.lobby.parkour.LobbyParkourService;
 import dev.epicc.lobby.parkour.SqliteParkourLeaderboardStore;
 import dev.epicc.party.LobbyMatchmaker;
+import dev.epicc.party.LobbyProtectionListener;
 import dev.epicc.party.PartyManager;
 import dev.epicc.player.PlayerSessionService;
 import dev.epicc.resourcepack.ResourcePackListener;
@@ -233,6 +234,7 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new ResourcePackListener(resourcePackService), this);
         getServer().getPluginManager().registerEvents(tabList, this);
         getServer().getPluginManager().registerEvents(lobbyMatchmaker, this);
+        getServer().getPluginManager().registerEvents(new LobbyProtectionListener(lobbyMatchmaker), this);
         getServer().getPluginManager().registerEvents(new LobbyParkourListener(lobbyParkour, partyManager), this);
         getServer().getPluginManager().registerEvents(holograms, this);
         tabList.start();

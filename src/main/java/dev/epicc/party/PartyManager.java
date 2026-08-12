@@ -446,6 +446,9 @@ public final class PartyManager {
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             Optional<World> lobbyOpt = slime.getLoadedWorld(instance.id(), config.lobbySlimeTemplate());
             lobbyOpt.ifPresent(lobbyWorld -> slime.unloadWorldForInstance(instance.id(), lobbyWorld));
+            if (lobbyMatchmaker != null) {
+                lobbyMatchmaker.clearLobbyWorld(instance.id());
+            }
         }, SeamlessWorldChangeService.TELEPORT_DELAY_TICKS + 2L);
 
         BoardTurnController controller = new BoardTurnController(
@@ -556,6 +559,9 @@ public final class PartyManager {
         }
 
         sessions.clearInstance(instance.id());
+        if (lobbyMatchmaker != null) {
+            lobbyMatchmaker.clearLobbyWorld(instance.id());
+        }
 
         // Players were explicitly evacuated to the configured persistent fallback above.
         if (animateTransitions && hadBoardWorld) {

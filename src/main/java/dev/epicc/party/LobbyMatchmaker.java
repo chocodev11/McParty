@@ -26,6 +26,7 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 public final class LobbyMatchmaker implements Listener {
 
@@ -39,6 +40,7 @@ public final class LobbyMatchmaker implements Listener {
     private final PlayerSessionService sessions;
     private final LobbyParkourService lobbyParkour;
     private final HologramService holograms;
+    private final ConcurrentHashMap<UUID, String> lobbyWorlds = new ConcurrentHashMap<>();
 
     public LobbyMatchmaker(
             JavaPlugin plugin,
@@ -172,6 +174,7 @@ public final class LobbyMatchmaker implements Listener {
                     return;
                 }
 
+                lobbyWorlds.put(instanceId, lobbyWorld.get().getName());
                 configureLobbyWorld(lobbyWorld.get());
                 holograms.openLobbyScope(instanceId, lobbyWorld.get());
                 // Lobby loaded! Teleport host and anyone who joined while it was loading.
@@ -223,6 +226,10 @@ public final class LobbyMatchmaker implements Listener {
         }
     }
 
+    public void clearLobbyWorld(UUID instanceId) {
+        lobbyWorlds.remove(instanceId);
+    }
+
     @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = true)
     public void onLobbyFall(PlayerMoveEvent event) {
         Location to = event.getTo();
@@ -270,8 +277,14 @@ public final class LobbyMatchmaker implements Listener {
         world.setGameRule(GameRule.DO_DAYLIGHT_CYCLE, false);
     }
 
-    private boolean isLobbyWorld(World world) {
+    public boolean isLobbyWorld(World world) {
+        if (world == null) {
+            return false;
+        }
         if (world.getName().equals(config.lobbyParkour().fallbackWorld())) {
+            return true;
+        }
+        if (lobbyWorlds.containsValue(world.getName())) {
             return true;
         }
         for (PartyInstance instance : partyManager.all()) {
