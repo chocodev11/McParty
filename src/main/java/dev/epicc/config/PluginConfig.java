@@ -231,16 +231,8 @@ public final class PluginConfig {
         tabListEnabled = c.getBoolean("tablist.enabled", true);
         tabListRefreshTicks = Math.max(1, c.getInt("tablist.refresh-ticks", 20));
         tabListPartyOnly = c.getBoolean("tablist.party-only", true);
-        tabListHeader = nullToEmpty(c.getString(
-                "tablist.header",
-                "<#fcca32>Welcome to <aqua><bold>McParty</bold></aqua>!</#fcca32>"
-        ));
-        tabListFooter = nullToEmpty(c.getString(
-                "tablist.footer",
-                "<#fcca32>Server address: <white>play.mcparty.net</white></#fcca32>\n"
-                        + "<#fcca32>Website: <white>mcparty.net</white></#fcca32>\n"
-                        + "<#fcca32>Store: <white>store.mcparty.net</white></#fcca32>"
-        ));
+        tabListHeader = tabListLines(c, "tablist.header");
+        tabListFooter = tabListLines(c, "tablist.footer");
         tabListPlayerName = nullToEmpty(c.getString(
                 "tablist.player-name",
                 "<gray>STONE</gray> <dark_gray>|</dark_gray> <white><player></white>"
@@ -309,6 +301,10 @@ public final class PluginConfig {
 
     private static String nullToEmpty(String s) {
         return s == null ? "" : s.trim();
+    }
+
+    private static String tabListLines(FileConfiguration config, String path) {
+        return String.join("\n", config.getStringList(path));
     }
 
     public int minPlayers() { return minPlayers; }

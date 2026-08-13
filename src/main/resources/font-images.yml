@@ -50,5 +50,5 @@ images:
     # The vanilla subtitle baseline is 5 pixels below screen center.
     y-position: 65
     # Compensate for transparent left padding counted by bitmap-font glyph width.
-    x-offset: -21
+    x-offset: -18
     codepoint: E008

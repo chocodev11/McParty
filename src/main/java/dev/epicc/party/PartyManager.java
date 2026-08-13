@@ -139,7 +139,15 @@ public final class PartyManager {
     }
 
     public Optional<Component> create(Player host) {
-        if (sessions.isInParty(host.getUniqueId())) {
+        return createParty(host, Optional.of(host.getUniqueId()), true);
+    }
+
+    public Optional<Component> createMatchmade(Player player) {
+        return createParty(player, Optional.empty(), false);
+    }
+
+    private Optional<Component> createParty(Player player, Optional<UUID> hostId, boolean announce) {
+        if (sessions.isInParty(player.getUniqueId())) {
             return Optional.of(messages.get("party.already-in"));
         }
         if (store.size() >= config.maxInstances()) {
@@ -152,14 +160,16 @@ public final class PartyManager {
                 config.diceMin(),
                 config.diceMax()
         );
-        PartyInstance instance = new PartyInstance(UUID.randomUUID(), host.getUniqueId(), settings);
+        PartyInstance instance = new PartyInstance(UUID.randomUUID(), hostId, settings);
         instance.setEndRequestHandler(this::endInternal);
-        PartyPlayer pp = new PartyPlayer(host.getUniqueId(), host.getName(), settings.startingCoins());
+        PartyPlayer pp = new PartyPlayer(player.getUniqueId(), player.getName(), settings.startingCoins());
         instance.addPlayer(pp);
         store.put(instance);
-        sessions.bind(host.getUniqueId(), instance.id());
-        messages.send(host, "party.created", "id", instance.shortId());
-        offerResourcePack(host);
+        sessions.bind(player.getUniqueId(), instance.id());
+        if (announce) {
+            messages.send(player, "party.created", "id", instance.shortId());
+        }
+        offerResourcePack(player);
         tabListRefresh.run();
         return Optional.empty();
     }
@@ -197,9 +207,14 @@ public final class PartyManager {
         tabListRefresh.run();
 
         if (instance.playerCount() >= instance.settings().maxPlayers()) {
-            Player host = plugin.getServer().getPlayer(instance.hostId());
-            if (host != null && host.isOnline()) {
-                start(host);
+            Optional<UUID> hostId = instance.hostId();
+            if (hostId.isPresent()) {
+                Player host = plugin.getServer().getPlayer(hostId.get());
+                if (host != null && host.isOnline()) {
+                    start(host);
+                }
+            } else {
+                startInstance(instance);
             }
         }
 
@@ -252,7 +267,7 @@ public final class PartyManager {
 
         if (instance.state() == PartyState.WAITING) {
             if (instance.transferHostIf(player.getUniqueId())) {
-                instance.player(instance.hostId()).ifPresent(newHost -> instance.broadcast(
+                instance.hostId().flatMap(instance::player).ifPresent(newHost -> instance.broadcast(
                         messages.get("party.host-transferred", "player", newHost.name())
                 ));
             }
@@ -273,6 +288,10 @@ public final class PartyManager {
         if (!instance.isHost(requester.getUniqueId()) && !requester.hasPermission("mcparty.admin")) {
             return Optional.of(messages.get("party.only-host-start"));
         }
+        return startInstance(instance);
+    }
+
+    private Optional<Component> startInstance(PartyInstance instance) {
         if (!instance.canStart()) {
             return Optional.of(messages.get(
                     "party.need-players",

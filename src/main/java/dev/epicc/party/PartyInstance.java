@@ -20,7 +20,7 @@ import java.util.function.Consumer;
 public final class PartyInstance {
 
     private final UUID id;
-    private UUID hostId;
+    private Optional<UUID> hostId;
     private final PartySettings settings;
     private final LinkedHashMap<UUID, PartyPlayer> players = new LinkedHashMap<>();
     private final PartyLifecycle lifecycle = new PartyLifecycle();
@@ -32,14 +32,14 @@ public final class PartyInstance {
     private PartyPlayArea boardPlayArea;
     private PartyPlayArea activePlayArea;
 
-    public PartyInstance(UUID id, UUID hostId, PartySettings settings) {
+    public PartyInstance(UUID id, Optional<UUID> hostId, PartySettings settings) {
         this.id = id;
         this.hostId = hostId;
         this.settings = settings;
     }
 
     public UUID id() { return id; }
-    public UUID hostId() { return hostId; }
+    public Optional<UUID> hostId() { return hostId; }
     public PartySettings settings() { return settings; }
     public PartyState state() { return lifecycle.state(); }
     public long operationToken() { return lifecycle.operationToken(); }
@@ -123,10 +123,11 @@ public final class PartyInstance {
     }
 
     public boolean transferHostIf(UUID departingHost) {
-        if (!hostId.equals(departingHost) || state() != PartyState.WAITING || players.isEmpty()) return false;
+        if (hostId.isEmpty() || !hostId.get().equals(departingHost)
+                || state() != PartyState.WAITING || players.isEmpty()) return false;
         UUID replacement = PartyHostSelector.firstRemaining(players);
         if (replacement == null) return false;
-        hostId = replacement;
+        hostId = Optional.of(replacement);
         return true;
     }
 
@@ -147,7 +148,7 @@ public final class PartyInstance {
     }
 
     public boolean isHost(UUID uuid) {
-        return hostId.equals(uuid);
+        return hostId.map(value -> value.equals(uuid)).orElse(false);
     }
 
     public void broadcast(Component message) {

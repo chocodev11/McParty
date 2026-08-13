@@ -95,7 +95,7 @@ public final class LobbyMatchmaker implements Listener {
         }
 
         // 2. No open party found, create a new one
-        Optional<net.kyori.adventure.text.Component> createError = partyManager.create(player);
+        Optional<net.kyori.adventure.text.Component> createError = partyManager.createMatchmade(player);
         if (createError.isPresent()) {
             messages.send(player, "party.limit-reached");
             return;
@@ -126,13 +126,13 @@ public final class LobbyMatchmaker implements Listener {
             return;
         }
 
-        Player host = onlinePlayers.getFirst();
-        if (partyManager.create(host).isPresent()) {
-            messages.send(host, "party.limit-reached");
+        Player firstPlayer = onlinePlayers.getFirst();
+        if (partyManager.createMatchmade(firstPlayer).isPresent()) {
+            messages.send(firstPlayer, "party.limit-reached");
             return;
         }
 
-        PartyInstance instance = partyManager.instanceOf(host.getUniqueId()).orElse(null);
+        PartyInstance instance = partyManager.instanceOf(firstPlayer.getUniqueId()).orElse(null);
         if (instance == null) {
             return;
         }
@@ -177,7 +177,7 @@ public final class LobbyMatchmaker implements Listener {
                 lobbyWorlds.put(instanceId, lobbyWorld.get().getName());
                 configureLobbyWorld(lobbyWorld.get());
                 holograms.openLobbyScope(instanceId, lobbyWorld.get());
-                // Lobby loaded! Teleport host and anyone who joined while it was loading.
+                // Lobby loaded! Teleport the first player and anyone who joined while loading.
                 for (PartyPlayer pp : instance.players()) {
                     Player player = plugin.getServer().getPlayer(pp.uuid());
                     if (player != null && player.isOnline()) {

@@ -122,21 +122,27 @@ resource-pack:
     # Example: http://play.example.com:8163/mcparty.zip
     public-url: "http://160.250.134.179:31232/mcparty.zip"
 
-# Component-based tab-list rendering. Values use MiniMessage and support the
-# same placeholders as messages.yml, including <player>, <party>, and <coins>.
+# Component-based tab-list rendering. Header and footer items are rendered as
+# separate lines. Values use MiniMessage and support the same placeholders as
+# messages.yml, including <player>, <party>, and <coins>.
 tablist:
   enabled: true
   # Only list players who belong to the viewer's current party.
   party-only: true
   # Dynamic placeholders and party membership are refreshed at this interval.
   refresh-ticks: 20
-  header: "<white>Chào mừng đến <#fcca32><bold>McParty</bold></#fcca32>!</white>"
+  header:
+    - ""
+    - "<white>Chào mừng đến <#fcca32><bold>McParty</bold></#fcca32>!</white>"
+    - ""
   player-name: "<gray>MEMBER</gray> <gray>|</gray> <dark_gray><player></dark_gray>"
   # Leave blank to use player-name for party hosts too.
   host-player-name: "<aqua><bold>HOST</bold></aqua> <gray>|</gray> <aqua><player></aqua>"
   # Change these addresses to the public addresses of this server.
-  footer: |-
-    <#fcca32>kingmc.vn
+  footer:
+    - ""
+    - "<#fcca32>kingmc.vn"
+    - ""
 
 # Persistent plugin data. The SQLite file is created relative to plugins/McParty.
 # Parkour records use a versioned schema so another JDBC backend can replace it later.
