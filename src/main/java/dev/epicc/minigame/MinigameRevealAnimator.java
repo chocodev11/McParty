@@ -31,6 +31,7 @@ final class MinigameRevealAnimator {
     private static final Title.Times FRAME = Title.Times.times(FADE_IN, FRAME_STAY, Duration.ZERO);
     /** Final selected game hold with no fade-in and a short fade-out. */
     private static final Title.Times HOLD = Title.Times.times(FINAL_FADE_IN, STAY_HOLD, FADE_OUT_HOLD);
+    private static final long FINAL_TITLE_DURATION_TICKS = ticks(STAY_HOLD.plus(FADE_OUT_HOLD));
 
     private static final TextColor WHITE = TextColor.color(255, 255, 255);
     private static final TextColor YELLOW = TextColor.color(255, 255, 85);
@@ -138,7 +139,12 @@ final class MinigameRevealAnimator {
             if (colorStep[0] > COLOR_STEPS) {
                 stopTaskOnly();
                 showFinal(audience, picked);
-                onDone.run();
+                task = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+                    task = null;
+                    if (!stopped) {
+                        onDone.run();
+                    }
+                }, FINAL_TITLE_DURATION_TICKS);
                 return;
             }
             float t = (float) colorStep[0] / COLOR_STEPS;
@@ -210,6 +216,10 @@ final class MinigameRevealAnimator {
         int g = Math.round(from.green() + (to.green() - from.green()) * t);
         int b = Math.round(from.blue() + (to.blue() - from.blue()) * t);
         return TextColor.color(r, g, b);
+    }
+
+    private static long ticks(Duration duration) {
+        return Math.max(1L, (duration.toMillis() + 49L) / 50L);
     }
 
     private void showSpinFrame(List<Player> players, String subtitle) {

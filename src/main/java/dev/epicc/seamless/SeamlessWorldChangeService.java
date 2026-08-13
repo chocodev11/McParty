@@ -34,7 +34,7 @@ public final class SeamlessWorldChangeService {
 
     private static final int MARK_TIMEOUT_TICKS = 5;
     private static final Duration FADE_IN = Duration.ofSeconds(1);
-    private static final Duration HOLD = Duration.ofMillis(250);
+    private static final Duration HOLD = Duration.ZERO;
     private static final Duration FADE_OUT = Duration.ofSeconds(1);
 
     private final JavaPlugin plugin;

@@ -34,12 +34,25 @@ public final class MinigameRunner {
                     Consumer<MinigameResult> done) {
         cancel();
         long runGeneration = ++generation;
+        AtomicBoolean completed = new AtomicBoolean(false);
+        Consumer<MinigameResult> complete = result -> {
+            if (!completed.compareAndSet(false, true)) {
+                return;
+            }
+            manager.plugin().getServer().getScheduler().runTask(manager.plugin(), () -> {
+                if (isCurrent(runGeneration)) {
+                    done.accept(result);
+                }
+            });
+        };
         List<Player> online = List.copyOf(players);
-        if (online.isEmpty()) { done.accept(new MinigameResult()); return; }
+        if (online.isEmpty()) { complete.accept(new MinigameResult()); return; }
 
         AtomicBoolean arenaReady = new AtomicBoolean(true);
         AtomicBoolean revealFinished = new AtomicBoolean(false);
-        if (!loadArena(definition, instance, runGeneration, arenaReady, revealFinished, online, transitions, done)) {
+        AtomicBoolean arenaFailed = new AtomicBoolean(false);
+        if (!loadArena(definition, instance, runGeneration, arenaReady, revealFinished, arenaFailed, online,
+                transitions, complete)) {
             return; // arena unusable — done already accepted, must not also start the reveal
         }
         reveal = new MinigameRevealAnimator(manager.plugin(), manager.messages());
@@ -47,7 +60,11 @@ public final class MinigameRunner {
             if (!isCurrent(runGeneration)) return;
             reveal = null;
             revealFinished.set(true);
-            if (arenaReady.get()) startIfCurrent(definition, instance, runGeneration, online, transitions, done);
+            if (arenaFailed.get()) {
+                complete.accept(new MinigameResult());
+                return;
+            }
+            if (arenaReady.get()) startIfCurrent(definition, instance, runGeneration, online, transitions, complete);
         });
     }
 
@@ -60,8 +77,8 @@ public final class MinigameRunner {
 
     /** @return false when the arena is unusable and {@code done} has already been accepted. */
     private boolean loadArena(Minigame definition, PartyInstance instance, long runGeneration, AtomicBoolean arenaReady,
-                              AtomicBoolean revealFinished, List<Player> online, ArenaTransitions transitions,
-                              Consumer<MinigameResult> done) {
+                              AtomicBoolean revealFinished, AtomicBoolean arenaFailed, List<Player> online,
+                              ArenaTransitions transitions, Consumer<MinigameResult> done) {
         Optional<MinigameArenaSpec> specOpt = definition.arenaSpec();
         if (specOpt.isEmpty()) return true;
         MinigameArenaSpec spec = specOpt.get();
@@ -78,8 +95,10 @@ public final class MinigameRunner {
                 return;
             }
             if (worldOpt.isEmpty()) {
-                cancel(); // stop the reveal already running, then end the round once
-                done.accept(new MinigameResult());
+                arenaFailed.set(true);
+                if (revealFinished.get()) {
+                    done.accept(new MinigameResult());
+                }
                 return;
             }
             arenaOwner = owner;
