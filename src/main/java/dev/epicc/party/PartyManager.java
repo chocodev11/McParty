@@ -9,6 +9,7 @@ import dev.epicc.board.dice.DiceHatService;
 import dev.epicc.board.dice.DicePresenter;
 import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
+import dev.epicc.containment.PacketBarrierService;
 import dev.epicc.hologram.HologramService;
 import dev.epicc.minigame.MinigameManager;
 import dev.epicc.minigame.ArenaTransitions;
@@ -54,6 +55,7 @@ public final class PartyManager {
     private final DicePresenter dicePresenter;
     private final DiceHatService diceHats;
     private final PathHopMover pathHopMover;
+    private final PacketBarrierService packetBarriers;
     private final ResourcePackService resourcePacks;
     private final HologramService holograms;
     private final PartyTransitionService transitions;
@@ -76,6 +78,7 @@ public final class PartyManager {
             DicePresenter dicePresenter,
             DiceHatService diceHats,
             PathHopMover pathHopMover,
+            PacketBarrierService packetBarriers,
             ResourcePackService resourcePacks,
             HologramService holograms
     ) {
@@ -90,6 +93,7 @@ public final class PartyManager {
         this.dicePresenter = dicePresenter;
         this.diceHats = diceHats;
         this.pathHopMover = pathHopMover;
+        this.packetBarriers = packetBarriers;
         this.resourcePacks = resourcePacks;
         this.holograms = holograms;
         this.transitions = new PartyTransitionService(seamless);
@@ -242,6 +246,7 @@ public final class PartyManager {
         dicePresenter.trySettle(player);
         pathHopMover.release(playerId);
         diceHats.clear(playerId);
+        packetBarriers.clear(playerId);
 
         if (instance.state() != PartyState.WAITING && player.isOnline()) {
             Location fallback = fallbackLocation();
@@ -426,6 +431,7 @@ public final class PartyManager {
         pathHopMover.cancelAll();
         sessions.clearAll();
         slots.releaseAll();
+        packetBarriers.clearAll();
         transitions.flushPendingTeleports();
         slime.unloadAll();
     }
@@ -460,7 +466,11 @@ public final class PartyManager {
                 p.showTitle(startTitle);
             }
         }
-        transitions.transitionSeamlessly(online, boardArea);
+        transitions.transitionSeamlessly(online, boardArea, player -> {
+            if (instance.state() == PartyState.PLAYING && instance.activePlayArea() == boardArea) {
+                packetBarriers.show(player, slot);
+            }
+        });
 
         plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             Optional<World> lobbyOpt = slime.getLoadedWorld(instance.id(), config.lobbySlimeTemplate());
@@ -562,6 +572,7 @@ public final class PartyManager {
             dicePresenter.cancel(pp.uuid());
             diceHats.clear(pp.uuid());
             pathHopMover.cancel(pp.uuid());
+            packetBarriers.clear(pp.uuid());
             transitions.clear(pp.uuid());
             Player player = plugin.getServer().getPlayer(pp.uuid());
             if (player != null && player.isOnline()) {
@@ -606,6 +617,9 @@ public final class PartyManager {
     private void enterArena(PartyInstance instance, MinigameArena arena) {
         if (instance.state() != PartyState.PLAYING) return;
         List<Player> players = onlinePlayers(instance);
+        for (Player player : players) {
+            packetBarriers.clear(player);
+        }
         instance.setActivePlayArea(arena.playArea());
         transitions.transition(players, arena.playArea());
     }
@@ -623,7 +637,15 @@ public final class PartyManager {
             }
             // Path setup stores the administrator's pitch; board returns should stay level.
             destination.setPitch(0f);
-            transitions.teleport(player, destination);
+            transitions.teleport(player, destination, arrived -> {
+                if (instance.state() != PartyState.PLAYING || instance.activePlayArea() != board) {
+                    return;
+                }
+                BoardSlot currentSlot = instance.slot();
+                if (currentSlot != null) {
+                    packetBarriers.show(arrived, currentSlot);
+                }
+            });
         }
     }
 

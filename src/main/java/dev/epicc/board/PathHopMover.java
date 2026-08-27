@@ -22,7 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class PathHopMover implements Listener {
 
-    private static final double TARGET_HEIGHT_OFFSET = 15.0;
+    public static final double TARGET_HEIGHT_OFFSET = 15.0;
 
     private final JavaPlugin plugin;
     private double upVelocity;

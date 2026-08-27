@@ -13,6 +13,7 @@ import dev.epicc.command.HologramCommand;
 import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.containment.BoundaryListener;
+import dev.epicc.containment.PacketBarrierService;
 import dev.epicc.minigame.DummyMinigame;
 import dev.epicc.minigame.ElytraCourse;
 import dev.epicc.minigame.ElytraCourseStore;
@@ -62,6 +63,7 @@ public final class McPartyPlugin extends JavaPlugin {
     private DicePresenter dicePresenter;
     private DiceHatService diceHats;
     private PathHopMover pathHopMover;
+    private PacketBarrierService packetBarriers;
     private MinigameManager minigames;
     private MinigameEventBus minigameEvents;
     private final List<DummyMinigame> dummyMinigames = new ArrayList<>();
@@ -197,10 +199,11 @@ public final class McPartyPlugin extends JavaPlugin {
                 config.hopRiseMaxSeconds(),
                 config.hopFallMaxSeconds()
         );
+        packetBarriers = new PacketBarrierService(this);
 
         partyManager = new PartyManager(
                 this, config, messages, store, sessions, slotRegistry, minigames, slimeWorldService, seamless,
-                dicePresenter, diceHats, pathHopMover, resourcePackService, holograms
+                dicePresenter, diceHats, pathHopMover, packetBarriers, resourcePackService, holograms
         );
         tabList = new TabListService(this, config, messages, partyManager);
         partyManager.setTabListRefresh(tabList::refreshAll);
@@ -228,6 +231,7 @@ public final class McPartyPlugin extends JavaPlugin {
 
         // One shared listener for every running minigame session (see MinigameEventBus)
         getServer().getPluginManager().registerEvents(minigameEvents, this);
+        getServer().getPluginManager().registerEvents(packetBarriers, this);
         getServer().getPluginManager().registerEvents(new BoundaryListener(partyManager, pathHopMover), this);
         getServer().getPluginManager().registerEvents(new DiceClickListener(dicePresenter), this);
         getServer().getPluginManager().registerEvents(pathHopMover, this);
@@ -391,6 +395,9 @@ public final class McPartyPlugin extends JavaPlugin {
         }
         if (partyManager != null) {
             partyManager.shutdown();
+        }
+        if (packetBarriers != null) {
+            packetBarriers.clearAll();
         }
         if (slimeWorldService != null) {
             slimeWorldService.unloadAll();

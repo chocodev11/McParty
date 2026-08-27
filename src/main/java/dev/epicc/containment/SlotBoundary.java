@@ -41,6 +41,14 @@ public final class SlotBoundary {
                 && z >= minZ && z < maxZ + 1;
     }
 
+    public boolean isHorizontallyInside(Location loc) {
+        if (loc == null || loc.getWorld() == null || !loc.getWorld().equals(world)) {
+            return false;
+        }
+        return loc.getX() >= minX && loc.getX() < maxX + 1
+                && loc.getZ() >= minZ && loc.getZ() < maxZ + 1;
+    }
+
     public Location clampInside(Location from) {
         if (from == null) {
             return null;
@@ -50,6 +58,15 @@ public final class SlotBoundary {
         double z = Math.min(Math.max(from.getZ(), minZ + 0.5), maxZ + 0.5);
         Location clamped = new Location(world, x, y, z, from.getYaw(), from.getPitch());
         return clamped;
+    }
+
+    public Location clampHorizontalInside(Location from) {
+        if (from == null) {
+            return null;
+        }
+        double x = Math.min(Math.max(from.getX(), minX + 0.5), maxX + 0.5);
+        double z = Math.min(Math.max(from.getZ(), minZ + 0.5), maxZ + 0.5);
+        return new Location(world, x, from.getY(), z, from.getYaw(), from.getPitch());
     }
 
     public Vector center() {

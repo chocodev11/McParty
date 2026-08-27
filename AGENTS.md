@@ -100,7 +100,7 @@ src/main/java/dev/epicc/
     setup/                    # Path stick (blaze rod) builder (gold/yellow 3x3 pads)
   command/                    # /party, /partyadmin, /hologram
   config/PluginConfig.java    # Typed config from config.yml
-  containment/                # Slot boundary clamp (move/teleport)
+  containment/                # Slot boundary clamp and packet-only board barriers
   minigame/                   # Minigame SPI, shared match engines, dummy + hot potato, manager
   party/                      # PartyInstance, PartyManager, state, settings
   player/PlayerSessionService.java  # player UUID → party UUID
@@ -255,7 +255,8 @@ Admin setup:
 ### Containment
 
 - `SlotBoundary` — axis-aligned box; `isInside` / `clampInside`.
-- `BoundaryListener` — clamps moves/teleports outside boundary during STARTING/PLAYING/ENDING (unless `mcparty.admin.bypass`). No fake barrier blocks.
+- `BoundaryListener` — clamps moves/teleports outside boundary during STARTING/PLAYING/ENDING (unless `mcparty.admin.bypass`); hops keep X/Z contained while allowing their apex Y.
+- `PacketBarrierService` — sends per-player fake `BARRIER` blocks around each path point's 7×7 outer ring, only over real air, and restores actual block data before board players leave or worlds unload. It reapplies after chunk delivery and respawn; the server world is never modified.
 
 ### Minigames
 
@@ -494,7 +495,7 @@ Design doc also allows load on create — if changing, keep one clear owner (`Pa
 | Party create/join/leave/start/end/list/roll | Done |
 | Board slots + Path Stick setup + path + spawn | Done |
 | Turn controller + dice + dummy minigame | Done |
-| Boundary clamp (no fake walls) | Done |
+| Boundary clamp + packet-only board barriers | Done |
 | ASP template clone load/unload | Done |
 | In-memory instance store | Done |
 | Redis / MySQL / Velocity multi-server | **Not implemented** |

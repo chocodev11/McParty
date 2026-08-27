@@ -43,11 +43,6 @@ public final class BoundaryListener implements Listener {
         if (player.hasPermission("mcparty.admin.bypass")) {
             return;
         }
-        // path hop rises/falls outside the floor plane intentionally
-        if (pathHopMover.isHopping(player.getUniqueId())) {
-            return;
-        }
-
         PartyInstance instance = partyManager.instanceOf(player.getUniqueId()).orElse(null);
         if (instance == null || instance.activePlayArea() == null) {
             return;
@@ -61,6 +56,15 @@ public final class BoundaryListener implements Listener {
             return;
         }
         SlotBoundary boundary = instance.activePlayArea().boundary();
+        // Hops may rise above the board boundary, but their X/Z must remain contained.
+        if (pathHopMover.isHopping(player.getUniqueId())) {
+            if (!boundary.world().equals(to.getWorld())) {
+                event.setTo(boundary.clampHorizontalInside(from));
+            } else if (!boundary.isHorizontallyInside(to)) {
+                event.setTo(boundary.clampHorizontalInside(to));
+            }
+            return;
+        }
         if (boundary.isInside(to)) {
             return;
         }
