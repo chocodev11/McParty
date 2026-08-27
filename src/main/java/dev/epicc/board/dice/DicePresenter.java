@@ -31,6 +31,8 @@ import java.util.function.IntConsumer;
  * hold 1s, callback.
  */
 public final class DicePresenter {
+    private static final int ENTRY_ANIMATION_TICKS = 8;
+    private static final float HEAD_DIRECTION_FOLLOW_ALPHA = 0.22f;
     private static final long SETTLE_HOLD_TICKS = 20L;
     private static final int SETTLE_PARTICLE_COUNT = 72;
     /** Steady per-tick tumble (radians) — 60° yaw and 45° pitch every four ticks. */
@@ -99,10 +101,10 @@ public final class DicePresenter {
             d.setBillboard(Display.Billboard.FIXED);
             // NONE so only our transformation scale controls size (FIXED adds item-frame shrink)
             d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
-            d.setInterpolationDuration(1);
+            d.setInterpolationDuration(0);
             d.setTeleportDuration(0);
-            // Entity yaw/pitch stay 0 — "in front" is pure translation from player look (no setRotation lag)
-            d.setTransformation(tumble(frontOffset(player), 0f, 0f));
+            // Start at the player's eyes; the next tick moves it smoothly along the look ray.
+            d.setTransformation(tumble(frontOffset(player, 0.0), 0f, 0f));
             d.setPersistent(false);
             d.setShadowRadius(0f);
             d.setViewRange(48f);
@@ -121,7 +123,22 @@ public final class DicePresenter {
         session.display = display;
         byPlayer.put(player.getUniqueId(), session);
 
-        // Update every tick so the client can interpolate a continuous, fixed-rate tumble.
+        session.entryTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
+            session.entryTask = null;
+            if (session.settled || session.display == null || !session.display.isValid()) {
+                return;
+            }
+            Player rolling = plugin.getServer().getPlayer(session.playerId);
+            if (rolling == null || !rolling.isOnline()) {
+                return;
+            }
+            session.display.setInterpolationDelay(0);
+            session.display.setInterpolationDuration(ENTRY_ANIMATION_TICKS);
+            session.followOffset = frontOffset(rolling);
+            session.display.setTransformation(tumble(session.followOffset, 0f, 0f));
+        }, 1L);
+
+        // Update every tick after the entrance so the client can interpolate a continuous, fixed-rate tumble.
         session.faceTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
             if (session.settled || session.display == null || !session.display.isValid()) {
                 return;
@@ -137,16 +154,25 @@ public final class DicePresenter {
             rolling.showEntity(plugin, session.display);
             session.display.setRotation(0f, 0f);
             session.display.setInterpolationDelay(0);
+            if (session.spinTicks == 0) {
+                session.display.setInterpolationDuration(1);
+            }
+            Vector3f targetOffset = frontOffset(rolling);
+            if (session.followOffset == null) {
+                session.followOffset = targetOffset;
+            } else {
+                smoothTowards(session.followOffset, targetOffset, HEAD_DIRECTION_FOLLOW_ALPHA);
+            }
             session.spinYaw += SPIN_YAW_PER_TICK;
             session.spinPitch += SPIN_PITCH_PER_TICK;
             session.spinTicks++;
             session.display.setTransformation(
-                    tumble(frontOffset(rolling), session.spinYaw, session.spinPitch)
+                    tumble(session.followOffset, session.spinYaw, session.spinPitch)
             );
             if (session.spinTicks % (spinIntervalTicks * 2) == 0) {
                 session.display.setItemStack(DiceItems.face(spinFace(dice)));
             }
-        }, 1L, 1L);
+        }, ENTRY_ANIMATION_TICKS + 1L, 1L);
 
         session.timeoutTask = plugin.getServer().getScheduler().runTaskLater(
                 plugin, () -> settle(session), interactTicks
@@ -267,6 +293,10 @@ public final class DicePresenter {
      * stacks on top of the head and floats the die far above the eyes.
      */
     private Vector3f frontOffset(Player player) {
+        return frontOffset(player, spawnDistance);
+    }
+
+    private Vector3f frontOffset(Player player, double distance) {
         Location feet = player.getLocation();
         Location eye = player.getEyeLocation();
         Vector dir = eye.getDirection();
@@ -277,9 +307,9 @@ public final class DicePresenter {
         }
         // target = eye + look * spawnDistance; attach ≈ feet + (0, height, 0)
         double attachY = player.getHeight();
-        float fx = (float) (eye.getX() + dir.getX() * spawnDistance - feet.getX());
-        float fy = (float) (eye.getY() + dir.getY() * spawnDistance - (feet.getY() + attachY));
-        float fz = (float) (eye.getZ() + dir.getZ() * spawnDistance - feet.getZ());
+        float fx = (float) (eye.getX() + dir.getX() * distance - feet.getX());
+        float fy = (float) (eye.getY() + dir.getY() * distance - (feet.getY() + attachY));
+        float fz = (float) (eye.getZ() + dir.getZ() * distance - feet.getZ());
         return new Vector3f(fx, fy, fz);
     }
 
@@ -290,6 +320,12 @@ public final class DicePresenter {
                 scaleVec(spinScale),
                 new AxisAngle4f(pitch, 1f, 0f, 0f)
         );
+    }
+
+    private static void smoothTowards(Vector3f current, Vector3f target, float alpha) {
+        current.x += (target.x - current.x) * alpha;
+        current.y += (target.y - current.y) * alpha;
+        current.z += (target.z - current.z) * alpha;
     }
 
     private Location floatingInFront(Player player) {
@@ -360,6 +396,10 @@ public final class DicePresenter {
     }
 
     private void cancelSpinAndTimeout(Session session) {
+        if (session.entryTask != null) {
+            session.entryTask.cancel();
+            session.entryTask = null;
+        }
         if (session.faceTask != null) {
             session.faceTask.cancel();
             session.faceTask = null;
@@ -383,9 +423,11 @@ public final class DicePresenter {
         final int result;
         final IntConsumer onSettled;
         ItemDisplay display;
+        BukkitTask entryTask;
         BukkitTask faceTask;
         BukkitTask timeoutTask;
         BukkitTask settleTask;
+        Vector3f followOffset;
         float spinYaw;
         float spinPitch;
         int spinTicks;
