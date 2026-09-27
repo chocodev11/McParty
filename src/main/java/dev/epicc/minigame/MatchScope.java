@@ -30,6 +30,7 @@ public final class MatchScope {
     private final List<UUID> playerIds = new ArrayList<>();
     private final Map<UUID, PlayerStateSnapshot> snapshots = new HashMap<>();
     private final List<BukkitTask> tasks = new ArrayList<>();
+    private final List<Runnable> closeActions = new ArrayList<>();
 
     private boolean damageProtected;
     private boolean closed;
@@ -110,6 +111,11 @@ public final class MatchScope {
         return task;
     }
 
+    /** Runs when the scope closes, before players are restored — for match-owned entities. */
+    public void onClose(Runnable action) {
+        closeActions.add(action);
+    }
+
     public void broadcast(String messageKey, TagResolver... placeholders) {
         for (Player player : onlinePlayers()) {
             messages.send(player, messageKey, placeholders);
@@ -128,6 +134,18 @@ public final class MatchScope {
 
     public boolean closed() {
         return closed;
+    }
+
+    /** Revoke ownership before notifying gameplay, which may finish the match. */
+    public void detach(Player player) {
+        UUID id = player.getUniqueId();
+        PlayerStateSnapshot snapshot = snapshots.remove(id);
+        if (snapshot == null || closed) return;
+        playerIds.remove(id);
+        events.unregister(player, this);
+        PlayerStateSnapshot.preparePhase(player);
+        snapshot.restore(player);
+        listener.onQuit(player);
     }
 
     /** Close the scope and report the result. Later calls are ignored. */
@@ -150,6 +168,10 @@ public final class MatchScope {
             task.cancel();
         }
         tasks.clear();
+        for (Runnable action : closeActions) {
+            action.run();
+        }
+        closeActions.clear();
         for (UUID id : playerIds) {
             Player player = plugin.getServer().getPlayer(id);
             if (player == null || !player.isOnline()) {

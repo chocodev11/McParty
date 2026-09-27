@@ -1,6 +1,5 @@
 package dev.epicc.party;
 
-import com.infernalsuite.asp.api.world.SlimeWorld;
 import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.containment.SlotBoundary;
@@ -152,41 +151,25 @@ public final class LobbyMatchmaker implements Listener {
 
         final UUID instanceId = instance.id();
         final String template = config.lobbySlimeTemplate();
-        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            Optional<SlimeWorld> lobbyClone = slime.prepareClone(instanceId, template);
-
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                if (instance.state() != PartyState.WAITING) {
-                    slime.getLoadedWorld(instanceId, template)
-                            .ifPresent(world -> slime.unloadWorldForInstance(instanceId, world));
-                    return;
-                }
-                if (lobbyClone.isEmpty()) {
-                    instance.broadcast(messages.get("party.slime-load-failed"));
-                    partyManager.cleanup(instance);
-                    return;
-                }
-
-                Optional<World> lobbyWorld = slime.loadClone(instanceId, template, lobbyClone.get());
-                if (lobbyWorld.isEmpty()) {
-                    instance.broadcast(messages.get("party.slime-register-failed"));
-                    partyManager.cleanup(instance);
-                    return;
-                }
-
-                lobbyWorlds.put(instanceId, lobbyWorld.get().getName());
-                configureLobbyWorld(lobbyWorld.get());
-                holograms.openLobbyScope(instanceId, lobbyWorld.get());
-                // Lobby loaded! Teleport the first player and anyone who joined while loading.
-                for (PartyPlayer pp : instance.players()) {
-                    Player player = plugin.getServer().getPlayer(pp.uuid());
-                    if (player != null && player.isOnline()) {
-                        teleportToLobby(player, lobbyWorld.get());
-                    }
-                }
-                // Only clamp once everyone is inside — the boundary lives in the clone world.
-                bindLobbyArea(instance, lobbyWorld.get());
-            });
+        slime.loadCloneAsync(instanceId, template).thenAccept(lobbyWorld -> {
+            if (instance.state() != PartyState.WAITING) {
+                lobbyWorld.ifPresent(world -> slime.unloadWorldForInstance(instanceId, world));
+                return;
+            }
+            if (lobbyWorld.isEmpty()) {
+                instance.broadcast(messages.get("party.slime-load-failed"));
+                partyManager.cleanup(instance);
+                return;
+            }
+            World world = lobbyWorld.get();
+            lobbyWorlds.put(instanceId, world.getName());
+            configureLobbyWorld(world);
+            holograms.openLobbyScope(instanceId, world);
+            for (PartyPlayer pp : instance.players()) {
+                Player player = plugin.getServer().getPlayer(pp.uuid());
+                if (player != null && player.isOnline()) teleportToLobby(player, world);
+            }
+            bindLobbyArea(instance, world);
         });
     }
 

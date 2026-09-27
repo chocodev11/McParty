@@ -286,6 +286,7 @@ public interface MinigameSession {
 | `EliminationTracker` | Alive set, elimination order → placements + coins (last alive = 1st) |
 | `MinigameEventBus` | **The only** Bukkit listener for minigames; routes events by player to the owning scope |
 | `MatchListener` | Per-session gameplay hooks the bus dispatches to (`MatchListener.NONE` when a game needs none) |
+| `PowerUpBox` | Shared pickup: spinning box + billboard `?` displays, AABB touch callback, optional respawn; dies with the scope (`scope.onClose`) |
 
 Rules:
 
@@ -293,6 +294,7 @@ Rules:
   party; a listener per session multiplies handler calls by the number of running matches.
   Need an event the bus does not route yet? Add a hook to `MatchListener` **and** a handler to
   `MinigameEventBus` — do not register separately.
+- Party leave and disconnect detach the player from `MatchScope` immediately: restore the snapshot, remove event ownership, then notify the session through `onQuit`. Delayed reveals recheck party membership.
 - `scope.finish(result)` closes and reports exactly once; `scope.close()` closes without reporting
   (that is what `MinigameSession.cancel()` should call). Both restore every player.
 - Schedule through `scope.repeating(...)` / `scope.later(...)` so tasks die with the match.
@@ -339,7 +341,8 @@ Javadocs: https://docs.infernalsuite.com/
 4. `readWorld` / clone / save may run **off main thread**.
 5. `loadWorld(SlimeWorld, callWorldLoadEvent)` **must** run on the **main (server) thread**.
 6. Temporary clones: `template.clone(uniqueName)` (read-only clone, not persisted). Do not save party instance worlds unless product requirements change.
-7. Unload: evacuate players, then `Bukkit.unloadWorld(world, false)`. Track names in `SlimeWorldService.instanceWorlds`.
+7. Unload: evacuate players, then `Bukkit.unloadWorld(world, false)`. Track names in `SlimeWorldService.instanceWorlds`; remove tracking only after successful unloading. Failed/occupied unloads retry while the plugin is enabled.
+8. Lobby, board, and arena loads use `loadCloneAsync` from the main thread. `WorldLoadQueue` admits up to 64 requests, prepares at most two concurrently, and registers at most one world per tick. Cancellation is checked before registration; shutdown discards pending work. Do not bypass this queue for gameplay loads.
 
 ### Service API (`SlimeWorldService`)
 
@@ -390,6 +393,10 @@ Important groups:
 
 Add new config only through `PluginConfig` + default `config.yml` together.
 Add player-facing text only through `MessageService` + default `messages.yml` together (MiniMessage; placeholders as `<name>`).
+
+### UI refresh and pack hosting
+
+Tab-list text refreshes periodically; visibility updates only for players whose membership changed. Hologram visibility scans use a world index, invalidated by definition/scope changes. Local resource-pack downloads use virtual threads, and shutdown closes their executor; external hosting remains available for network deployments.
 
 ### Seamless world change
 

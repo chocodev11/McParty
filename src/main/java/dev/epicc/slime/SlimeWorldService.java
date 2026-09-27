@@ -14,6 +14,7 @@ import org.bukkit.Location;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.io.File;
 import java.io.IOException;
@@ -47,6 +48,12 @@ public final class SlimeWorldService {
     private final boolean allowAnimals;
     private final boolean pvp;
 
+    private final WorldLoadQueue<Optional<SlimeWorld>, Optional<World>> loads;
+    private final Map<String, UUID> pendingUnloads = new java.util.HashMap<>();
+    private BukkitTask loadTask;
+    private BukkitTask unloadTask;
+    private volatile boolean closed;
+
     private AdvancedSlimePaperAPI asp;
     private FileLoader loader;
     private File worldsDir;
@@ -64,6 +71,10 @@ public final class SlimeWorldService {
             boolean pvp
     ) {
         this.plugin = plugin;
+        this.loads = new WorldLoadQueue<>(
+                task -> plugin.getServer().getScheduler().runTaskAsynchronously(plugin, task),
+                2, 64, Optional.empty(),
+                exception -> plugin.getLogger().log(Level.SEVERE, "Failed to load queued slime world", exception));
         this.enabled = enabled;
         this.defaultTemplate = defaultTemplate;
         this.worldPrefix = worldPrefix;
@@ -96,7 +107,7 @@ public final class SlimeWorldService {
     }
 
     public boolean isReady() {
-        return isEnabled();
+        return !closed && isEnabled();
     }
 
     public String defaultTemplate() {
@@ -177,27 +188,30 @@ public final class SlimeWorldService {
      * Read template asynchronously, then load on the main thread, returning a Future.
      */
     public CompletableFuture<Optional<World>> loadCloneAsync(UUID instanceId, String templateName) {
-        CompletableFuture<Optional<World>> future = new CompletableFuture<>();
-        if (!isReady()) {
-            future.complete(Optional.empty());
-            return future;
+        if (!Bukkit.isPrimaryThread()) {
+            throw new IllegalStateException("loadCloneAsync must be requested on the main thread");
         }
+        if (!isReady()) return CompletableFuture.completedFuture(Optional.empty());
         Optional<World> existing = getLoadedWorld(instanceId, templateName);
-        if (existing.isPresent()) {
-            future.complete(existing);
-            return future;
-        }
-        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
-            Optional<SlimeWorld> clone = prepareClone(instanceId, templateName);
-            plugin.getServer().getScheduler().runTask(plugin, () -> {
-                if (clone.isEmpty()) {
-                    future.complete(Optional.empty());
-                } else {
-                    future.complete(loadClone(instanceId, templateName, clone.get()));
+        if (existing.isPresent()) return CompletableFuture.completedFuture(existing);
+        CompletableFuture<Optional<World>> future = loads.submit(instanceId,
+                () -> prepareClone(instanceId, templateName),
+                clone -> clone.flatMap(prepared -> loadClone(instanceId, templateName, prepared)),
+                result -> result.ifPresent(world -> unloadWorldForInstance(instanceId, world)));
+        if (loadTask == null) {
+            loadTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
+                loads.tick();
+                if (loads.isIdle() && loadTask != null) {
+                    loadTask.cancel();
+                    loadTask = null;
                 }
-            });
-        });
+            }, 1L, 1L);
+        }
         return future;
+    }
+
+    public void cancelLoads(UUID instanceId) {
+        loads.cancel(instanceId);
     }
 
     /**
@@ -208,10 +222,8 @@ public final class SlimeWorldService {
             return Optional.empty();
         }
         String template = resolveTemplate(templateName);
-        String worldName = worldPrefix + shortId(instanceId) + "-" + template;
-        if (Bukkit.getWorld(worldName) != null || asp.getLoadedWorld(worldName) != null) {
-            worldName = worldPrefix + instanceId.toString().replace("-", "").substring(0, 12) + "-" + template;
-        }
+        String worldName = worldPrefix + instanceId.toString().replace("-", "")
+                + "-" + UUID.randomUUID().toString().substring(0, 8) + "-" + template;
         try {
             SlimeWorld templateWorld = asp.readWorld(loader, template, true, defaultProperties());
             return Optional.of(templateWorld.clone(worldName));
@@ -260,12 +272,22 @@ public final class SlimeWorldService {
         if (world == null) {
             return true;
         }
-        if (!world.getPlayers().isEmpty()) {
-            plugin.getLogger().warning("Refusing to unload slime world '" + world.getName()
-                    + "' while players remain; caller must evacuate them first.");
+        String worldName = world.getName();
+        if (!world.getPlayers().isEmpty() || !unloadWorld(worldName)) {
+            if (!closed && instanceId != null) {
+                pendingUnloads.put(worldName, instanceId);
+                if (unloadTask == null) {
+                    unloadTask = plugin.getServer().getScheduler().runTaskTimer(plugin, this::retryUnloads, 20L, 20L);
+                }
+            }
             return false;
         }
-        String worldName = world.getName();
+        forgetWorld(instanceId, worldName);
+        return true;
+    }
+
+    private void forgetWorld(UUID instanceId, String worldName) {
+        pendingUnloads.remove(worldName);
         if (instanceId != null) {
             Map<String, World> map = templateWorlds.get(instanceId);
             if (map != null) {
@@ -282,7 +304,6 @@ public final class SlimeWorldService {
                 }
             }
         }
-        return unloadWorld(worldName);
     }
 
     /** Callers must evacuate every party player before this method is called. */
@@ -294,7 +315,32 @@ public final class SlimeWorldService {
         for (String worldName : new ArrayList<>(worlds)) {
             World world = Bukkit.getWorld(worldName);
             if (world != null) unloadWorldForInstance(instanceId, world);
+            else forgetWorld(instanceId, worldName);
         }
+    }
+
+    private void retryUnloads() {
+        for (Map.Entry<String, UUID> entry : new ArrayList<>(pendingUnloads.entrySet())) {
+            World world = Bukkit.getWorld(entry.getKey());
+            if (world == null) {
+                forgetWorld(entry.getValue(), entry.getKey());
+            } else if (world.getPlayers().isEmpty()) {
+                unloadWorldForInstance(entry.getValue(), world);
+            }
+        }
+        if (pendingUnloads.isEmpty()) {
+            unloadTask.cancel();
+            unloadTask = null;
+        }
+    }
+
+    public void shutdown() {
+        closed = true;
+        loads.close();
+        if (loadTask != null) { loadTask.cancel(); loadTask = null; }
+        if (unloadTask != null) { unloadTask.cancel(); unloadTask = null; }
+        pendingUnloads.clear();
+        unloadAll();
     }
 
     public void unloadAll() {
@@ -316,7 +362,7 @@ public final class SlimeWorldService {
             return 0;
         }
 
-        Pattern cloneName = Pattern.compile(Pattern.quote(worldPrefix) + "[0-9a-f]{8,12}-.+");
+        Pattern cloneName = Pattern.compile(Pattern.quote(worldPrefix) + "[0-9a-f]{8,32}-.+");
         int unloaded = 0;
         for (World world : new ArrayList<>(Bukkit.getWorlds())) {
             if (!cloneName.matcher(world.getName()).matches() || asp.getLoadedWorld(world.getName()) == null) {

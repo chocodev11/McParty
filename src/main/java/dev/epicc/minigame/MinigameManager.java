@@ -34,6 +34,10 @@ public final class MinigameManager {
         this.events = events;
     }
 
+    public void detach(Player player) {
+        events.detach(player);
+    }
+
     public MinigameRegistry registry() {
         return registry;
     }

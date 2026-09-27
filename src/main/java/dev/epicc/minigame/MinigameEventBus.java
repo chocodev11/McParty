@@ -12,6 +12,7 @@ import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 
 import java.util.Collection;
@@ -36,6 +37,15 @@ public final class MinigameEventBus implements Listener {
 
     void unregister(MatchScope scope) {
         byPlayer.values().removeIf(known -> known == scope);
+    }
+
+    void unregister(Player player, MatchScope scope) {
+        byPlayer.remove(player.getUniqueId(), scope);
+    }
+
+    public void detach(Player player) {
+        MatchScope scope = scopeOf(player);
+        if (scope != null) scope.detach(player);
     }
 
     private MatchScope scopeOf(Player player) {
@@ -114,11 +124,19 @@ public final class MinigameEventBus implements Listener {
         }
     }
 
-    @EventHandler
-    public void onQuit(PlayerQuitEvent event) {
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onMove(PlayerMoveEvent event) {
+        if (!event.hasChangedPosition()) {
+            return;
+        }
         MatchScope scope = scopeOf(event.getPlayer());
         if (scope != null) {
-            scope.listener().onQuit(event.getPlayer());
+            scope.listener().onMove(event);
         }
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        detach(event.getPlayer());
     }
 }

@@ -1,0 +1,41 @@
+{
+  "credit": "McParty power-up box",
+  "ambientocclusion": false,
+  "gui_light": "front",
+  "texture_size": [64, 32],
+  "textures": {
+    "box": "mcparty:item/power_up_box",
+    "particle": "mcparty:item/power_up_box"
+  },
+  "elements": [
+    {
+      "name": "glass",
+      "from": [1, 1, 1],
+      "to": [15, 15, 15],
+      "faces": {
+        "north": {"uv": [8, 8, 11.75, 15.5], "texture": "#box"},
+        "south": {"uv": [8, 8, 11.75, 15.5], "texture": "#box"},
+        "east": {"uv": [8, 8, 11.75, 15.5], "texture": "#box"},
+        "west": {"uv": [8, 8, 11.75, 15.5], "texture": "#box"},
+        "up": {"uv": [8, 8, 11.75, 15.5], "texture": "#box"},
+        "down": {"uv": [8, 8, 11.75, 15.5], "texture": "#box"}
+      }
+    },
+    {
+      "name": "rainbow_inside",
+      "from": [15, 15, 15],
+      "to": [1, 1, 1],
+      "faces": {
+        "north": {"uv": [0, 0, 3.75, 7.5], "texture": "#box"},
+        "south": {"uv": [4, 0, 7.75, 7.5], "texture": "#box"},
+        "east": {"uv": [8, 0, 11.75, 7.5], "texture": "#box"},
+        "west": {"uv": [12, 0, 15.75, 7.5], "texture": "#box"},
+        "up": {"uv": [0, 8, 3.75, 15.5], "texture": "#box"},
+        "down": {"uv": [4, 8, 7.75, 15.5], "texture": "#box"}
+      }
+    }
+  ],
+  "display": {
+    "gui": {"rotation": [30, 45, 0], "scale": [0.625, 0.625, 0.625]}
+  }
+}

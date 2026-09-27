@@ -1,0 +1,20 @@
+{
+  "credit": "McParty power-up question mark",
+  "ambientocclusion": false,
+  "gui_light": "front",
+  "textures": {
+    "mark": "mcparty:item/power_up_question",
+    "particle": "mcparty:item/power_up_question"
+  },
+  "elements": [
+    {
+      "name": "mark",
+      "from": [0, 0, 8],
+      "to": [16, 16, 8],
+      "faces": {
+        "north": {"uv": [16, 0, 0, 16], "texture": "#mark"},
+        "south": {"uv": [0, 0, 16, 16], "texture": "#mark"}
+      }
+    }
+  ]
+}

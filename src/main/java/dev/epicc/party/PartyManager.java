@@ -248,7 +248,8 @@ public final class PartyManager {
         diceHats.clear(playerId);
         packetBarriers.clear(playerId);
 
-        if (instance.state() != PartyState.WAITING && player.isOnline()) {
+        if (player.isOnline() && (instance.state() != PartyState.WAITING
+                || slime.isInstanceWorld(player.getWorld()))) {
             Location fallback = fallbackLocation();
             if (isBoardWorld(instance, player)) {
                 transitions.teleportSeamlessly(player, fallback);
@@ -258,6 +259,7 @@ public final class PartyManager {
         }
         sessions.unbind(playerId);
         instance.removePlayer(playerId);
+        minigames.detach(player);
         tabListRefresh.run();
 
         if (!silent) {
@@ -315,6 +317,7 @@ public final class PartyManager {
 
         long token = instance.beginStarting();
         if (token < 0) return Optional.of(messages.get("party.already-starting"));
+        instance.setSlot(templateSlot);
         beginCountdown(instance, templateSlot, token);
 
         return Optional.empty();
@@ -343,6 +346,7 @@ public final class PartyManager {
                 instance.broadcast(messages.get("party.slime-load-failed"));
                 instance.failStart(token);
                 slots.release(instance.id(), templateSlot.id());
+                instance.setSlot(null);
                 instance.cancelPendingTasks();
                 return;
             }
@@ -521,6 +525,7 @@ public final class PartyManager {
                 : List.of();
         if (!instance.beginEnding()) return;
         instance.cancelPendingTasks();
+        slime.cancelLoads(instance.id());
         BoardTurnController controller = controllers.remove(instance.id());
         if (controller != null) {
             controller.stop();
@@ -562,6 +567,7 @@ public final class PartyManager {
         holograms.closeLobbyScope(instance.id());
         holograms.closePartyScope(instance.id());
         instance.cancelPendingTasks();
+        slime.cancelLoads(instance.id());
         BoardTurnController controller = controllers.remove(instance.id());
 
         if (controller != null) {

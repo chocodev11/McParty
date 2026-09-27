@@ -41,6 +41,8 @@ public final class HologramService implements Listener {
     private final Map<UUID, World> partyScopeWorlds = new ConcurrentHashMap<>();
     private final Map<UUID, World> lobbyScopeWorlds = new ConcurrentHashMap<>();
     private final Map<String, HologramPlaceholder> placeholders = new ConcurrentHashMap<>();
+    private final Map<String, List<RuntimeHologram>> runtimeByWorld = new java.util.HashMap<>();
+    private boolean runtimeIndexDirty = true;
     private BiPredicate<UUID, Player> scopeVisibility = (scopeId, player) -> true;
     private BukkitTask tickTask;
     private boolean enabled;
@@ -81,6 +83,8 @@ public final class HologramService implements Listener {
             }
             this.enabled = false;
             holograms.clear();
+            runtimeByWorld.clear();
+            runtimeIndexDirty = true;
             partyTemplates.clear();
             partyTemplateBundles.clear();
             lobbyTemplates.clear();
@@ -123,6 +127,8 @@ public final class HologramService implements Listener {
         }
         hideAll();
         holograms.clear();
+        runtimeByWorld.clear();
+        runtimeIndexDirty = true;
         partyTemplates.clear();
         partyTemplateBundles.clear();
         lobbyTemplates.clear();
@@ -177,6 +183,7 @@ public final class HologramService implements Listener {
             return;
         }
         partyScopeWorlds.remove(partyId);
+        runtimeIndexDirty = true;
         Map<String, RuntimeHologram> scope = partyScopes.remove(partyId);
         if (scope != null) {
             scope.values().forEach(RuntimeHologram::hideAll);
@@ -188,6 +195,7 @@ public final class HologramService implements Listener {
             return;
         }
         lobbyScopeWorlds.remove(partyId);
+        runtimeIndexDirty = true;
         Map<String, RuntimeHologram> scope = lobbyScopes.remove(partyId);
         if (scope != null) {
             scope.values().forEach(RuntimeHologram::hideAll);
@@ -283,6 +291,7 @@ public final class HologramService implements Listener {
                 "global"
         );
         holograms.put(normalized, new RuntimeHologram(definition));
+        runtimeIndexDirty = true;
         save();
         return true;
     }
@@ -291,6 +300,7 @@ public final class HologramService implements Listener {
         if (!enabled) return false;
         String normalized = normalize(id);
         RuntimeHologram removed = holograms.remove(normalized);
+        runtimeIndexDirty = true;
         if (removed != null) {
             removed.hideAll();
             save();
@@ -341,6 +351,7 @@ public final class HologramService implements Listener {
         RuntimeHologram runtime = holograms.get(id);
         if (runtime != null) {
             runtime.replace(definition);
+            runtimeIndexDirty = true;
             return true;
         }
         if (partyTemplates.containsKey(id)) {
@@ -428,6 +439,8 @@ public final class HologramService implements Listener {
         }
         hideAll();
         holograms.clear();
+        runtimeByWorld.clear();
+        runtimeIndexDirty = true;
         partyTemplates.clear();
         partyTemplateBundles.clear();
         lobbyTemplates.clear();
@@ -492,13 +505,21 @@ public final class HologramService implements Listener {
     }
 
     private void scanPlayer(Player player) {
-        forEachRuntime(hologram -> {
+        if (!player.isOnline()) return;
+        if (runtimeIndexDirty) {
+            runtimeByWorld.clear();
+            forEachRuntime(hologram -> runtimeByWorld
+                    .computeIfAbsent(hologram.definition.location().world(), key -> new ArrayList<>())
+                    .add(hologram));
+            runtimeIndexDirty = false;
+        }
+        for (RuntimeHologram hologram : runtimeByWorld.getOrDefault(player.getWorld().getName(), List.of())) {
             if (shouldShow(player, hologram)) {
                 hologram.show(player, tick);
             } else {
                 hologram.hide(player);
             }
-        });
+        }
     }
 
     private boolean shouldShow(Player player, RuntimeHologram hologram) {
@@ -569,6 +590,7 @@ public final class HologramService implements Listener {
             scope.put(bound.id(), new RuntimeHologram(bound, scopeId, bundles.get(template.id())));
         }
         scopes.put(scopeId, scope);
+        runtimeIndexDirty = true;
     }
 
     private void forEachRuntime(Consumer<RuntimeHologram> consumer) {

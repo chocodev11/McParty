@@ -4,6 +4,9 @@ Provides custom item models:
 
 - `mcparty:dice_1` … `mcparty:dice_6`
 - `mcparty:tnt_multishot` for the TNT Spleef Multishot power-up
+- `mcparty:elytra_ring` for server-spawned Elytra Race ring displays
+- `mcparty:power_up_box` + `mcparty:power_up_question` for the shared minigame power-up box
+  (inside-out `shell_inside` element, `from` > `to`, shows the back walls through the translucent front)
 
 ## Font images
 

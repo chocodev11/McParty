@@ -5,11 +5,20 @@ import dev.epicc.containment.SlotBoundary;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
+import org.bukkit.World;
+import org.bukkit.entity.Display;
+import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
+import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerTeleportEvent;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.util.Transformation;
 import org.bukkit.util.Vector;
+import org.joml.Quaternionf;
+import org.joml.Vector3f;
 
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -17,12 +26,18 @@ import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 
 /** Cytooxien-style Elytra ring race: ordered rings, center bonuses, and a finish ring. */
 public final class ElytraMinigame implements Minigame, MinigameSession, MatchListener {
+
+    private static final double RING_HITBOX_PADDING = 0.4;
+    private static final double MOVEMENT_ORDER_EPSILON = 1.0e-6;
+    private static final float RING_MODEL_OPENING_RADIUS = 18.0f / 16.0f;
+    private static final NamespacedKey RING_ITEM_MODEL = new NamespacedKey("mcparty", "elytra_ring");
 
     private final ElytraCourse course;
     private final int timeoutSeconds;
@@ -34,6 +49,7 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
     private final Map<UUID, Integer> progress = new HashMap<>();
     private final Map<UUID, Integer> bonusCoins = new HashMap<>();
     private final Map<UUID, Integer> partyOrder = new HashMap<>();
+    private final List<ItemDisplay> ringDisplays = new ArrayList<>();
 
     private MessageService messages;
     private MatchScope scope;
@@ -91,6 +107,7 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
         finished = false;
 
         if (course == null || !course.isReady() || context.arena().isEmpty()) {
+            cleanupRingDisplays();
             scope.finish(new MinigameResult());
             return;
         }
@@ -98,6 +115,7 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
         boundary = context.arena().orElseThrow().playArea().boundary();
         List<UUID> playerIds = scope.playerIds();
         if (playerIds.isEmpty()) {
+            cleanupRingDisplays();
             scope.finish(new MinigameResult());
             return;
         }
@@ -109,6 +127,7 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
             partyOrder.put(id, i);
         }
 
+        spawnRingDisplays(boundary.world());
         scope.protectFromDamage();
         scope.broadcast("minigame.elytra-started",
                 MessageService.ph("rings", Integer.toString(course.rings().size())));
@@ -181,7 +200,6 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
                 markOut(id, player);
                 continue;
             }
-            checkNextRing(id, player);
         }
 
         if (active.isEmpty() || timeoutTicks <= 0) {
@@ -200,29 +218,121 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
         }
     }
 
-    private void checkNextRing(UUID id, Player player) {
-        int next = progress.getOrDefault(id, 0);
-        if (next >= course.rings().size()) {
-            finishPlayer(id, player);
+    @Override
+    public void onMove(PlayerMoveEvent event) {
+        if (finished || !launched || event.isCancelled() || event instanceof PlayerTeleportEvent) {
             return;
         }
-        ElytraRing ring = course.rings().get(next);
-        if (!ring.contains(player.getLocation())) {
+        Player player = event.getPlayer();
+        UUID id = player.getUniqueId();
+        if (!active.contains(id) || !player.isGliding() || event.getTo() == null) {
+            return;
+        }
+        if (boundary == null || event.getFrom().getWorld() != boundary.world()
+                || event.getTo().getWorld() != boundary.world()) {
             return;
         }
 
-        progress.put(id, next + 1);
-        if (ring.centerHit(player.getLocation())) {
-            bonusCoins.compute(id, (ignored, coins) -> coins + centerBonusCoins);
-            messages.send(player, "minigame.elytra-center",
-                    MessageService.ph("coins", Integer.toString(centerBonusCoins)));
+        double eyeHeight = player.getEyeHeight();
+        Location from = eyePosition(event.getFrom(), eyeHeight);
+        Location to = eyePosition(event.getTo(), eyeHeight);
+        checkNextRings(id, player, from, to);
+    }
+
+    private void checkNextRings(UUID id, Player player, Location from, Location to) {
+        double previousCrossing = -1.0;
+        while (active.contains(id)) {
+            int next = progress.getOrDefault(id, 0);
+            if (next >= course.rings().size()) {
+                finishPlayer(id, player);
+                return;
+            }
+
+            ElytraRing ring = course.rings().get(next);
+            Optional<ElytraRing.Collision> collision = ring.collision(from, to, RING_HITBOX_PADDING);
+            if (collision.isEmpty()) {
+                return;
+            }
+            ElytraRing.Collision crossing = collision.orElseThrow();
+            if (crossing.segmentProgress() + MOVEMENT_ORDER_EPSILON < previousCrossing) {
+                return;
+            }
+            previousCrossing = crossing.segmentProgress();
+
+            progress.put(id, next + 1);
+            if (ring.centerHit(crossing.point())) {
+                bonusCoins.compute(id, (ignored, coins) -> coins + centerBonusCoins);
+                messages.send(player, "minigame.elytra-center",
+                        MessageService.ph("coins", Integer.toString(centerBonusCoins)));
+            }
+            messages.send(player, "minigame.elytra-ring",
+                    MessageService.ph("ring", Integer.toString(next + 1)),
+                    MessageService.ph("total", Integer.toString(course.rings().size())));
+            if (next + 1 == course.rings().size()) {
+                finishPlayer(id, player);
+                return;
+            }
         }
-        messages.send(player, "minigame.elytra-ring",
-                MessageService.ph("ring", Integer.toString(next + 1)),
-                MessageService.ph("total", Integer.toString(course.rings().size())));
-        if (next + 1 == course.rings().size()) {
-            finishPlayer(id, player);
+    }
+
+    private void spawnRingDisplays(World world) {
+        for (ElytraRing ring : course.rings()) {
+            Location center = new Location(world, ring.x(), ring.y(), ring.z());
+            Vector normal = ring.normalVector();
+            Quaternionf rotation = new Quaternionf().rotationTo(
+                    new Vector3f(0f, 0f, 1f),
+                    new Vector3f((float) normal.getX(), (float) normal.getY(), (float) normal.getZ())
+            );
+            // The visible opening covers the padded hitbox, so a pass never looks like a miss.
+            double visibleRadius = ring.radius() + RING_HITBOX_PADDING;
+            float scale = (float) (visibleRadius / RING_MODEL_OPENING_RADIUS);
+            float displaySize = (float) Math.max(1.0, visibleRadius * 3.0);
+            ItemDisplay display = world.spawn(center, ItemDisplay.class, entity -> {
+                entity.setItemStack(ringItem());
+                entity.setBillboard(Display.Billboard.FIXED);
+                entity.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.FIXED);
+                entity.setDisplayWidth(displaySize);
+                entity.setDisplayHeight(displaySize);
+                entity.setTransformation(new Transformation(
+                        new Vector3f(),
+                        new Quaternionf(rotation),
+                        new Vector3f(scale, scale, scale),
+                        new Quaternionf()
+                ));
+                entity.setInterpolationDuration(0);
+                entity.setTeleportDuration(0);
+                entity.setGravity(false);
+                entity.setNoPhysics(true);
+                entity.setInvulnerable(true);
+                entity.setPersistent(false);
+                entity.setShadowRadius(0f);
+                entity.setShadowStrength(0f);
+                entity.setViewRange(128f);
+            });
+            display.setRotation(0f, 0f);
+            ringDisplays.add(display);
         }
+    }
+
+    private static ItemStack ringItem() {
+        ItemStack item = new ItemStack(Material.PAPER);
+        ItemMeta meta = item.getItemMeta();
+        meta.setItemModel(RING_ITEM_MODEL);
+        item.setItemMeta(meta);
+        return item;
+    }
+
+    private static Location eyePosition(Location location, double eyeHeight) {
+        return location.clone().add(0.0, eyeHeight, 0.0);
+    }
+
+    private void cleanupRingDisplays() {
+        for (ItemDisplay display : ringDisplays) {
+            if (display.isValid()) {
+                display.remove();
+            }
+        }
+        ringDisplays.clear();
     }
 
     private void finishPlayer(UUID id, Player player) {
@@ -273,6 +383,7 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
             result.setPlacement(id, i + 1);
             result.setCoins(id, placementCoins + bonusCoins.getOrDefault(id, 0));
         }
+        cleanupRingDisplays();
         scope.finish(result);
     }
 
@@ -286,6 +397,7 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
 
     @Override
     public void cancel() {
+        cleanupRingDisplays();
         if (scope != null) {
             scope.close();
         }

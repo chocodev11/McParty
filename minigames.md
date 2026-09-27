@@ -1,7 +1,7 @@
 # McParty — Minigame Design & Implementation Plan
 
 **Version:** 1.0  
-**Updated:** 2026-08-07
+**Updated:** 2026-08-29
 **Scope:** Launch set of **12 free-for-all** minigames between board dice rounds
 **Parent docs:** `mcparty.md` (product vision), `AGENTS.md` (current plugin architecture)
 
@@ -19,7 +19,7 @@
 
 1. **Match-scoped everything** — listeners and tasks only apply to players in the active match.
 2. **Main-thread results** — `MinigameResult` applied on the server thread.
-3. **Real physics where fall/stand matters** — Spleef, Floor is Lava, and floating-island courses.
+3. **Real physics where fall/stand matters** — Spleef and floating-island courses.
 4. **Packets only for visuals / UI** — walls, optional Color Chaos paint, displays; not fake collision for spleef.
 5. **Restore or discard** — either journal changed blocks + batch restore, or unload a disposable minigame pad.
 
@@ -68,11 +68,11 @@ Implement once under `minigame/` (names indicative):
 | `MinigameRegistry` | id → factory; random pick; Dummy fallback | Manager |
 | `MatchScope` | UUID set, world, cancelled flag, task list | All |
 | `PlayerStateSnapshot` | inv, armor, XP, gamemode, effects, flight | All |
-| `BlockChangeJournal` | pos → old `BlockData`; batch restore N blocks/tick | Floor is Lava, Color Chaos (real mode) |
-| `EliminationTracker` | elimination order → placements | Hot Potato, Spleef, Mini Skywars, Color Chaos, Floor is Lava, Warden Escape, Antwar, Hopper |
-| `Region` / AABB | integer bounds; contains / finish line | Elytra Race, King of the Hill, Warden Escape, Hopper, Laser Tag, Speed Race, arenas |
-| `ScoreTracker` | UUID → score; rank by score | King of the Hill, Antwar, Laser Tag |
-| `CheckpointTracker` | sequential progress through a course | Elytra Race, King of the Hill, Warden Escape, Hopper, Speed Race |
+| `BlockChangeJournal` | pos → old `BlockData`; batch restore N blocks/tick | Color Chaos (real mode) |
+| `EliminationTracker` | elimination order → placements | Hot Potato, Spleef, Mini Skywars, Color Chaos, Warden Escape, Antwar |
+| `Region` / AABB | integer bounds; contains / finish line | Elytra Race, King of the Hill, Warden Escape, Block Jump, Laser Tag, Speed Race, arenas |
+| `ScoreTracker` | UUID → score; rank by score | King of the Hill, Antwar, Laser Tag, Shooting Range |
+| `CheckpointTracker` | sequential progress through a course | Elytra Race, King of the Hill, Warden Escape, Block Jump, Speed Race |
 | `ArenaSpawns` | list of spawn locations per minigame pad | All |
 | `SpectatorUtil` | eliminated → spectator (or freeze) until end | Elimination games |
 
@@ -89,9 +89,9 @@ Implement once under `minigame/` (names indicative):
 
 | Use packets / displays | Use real world |
 |------------------------|----------------|
-| Fake walls, UI titles, boss bars | Spleef / Floor is Lava floors |
+| Fake walls, UI titles, boss bars | Spleef floors / Shooting Range targets |
 | Optional Color Chaos client paint | Floating-island / Warden course terrain |
-| Elytra rings, hill capture FX, hopper platform FX, laser hit FX | Player damage, item pass, block mining |
+| Elytra rings, hill capture FX, Block Jump platform FX, laser hit FX | Player damage, item pass, block mining |
 | Score holograms (optional) | Finish regions, collision |
 
 Collision is always server-authoritative. Do not build Spleef on fake-only floors.
@@ -113,19 +113,19 @@ Collision is always server-authoritative. Do not build Spleef on fake-only floor
 |---|-----|--------------|--------|---------------------|---------------------|
 | 1 | `hot_potato` | Hot Potato | 45–60s | MatchScope + elimination | Low |
 | 2 | `speed_race` | Speed Race | 45–75s | Region + checkpoints | Low–med |
-| 3 | `spleef` | Spleef | 60–90s | Disposable arena + elimination | Low–med |
+| 3 | `spleef` | Spleef (Classic Snow / TNT) | 60–90s | Disposable arena + elimination | Low–med |
 | 4 | `elytra_race` | Elytra Race | 45–75s | Checkpoints + player flight state | Medium |
-| 5 | `floor_is_lava` | Floor is Lava | 60–90s | BlockChangeJournal + movement queue | Medium |
+| 5 | `shooting_range` | Shooting Range | 60–90s | ScoreTracker + routed projectiles | Medium |
 | 6 | `color_chaos` | Color Chaos | 45–75s | BlockChangeJournal + color grid | Medium |
 | 7 | `laser_tag` | Laser Tag | 60–90s | ScoreTracker + routed combat | Medium |
 | 8 | `king_of_the_hill` | King of the Hill | 60–90s | Checkpoints + scoring + block placement | Medium–high |
-| 9 | `hopper` | Hopper (Whirlybird) | 45–75s | Platform physics + checkpoints | Medium–high |
+| 9 | `hopper` | Block Jump | 45–75s | Sequential jumps + checkpoints | Medium–high |
 | 10 | `mini_skywars` | Mini Skywars | 60–90s | Disposable arena + loot + PvP | High |
 | 11 | `warden_escape` | Warden Escape | 60–90s | Arena + checkpoints + entity lifecycle | High |
 | 12 | `antwar` | Antwar (MineBattle) | 60–90s | Mining regeneration + economy + queen cores | High |
 
 **Implementation order:**  
-`hot_potato` → `speed_race` → `spleef` → `elytra_race` → `floor_is_lava` → `color_chaos` → `laser_tag` → `king_of_the_hill` → `hopper` → `mini_skywars` → `warden_escape` → `antwar`.
+`hot_potato` → `speed_race` → `spleef` → `elytra_race` → `shooting_range` → `color_chaos` → `laser_tag` → `king_of_the_hill` → `hopper` → `mini_skywars` → `warden_escape` → `antwar`.
 
 This is a reuse-first order: each stage introduces a small amount of new match logic, then gives later games a foundation to reuse. The detailed plans retain stable minigame IDs so config and implementation references do not drift.
 
@@ -196,17 +196,23 @@ minigame:
 
 ---
 
-### 5.2 TNT Spleef — `spleef`
+### 5.2 Spleef — `spleef`
 
 **Fantasy:** Break the floor under others. Last one standing wins.
 
+#### Variants
+
+- **Classic Snow:** Players use shovels to destroy the snow floor beneath their opponents.
+- **TNT:** Players use Fire Crossbows and arrows to remove TNT floor blocks. The existing Multishot power-up belongs to this variant.
+
 #### Rules
 
-1. Players spawn on a flat multi-layer or single-layer TNT platform.
-2. Each gets an unbreakable Fire Crossbow and arrows.
-3. Arrows remove TNT floor blocks (real world); players who fall below the configured Y threshold or leave the arena world are eliminated.
-4. A Multishot power-up periodically appears above a remaining TNT block; touching it grants Multishot for the configured duration.
-5. Last player above the floor wins.
+1. Select one variant for the match; all players use the same floor and tool set.
+2. In Classic Snow, players spawn on a flat snow platform and use shovels to destroy snow blocks or layers.
+3. In TNT, players spawn on a flat TNT platform and use unbreakable Fire Crossbows and arrows to remove TNT floor blocks.
+4. Players who fall below the configured Y threshold or leave the arena world are eliminated.
+5. The TNT variant may spawn a Multishot power-up above a remaining TNT block; touching it grants Multishot for the configured duration.
+6. Last player above the floor wins.
 
 #### Win / coins
 
@@ -217,19 +223,20 @@ minigame:
 
 | Area | Plan |
 |------|------|
-| State | Alive set |
-| Events | `ProjectileHitEvent` (arrows + TNT floor), fall check on move/tick |
+| State | Selected variant, alive set |
+| Events | Snow block break, `ProjectileHitEvent` for TNT arrows, fall check on move/tick |
 | Blocks | Real break; **no physics**; the per-party arena clone is disposable |
-| Weapon | Unbreakable `CROSSBOW` with Quick Charge; Multishot is temporary |
-| Power-up | Non-persistent `ItemDisplay` with configurable custom item model |
+| Weapon | Classic Snow: shovel; TNT: unbreakable `CROSSBOW` with Quick Charge |
+| Power-up | TNT only: non-persistent `ItemDisplay` with configurable custom item model |
 | Restore | `MinigameRunner` unloads the arena clone on end/cancel |
 | Packets | Not for floor |
 
 #### Flow
 
 ```text
-start → snapshot → load disposable arena clone → teleport spawns → assume prebuilt TNT platform
-     → give crossbows → listen arrow hits + fall + power-up touch
+start → select Classic Snow or TNT → snapshot → load disposable arena clone → teleport spawns
+     → assume prebuilt variant floor → give shovels or crossbows → listen breaks/hits + fall
+     → TNT power-up touch when enabled
      → last alive / timeout (rank by alive then height)
      → result → unload arena clone → done
 ```
@@ -245,6 +252,7 @@ start → snapshot → load disposable arena clone → teleport spawns → assum
 ```yaml
 minigame:
   spleef:
+    variant: random # classic_snow or tnt
     arena:
       template: spleef_arena
       spawn: { x: 0.5, y: 70.0, z: 0.5, yaw: 0.0, pitch: 0.0 }
@@ -252,11 +260,15 @@ minigame:
     timeout-seconds: 90
     fall-y: 60.0
     spawn-radius: 7.0
-    floor-materials: [TNT]
-    powerup:
-      spawn-interval-seconds: 10
-      multishot-duration-seconds: 10
-      item-model: tnt_multishot
+    classic-snow:
+      floor-materials: [SNOW_BLOCK, SNOW]
+      tool: DIAMOND_SHOVEL
+    tnt:
+      floor-materials: [TNT]
+      powerup:
+        spawn-interval-seconds: 10
+        multishot-duration-seconds: 10
+        item-model: tnt_multishot
 ```
 
 #### References
@@ -274,7 +286,7 @@ minigame:
 
 1. Give every player an Elytra, a fixed number of fireworks, and the same starting lane.
 2. Start all players together after a short countdown; freeze movement until “GO!”.
-3. The course contains visible rings or gates that must be crossed in order. A player cannot skip ahead by flying directly to the finish.
+3. The course contains visible `ItemDisplay` rings that must be crossed in order. The display is visual only; it has no physical collision and the server does not place ring blocks.
 4. Crossing a checkpoint records progress and can grant a small visual or sound confirmation. Missed gates leave the player at their current checkpoint.
 5. The first player through the finish ring wins. Finish order is used for the remaining placements; unfinished players are ranked by checkpoint progress and distance.
 
@@ -288,22 +300,24 @@ minigame:
 | Area | Plan |
 |------|------|
 | Flight | Enable Elytra flight and provide a controlled firework supply; disable unrelated flight and item use |
-| Checkpoints | Ordered ring AABBs or ring-plane intersection checks; reject out-of-order crossings |
-| Events | `PlayerMoveEvent` for checkpoint/finish detection; `PlayerToggleFlightEvent` and damage hooks for race rules |
+| Checkpoints | Ordered ring-plane segment collision; calculate the intersection point in world space, project it onto the ring plane, and reject out-of-order crossings |
+| Events | `PlayerMoveEvent` at monitor priority for checkpoint/finish detection; `PlayerToggleFlightEvent` and damage hooks for race rules |
 | Anti-skip | Boundary checks, course timeout, and teleport/velocity reset when a player leaves the allowed course |
-| World | Prebuilt disposable course or shared immutable track; no block restore needed |
+| Ring display | One non-persistent `ItemDisplay` per ring, using `mcparty:item/elytra_ring`, fixed orientation, and scale matching the model opening to `ring.radius` |
+| Collision | Convert movement `from`/`to` to eye positions because setup stores `player.getEyeLocation()`. Require a real plane crossing, same world, gliding, and a point inside `radius + padding`; center bonus uses that intersection point |
+| World | Prebuilt disposable course or shared immutable track; ring blocks are never created, checked, or restored |
 
 #### Flow
 
 ```text
 start → snapshot → equip Elytra and fireworks → teleport lanes
-     → countdown → sequential rings → finish order
+     → countdown → display rings + movement-segment collision → finish order
      → all finished or timeout → result → restore player state
 ```
 
 #### Cancel / edge cases
 
-- Remove Elytra flight and clear temporary fireworks on cancel before restoring the snapshot.
+- Remove ring displays before finish/cancel; `MatchScope` then restores Elytra, inventory, and flight state from the snapshot.
 - A disconnected player is DNF and cannot rejoin the active race.
 - Do not count a finish unless every required checkpoint was crossed in order.
 
@@ -442,58 +456,65 @@ minigame:
 
 ---
 
-### 5.6 Floor is Lava — `floor_is_lava`
+### 5.6 Shooting Range — `shooting_range`
 
-**Fantasy:** The floor dies under your feet. Cut others off. Last up wins.
+**Fantasy:** Aim carefully, hit valuable targets, and score more points than the other players.
 
 #### Rules
 
-1. Players on a wide platform (can be multi-layer later).
-2. When a player **leaves** a block (or after standing delay), that block is queued to become air after D ticks (TNTRun-style).
-3. Deduplicate positions in the vanish queue.
-4. Fall below threshold → eliminate.
-5. Last standing wins; timeout ranks by survival time / height.
+1. Players spawn in separate firing lanes and receive a bow with enough arrows for the whole match.
+2. Targets appear in front of each player. Target types include monsters and animals, with each type awarding a configured number of points.
+3. A valid hit awards points to the shooter and triggers a target-hit effect; players cannot damage one another or targets in another lane.
+4. Targets respawn or rotate during the match so players always have something to aim at.
+5. When the time limit ends, the player with the most points wins. Ties are broken by hit count, then by the time of the final scored hit.
 
 #### Win / coins
 
-- Elimination order / last alive.
+- Rank by score, then hit count, then final scored hit time.
+- Award placement coins and optional point or accuracy bonuses.
 
 #### Tech
 
 | Area | Plan |
 |------|------|
-| State | `Set` of broken positions, delay queue, journal |
-| Events | Move (block change only) → schedule vanish |
-| Blocks | Real air; no physics; **same journal as Spleef** |
-| Packets | No |
+| State | `ScoreTracker` for points, hit count, and final scored hit time; target registry |
+| Events | Routed `ProjectileHitEvent` / entity-hit handling through `MinigameEventBus` |
+| Targets | Real target entities or target blocks inside each lane; no cross-lane scoring |
+| Weapons | Bow and arrows; prevent PvP and enforce the arena boundary |
+| Packets | Optional hit particles, sounds, score display, and target reset FX |
+| Cleanup | Despawn owned targets and clear projectiles on end/cancel |
 
 #### Flow
 
 ```text
-start → spawns on platform
-     → on step-off: queue block → later set air + journal
-     → falls eliminate → last alive → batch restore → result
+start → snapshot → load disposable arena clone → teleport players to firing lanes
+     → give bows/arrows → spawn target set → score valid hits and refresh targets
+     → timeout → rank by score → result → despawn targets/unload arena clone → done
 ```
 
 #### Cancel / edge cases
 
-- Same restore path as Spleef.
-- Don’t break blocks outside pad.
-- Optional: blocks under player only break after they step off (not instantly under feet) to reduce unfair instant falls.
+- Ignore hits after the match has completed or been cancelled.
+- Don’t score targets outside the player’s lane or projectiles fired by non-participants.
+- Despawn all targets and clear arrows on cancel; restore every player through `MatchScope`.
 
 #### Config
 
 ```yaml
 minigame:
-  floor_is_lava:
-    destroy-delay-ticks: 8
-    timeout-seconds: 90
+  shooting_range:
+    timeout-seconds: 60
+    target-refresh-ticks: 20
+    points:
+      zombie: 1
+      cow: 2
+      skeleton: 3
+      bullseye: 5
 ```
 
 #### References
 
-- [TNTRun_reloaded](https://github.com/steve4744/TNTRun) (active 2026): destroy delay, multi-layer, auto regen.
-- Cytooxien Floor is Lava (score by blocks destroyed optional v2).
+- [Cytooxien Minecraft Party minigames](https://www.cytooxien.net/en/help/minecraft-party-games#shooting-range): hit monster and animal targets for different point values; highest score within the time limit wins.
 
 ---
 
@@ -687,47 +708,48 @@ minigame:
 
 ---
 
-### 5.10 Hopper — `hopper`
+### 5.10 Block Jump — `hopper`
 
-**Fantasy:** Bounce upward through a dangerous sky course, steer between platforms, and never fall into the void.
+**Fantasy:** Master a chain of jumps, take risks for speed, and reach the finish before everyone else.
 
 #### Rules
 
-1. Players start at the bottom of a vertical course with normal jumping disabled and an automatic bounce enabled.
-2. Landing on a platform launches the player toward the next height band. Horizontal movement remains under player control so players must steer into staggered platforms.
-3. The course contains gaps, low ceilings, spikes, moving platforms, and occasional safe checkpoints. The next platform should always be readable before the current bounce.
-4. Falling below the configured recovery height eliminates the player. Reaching a checkpoint can instead return the player to that height once if the map is designed for recovery.
-5. The highest platform reached wins. Players who reach the finish are ranked by finish time; everyone else is ranked by checkpoint/platform progress and survival time.
+1. Players start at separate lanes or staggered starting points on the same Block Jump course. Normal jumping remains enabled; there is no automatic bounce.
+2. The course is a sequential chain of blocks and platforms. Players must land on the current jump before the next jump is validated; skipping ahead does not count.
+3. The next jump is generated or revealed after valid progress. Every generated jump must pass a reachability check for the player’s normal movement and jump limits.
+4. Players may activate optional checkpoints between jumps for a safer reset. Each checkpoint adds a configurable delay before the next jump is generated, trading safety for speed.
+5. Falling or missing a jump resets the player to the start or the last chosen checkpoint with a time penalty. The first player to finish wins; players who do not finish are ranked by validated jump progress at timeout.
 
 #### Win / coins
 
-- Finish order, then highest platform/checkpoint reached.
-- Optional bonus for a clean run without a recovery teleport.
+- Finish order is the primary ranking; unfinished players are ranked by validated jump count and time penalty.
+- Optional bonus for finishing without using a checkpoint or reset.
 
 #### Tech
 
 | Area | Plan |
 |------|------|
-| Movement | Apply a controlled upward velocity on platform landing; cap horizontal speed and disable flight/elytra exploits |
-| Platforms | Fixed platform AABBs with block-coordinate landing checks; moving platforms are map-owned entities only |
-| Hazards | Void/fall threshold, spike regions, and ceiling collisions; all hazards stay inside the disposable clone |
-| Progress | `CheckpointTracker` stores the highest validated height band and finish timestamp |
-| Events | `PlayerMoveEvent` for landing/progress, damage hooks for hazards, and entity cleanup on cancel |
-| UI | Height/checkpoint action bar and a short warning before the next hazard band |
+| Movement | Use normal player jumping and movement; do not apply automatic bounce, Jump Boost, flight, or Elytra movement |
+| Course | Sequential fixed or generated platform AABBs with a visible next-jump target and finish region |
+| Generation | Deterministic seeded layouts; validate horizontal/vertical gaps and reachability before showing each jump |
+| Progress | `CheckpointTracker` stores the next required jump, validated jump count, checkpoint choice, and finish timestamp |
+| Events | `PlayerMoveEvent` for landing/progress, reset/finish handling, and cleanup of match-owned course blocks or entities |
+| UI | Show the next jump, current progress, checkpoint delay, and a short reset/finish message |
 
 #### Flow
 
 ```text
-start → snapshot → load vertical course → teleport bases → countdown
-     → bounce and steer through platform bands → finish or fall
-     → result → unload arena → restore player state
+start → snapshot → load/generate Block Jump course → teleport starts → countdown
+     → reveal next jump → normal jump to next block → optional checkpoint or reset
+     → finish or timeout → result → unload arena → restore player state
 ```
 
 #### Cancel / edge cases
 
-- Clear forced velocity, Jump Boost, temporary effects, and match-owned platform entities before restoring snapshots.
-- Do not count a platform reached from below if the player skipped the required checkpoint band.
-- A disconnected player is ranked after active players at the last validated platform.
+- Do not validate a jump from below, from outside the intended landing area, or after the player skips the required sequence.
+- A reset must preserve the player’s validated progress and apply the configured time penalty; checkpoint use must add its generation delay only once.
+- A disconnected player is ranked after active players using their last validated jump.
+- Clear match-owned course blocks/entities and restore snapshots on cancel.
 
 #### Config
 
@@ -735,18 +757,19 @@ start → snapshot → load vertical course → teleport bases → countdown
 minigame:
   hopper:
     arena:
-      template: hopper_arena
-      checkpoint-count: 8
+      template: block_jump_arena
+      jump-count: 20
+      max-horizontal-gap: 5
+      max-vertical-gap: 3
     timeout-seconds: 75
-    bounce-velocity: 0.72
-    fall-y: 40.0
-    recovery-teleports: 0
+    checkpoint-delay-ticks: 20
+    max-checkpoints: 3
+    reset-time-penalty-seconds: 2
 ```
 
 #### References
 
-- [Google Play Games](https://play.google.com/store/apps/details?id=com.google.android.play.games&hl=en_US) — lists Whirlybird among its built-in offline games.
-- [Whirlybird on Android](https://www.xatakandroid.com/aplicaciones-android/whirlybird-juego-google-play-games-a-doodle-jump-androide-que-ya-tienes-en-tu-telefono) — describes the Doodle Jump-like platform loop, hazards, falling, and tilt-based steering.
+- [Cytooxien Minecraft Party minigames](https://www.cytooxien.net/en/help/minecraft-party-games) — Block Jump is a race across sequential jumps; checkpoints offer safety but delay generation of the next jump.
 
 ---
 
@@ -882,7 +905,7 @@ minigame:
 
 - Always set placement for every participant still in the party at resolve time.
 - Offline mid-minigame: place as eliminated last among leavers.
-- Optional per-game **bonus coins** (Elytra clean runs, Skywars eliminations, Antwar resources, Hopper clean runs, Laser Tag streaks, Speed Race pickups, potato explosion drops) added on top of placement coins in `MinigameResult`.
+- Optional per-game **bonus coins** (Elytra clean runs, Skywars eliminations, Antwar resources, Block Jump clean runs, Laser Tag streaks, Speed Race pickups, potato explosion drops) added on top of placement coins in `MinigameResult`.
 
 ---
 
@@ -916,7 +939,7 @@ minigame:
     - speed_race
     - spleef
     - elytra_race
-    - floor_is_lava
+    - shooting_range
     - color_chaos
     - laser_tag
     - king_of_the_hill
@@ -928,7 +951,7 @@ minigame:
   speed_race: { ... }
   spleef: { ... }
   elytra_race: { ... }
-  floor_is_lava: { ... }
+  shooting_range: { ... }
   color_chaos: { ... }
   laser_tag: { ... }
   king_of_the_hill: { ... }
@@ -951,7 +974,7 @@ Until a full setup command set exists:
 | Pad world (usually party board world) | Where minigames run |
 | Pad cuboid | Bounds for break/fall/claims |
 | Spawn list (4–12 points) | Fair starts |
-| Per-game extras | Elytra rings; island checkpoints and hill zone; Warden exit; Skywars loot/spawns; Antwar cores/ore; Hopper platforms; Laser Tag arena; Speed Race boosts/checkpoints |
+| Per-game extras | Elytra rings; island checkpoints and hill zone; Warden exit; Skywars loot/spawns; Antwar cores/ore; Block Jump course/jump bounds; Laser Tag arena; Shooting Range lanes/targets; Speed Race boosts/checkpoints |
 
 **Future admin commands** (sketch):
 
@@ -962,7 +985,7 @@ Until a full setup command set exists:
 /partyadmin minigame hill set         # King of the Hill capture zone
 /partyadmin minigame islands scan     # Mini Skywars island and loot points
 /partyadmin minigame antwar set       # Queen cores and resource nodes
-/partyadmin minigame hopper scan      # Vertical platform and hazard bands
+/partyadmin minigame hopper scan      # Block Jump sequence and checkpoint bounds
 /partyadmin minigame laser set        # Laser Tag arena bounds and spawns
 /partyadmin minigame speed set        # Speed Race pads and checkpoints
 ```
@@ -981,7 +1004,7 @@ Store in `slots.yml` or `minigames.yml` next to board data; remap with `forWorld
 - [ ] Disconnect mid-game does not soft-lock manager (`active` cleared)
 - [ ] Party end during minigame cancels cleanly
 - [ ] No block leaks outside pad
-- [ ] No leftover TNT power-up or crossbow items on board after return
+- [ ] No leftover Spleef variant items, targets, or projectiles on board after return
 
 ---
 
@@ -989,7 +1012,7 @@ Store in `slots.yml` or `minigames.yml` next to board data; remap with `forWorld
 
 - Teams (2v2, 1v3), Duels
 - Parkour as a separate ranked course pack
-- Lucky Towers, One in the Chamber, Shooting Range, Memorize
+- Lucky Towers, One in the Chamber, Memorize
 - FAWE clipboard service, full Cytooxien power-up meta
 - Vote rotation UI, MySQL minigame history
 
@@ -1002,7 +1025,7 @@ Store in `slots.yml` or `minigames.yml` next to board data; remap with `forWorld
 | **M0** | Registry + random pick + Dummy fallback |
 | **M1** | `PlayerStateSnapshot` + `MatchScope` + `hot_potato` |
 | **M2** | `speed_race` + `spleef` on a disposable arena clone |
-| **M3** | `elytra_race` + `floor_is_lava` |
+| **M3** | `elytra_race` + `shooting_range` |
 | **M4** | `color_chaos` + `laser_tag` |
 | **M5** | `king_of_the_hill` + `hopper` |
 | **M6** | `mini_skywars` (disposable arena with loot/PvP) |
@@ -1018,13 +1041,13 @@ Store in `slots.yml` or `minigames.yml` next to board data; remap with `forWorld
 |----|----------------|
 | `hot_potato` | Pass the potato; holder at boom is out |
 | `speed_race` | Chain boosts and checkpoints to finish first |
-| `spleef` | Break floor; last above wins |
+| `spleef` | Choose Classic Snow or TNT; break the floor and be last above |
 | `elytra_race` | Fly through ordered rings to finish |
-| `floor_is_lava` | Floor vanishes behind you |
+| `shooting_range` | Hit monster and animal targets to score the most points |
 | `color_chaos` | Stand on the announced color |
 | `laser_tag` | Score hits with a blaster before time ends |
 | `king_of_the_hill` | Bridge across islands and hold the final hill |
-| `hopper` | Bounce upward through platforms without falling |
+| `hopper` | Jump through the sequence and finish first; checkpoints trade time for safety |
 | `mini_skywars` | Loot, bridge, fight, and be last alive |
 | `warden_escape` | Escape the deep dark before the Warden gets you |
 | `antwar` | Mine resources, fortify your burrow, and destroy rival queens |

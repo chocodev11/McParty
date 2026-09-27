@@ -12,6 +12,7 @@ import org.bukkit.entity.Player;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 
@@ -23,6 +24,7 @@ public final class MinigameRunner {
     private long generation;
     private UUID arenaOwner;
     private World arenaWorld;
+    private CompletableFuture<Optional<World>> arenaLoad;
 
     MinigameRunner(MinigameManager manager) { this.manager = manager; }
 
@@ -70,6 +72,7 @@ public final class MinigameRunner {
 
     public void cancel() {
         generation++;
+        if (arenaLoad != null) { arenaLoad.cancel(false); arenaLoad = null; }
         if (reveal != null) { reveal.cancel(); reveal = null; }
         if (active != null) { active.cancel(); active = null; }
         unloadArena();
@@ -89,7 +92,8 @@ public final class MinigameRunner {
         }
         arenaReady.set(false);
         UUID owner = instance != null ? instance.id() : UUID.randomUUID();
-        slime.loadCloneAsync(owner, spec.template()).thenAccept(worldOpt -> {
+        arenaLoad = slime.loadCloneAsync(owner, spec.template());
+        arenaLoad.thenAccept(worldOpt -> {
             if (!isCurrent(runGeneration)) {
                 worldOpt.ifPresent(world -> slime.unloadWorldForInstance(owner, world));
                 return;
@@ -112,7 +116,10 @@ public final class MinigameRunner {
     private void startIfCurrent(Minigame definition, PartyInstance instance, long runGeneration, List<Player> online,
                                 ArenaTransitions transitions, Consumer<MinigameResult> done) {
         if (!isCurrent(runGeneration) || (instance != null && instance.state() != PartyState.PLAYING)) return;
-        List<Player> stillOnline = online.stream().filter(Player::isOnline).toList();
+        List<Player> stillOnline = online.stream()
+                .filter(Player::isOnline)
+                .filter(player -> instance == null || instance.player(player.getUniqueId()).isPresent())
+                .toList();
         if (stillOnline.isEmpty()) { finish(runGeneration, transitions, done, new MinigameResult()); return; }
         MinigameArena arena = createArena(definition.arenaSpec().orElse(null));
         if (arena != null) transitions.enter().accept(arena);

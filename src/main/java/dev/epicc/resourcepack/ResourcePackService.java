@@ -28,6 +28,7 @@ import java.util.LinkedHashSet;
 import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.jar.JarEntry;
@@ -57,6 +58,7 @@ public final class ResourcePackService {
     private String packSha1 = "";
     private byte[] packBytes = new byte[0];
     private HttpServer httpServer;
+    private ExecutorService httpExecutor;
 
     public ResourcePackService(
             JavaPlugin plugin,
@@ -136,7 +138,7 @@ public final class ResourcePackService {
             ready.set(true);
             plugin.getLogger().info("Resource pack ready (" + mode + "): " + packUrl + " sha1=" + packSha1);
         } catch (Exception e) {
-            ready.set(false);
+            shutdown();
             plugin.getLogger().severe("Resource pack failed to start: " + e.getMessage());
             e.printStackTrace();
         }
@@ -153,6 +155,10 @@ public final class ResourcePackService {
         if (httpServer != null) {
             httpServer.stop(0);
             httpServer = null;
+        }
+        if (httpExecutor != null) {
+            httpExecutor.shutdownNow();
+            httpExecutor = null;
         }
         packBytes = new byte[0];
         packUrl = "";
@@ -256,11 +262,8 @@ public final class ResourcePackService {
             exchange.sendResponseHeaders(404, -1);
             exchange.close();
         });
-        httpServer.setExecutor(Executors.newSingleThreadExecutor(r -> {
-            Thread t = new Thread(r, "McParty-ResourcePack-HTTP");
-            t.setDaemon(true);
-            return t;
-        }));
+        httpExecutor = Executors.newVirtualThreadPerTaskExecutor();
+        httpServer.setExecutor(httpExecutor);
         httpServer.start();
         plugin.getLogger().info("Resource pack HTTP listening on " + bind + ":" + port + path);
     }

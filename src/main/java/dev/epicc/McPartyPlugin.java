@@ -206,7 +206,7 @@ public final class McPartyPlugin extends JavaPlugin {
                 dicePresenter, diceHats, pathHopMover, packetBarriers, resourcePackService, holograms
         );
         tabList = new TabListService(this, config, messages, partyManager);
-        partyManager.setTabListRefresh(tabList::refreshAll);
+        partyManager.setTabListRefresh(tabList::refreshMembership);
         unloadStaleSlimeWorlds();
         holograms.setScopeVisibility((scopeId, player) -> partyManager.instanceOf(player.getUniqueId())
                 .map(instance -> instance.id().equals(scopeId)).orElse(false));
@@ -400,7 +400,7 @@ public final class McPartyPlugin extends JavaPlugin {
             packetBarriers.clearAll();
         }
         if (slimeWorldService != null) {
-            slimeWorldService.unloadAll();
+            slimeWorldService.shutdown();
         }
         if (resourcePackService != null) {
             resourcePackService.shutdown();

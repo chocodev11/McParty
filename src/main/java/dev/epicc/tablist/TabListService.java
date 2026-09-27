@@ -10,10 +10,18 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
+import java.util.UUID;
 
 /** Renders the configurable component-based tab list for each viewer. */
 public final class TabListService implements Listener {
@@ -23,6 +31,7 @@ public final class TabListService implements Listener {
     private final MessageService messages;
     private final PartyManager parties;
     private BukkitTask refreshTask;
+    private final Map<UUID, UUID> knownParties = new HashMap<>();
 
     public TabListService(
             JavaPlugin plugin,
@@ -47,7 +56,7 @@ public final class TabListService implements Listener {
                 1L,
                 config.tabListRefreshTicks()
         );
-        refreshAll();
+        refreshMembership();
     }
 
     public void reload() {
@@ -72,7 +81,6 @@ public final class TabListService implements Listener {
         Component header = component(player, config.tabListHeader());
         Component footer = component(player, config.tabListFooter());
         player.sendPlayerListHeaderAndFooter(header, footer);
-        updateVisibility(player);
     }
 
     public void shutdown() {
@@ -85,7 +93,33 @@ public final class TabListService implements Listener {
         if (!config.tabListEnabled()) {
             return;
         }
-        plugin.getServer().getScheduler().runTask(plugin, this::refreshAll);
+        plugin.getServer().getScheduler().runTask(plugin, this::refreshMembership);
+    }
+
+    @EventHandler
+    public void onQuit(PlayerQuitEvent event) {
+        knownParties.remove(event.getPlayer().getUniqueId());
+    }
+
+    /** Membership changes affect only edges to the players whose party changed. */
+    public void refreshMembership() {
+        if (!config.tabListEnabled()) return;
+        var online = new ArrayList<>(Bukkit.getOnlinePlayers());
+        Set<UUID> present = new HashSet<>();
+        for (Player player : online) {
+            UUID id = player.getUniqueId();
+            UUID party = parties.instanceOf(id).map(PartyInstance::id).orElse(null);
+            present.add(id);
+            if (!knownParties.containsKey(id) || !Objects.equals(knownParties.get(id), party)) {
+                for (Player other : online) {
+                    updateVisibility(player, other);
+                    if (!player.equals(other)) updateVisibility(other, player);
+                }
+            }
+            knownParties.put(id, party);
+        }
+        knownParties.keySet().retainAll(present);
+        refreshAll();
     }
 
     private Component component(Player viewer, String raw) {
@@ -120,18 +154,13 @@ public final class TabListService implements Listener {
         }
     }
 
-    private void updateVisibility(Player viewer) {
-        Optional<PartyInstance> viewerParty = parties.instanceOf(viewer.getUniqueId());
-        for (Player target : Bukkit.getOnlinePlayers()) {
-            boolean shouldList = target.equals(viewer)
-                    || !config.tabListPartyOnly()
-                    || viewerParty.map(instance -> instance.player(target.getUniqueId()).isPresent()).orElse(false);
-            if (shouldList) {
-                viewer.listPlayer(target);
-            } else {
-                viewer.unlistPlayer(target);
-            }
-        }
+    private void updateVisibility(Player viewer, Player target) {
+        boolean shouldList = target.equals(viewer)
+                || !config.tabListPartyOnly()
+                || parties.instanceOf(viewer.getUniqueId())
+                        .map(instance -> instance.player(target.getUniqueId()).isPresent()).orElse(false);
+        if (shouldList) viewer.listPlayer(target);
+        else viewer.unlistPlayer(target);
     }
 
     private void stopTask() {
@@ -142,6 +171,7 @@ public final class TabListService implements Listener {
     }
 
     private void clearAll() {
+        knownParties.clear();
         for (Player player : Bukkit.getOnlinePlayers()) {
             player.sendPlayerListHeaderAndFooter(Component.empty(), Component.empty());
             player.playerListName(null);

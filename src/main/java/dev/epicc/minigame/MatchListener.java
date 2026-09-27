@@ -7,6 +7,7 @@ import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
+import org.bukkit.event.player.PlayerMoveEvent;
 
 /**
  * Gameplay hooks a session receives from {@link MinigameEventBus} through its {@link MatchScope}.
@@ -21,6 +22,7 @@ public interface MatchListener {
     MatchListener NONE = new MatchListener() {
     };
 
+    /** Called when a player disconnects or leaves the owning party. */
     default void onQuit(Player player) {
     }
 
@@ -42,5 +44,8 @@ public interface MatchListener {
 
     /** {@code shooter} is the match player who fired the projectile. */
     default void onProjectileHit(Player shooter, ProjectileHitEvent event) {
+    }
+
+    default void onMove(PlayerMoveEvent event) {
     }
 }
