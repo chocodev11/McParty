@@ -3,6 +3,7 @@ package dev.epicc.minigame;
 import org.bukkit.entity.Player;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -47,5 +48,9 @@ public interface MatchListener {
     }
 
     default void onMove(PlayerMoveEvent event) {
+    }
+
+    /** The exploding entity was spawned by this match and registered with {@link MatchScope#track}. */
+    default void onEntityExplode(EntityExplodeEvent event) {
     }
 }

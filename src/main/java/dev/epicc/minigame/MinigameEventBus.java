@@ -1,5 +1,6 @@
 package dev.epicc.minigame;
 
+import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
 import org.bukkit.event.EventHandler;
@@ -8,6 +9,7 @@ import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
@@ -28,6 +30,8 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class MinigameEventBus implements Listener {
 
     private final Map<UUID, MatchScope> byPlayer = new ConcurrentHashMap<>();
+    /** Match-spawned entities (creepers, primed TNT) whose events belong to one scope. */
+    private final Map<UUID, MatchScope> byEntity = new ConcurrentHashMap<>();
 
     void register(MatchScope scope, Collection<UUID> playerIds) {
         for (UUID id : playerIds) {
@@ -35,8 +39,13 @@ public final class MinigameEventBus implements Listener {
         }
     }
 
+    void track(Entity entity, MatchScope scope) {
+        byEntity.put(entity.getUniqueId(), scope);
+    }
+
     void unregister(MatchScope scope) {
         byPlayer.values().removeIf(known -> known == scope);
+        byEntity.values().removeIf(known -> known == scope);
     }
 
     void unregister(Player player, MatchScope scope) {
@@ -132,6 +141,14 @@ public final class MinigameEventBus implements Listener {
         MatchScope scope = scopeOf(event.getPlayer());
         if (scope != null) {
             scope.listener().onMove(event);
+        }
+    }
+
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onEntityExplode(EntityExplodeEvent event) {
+        MatchScope scope = byEntity.remove(event.getEntity().getUniqueId());
+        if (scope != null) {
+            scope.listener().onEntityExplode(event);
         }
     }
 

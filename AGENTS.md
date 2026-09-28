@@ -282,9 +282,9 @@ public interface MinigameSession {
 
 | Type | Owns |
 |------|------|
-| `MatchScope` | Player roster, `PlayerStateSnapshot` capture/restore, scheduled tasks, damage protection, spectator switch, **one-shot** completion |
+| `MatchScope` | Player roster, `PlayerStateSnapshot` capture/restore, scheduled tasks, damage protection, spectator switch, `track(entity)` for match-spawned mobs/TNT (routed + removed on close), **one-shot** completion |
 | `EliminationTracker` | Alive set, elimination order → placements + coins (last alive = 1st) |
-| `MinigameEventBus` | **The only** Bukkit listener for minigames; routes events by player to the owning scope |
+| `MinigameEventBus` | **The only** Bukkit listener for minigames; routes events by player (and `EntityExplodeEvent` by tracked entity) to the owning scope |
 | `MatchListener` | Per-session gameplay hooks the bus dispatches to (`MatchListener.NONE` when a game needs none) |
 | `PowerUpBox` | Shared pickup: spinning box + billboard `?` displays, AABB touch callback, optional respawn; dies with the scope (`scope.onClose`) |
 
@@ -300,7 +300,10 @@ Rules:
 - Schedule through `scope.repeating(...)` / `scope.later(...)` so tasks die with the match.
 - Block-modifying games (Floor is Lava, Color Chaos) still need a `BlockChangeJournal`
   (pos → old `BlockData`, batched restore, `setBlockData(..., false)`). Spleef uses a disposable
-  per-party arena clone, so its broken floor dies with the world.
+  per-party arena clone, so its broken floor dies with the world. Its snow layers are baked once
+  into the template with `/partyadmin spleef generate [overwrite]` (`minigame.spleef.platform`).
+- Explosion damage cancelled by `protectFromDamage()` also skips vanilla knockback (Paper
+  `lastDamageCancelled`); games that want blasts to push players apply their own velocity.
 
 ### Commands & permissions
 
@@ -308,7 +311,7 @@ Rules:
 |---------|------------|------|
 | `/party create\|join\|leave\|start\|list\|roll` | `mcparty.party` (default true) | Players |
 | `/party end [id]` | `mcparty.admin` | Force end |
-| `/partyadmin path\|slot\|minigame\|reload` (alias `padmin`) | `mcparty.admin` | Board setup, minigame testing + config reload |
+| `/partyadmin path\|slot\|minigame\|spleef\|reload` (alias `padmin`) | `mcparty.admin` | Board setup, minigame testing, Spleef template generation + config reload |
 | `/hologram ...` (alias `holo`) | `mcparty.admin.hologram` | Create, edit, reload, and remove packet holograms |
 | Bypass boundary | `mcparty.admin.bypass` | Ops |
 
@@ -352,6 +355,7 @@ Javadocs: https://docs.infernalsuite.com/
 | `loadClone(instanceId, clone)` | Main only | register world, map instance → name |
 | `loadForInstance(instanceId, template)` | Main only (full path) | convenience sync load |
 | `listTemplates()` | Any | scan `*.slime` basenames (tab-complete) |
+| `generateTemplate(name, painter)` | Main (saves async) | empty world → paint → save `<name>.slime` → unload (`/partyadmin spleef generate`) |
 | `unloadForInstance` / `unloadAll` | Main | teleport out + unload |
 
 Config keys under `slime:` — see `config.yml` and `PluginConfig`.

@@ -56,9 +56,10 @@ minigame:
   spleef:
     arena:
       template: spleef_arena
+      # Spawn on the top layer: platform.bottom-y + layer-gap * (layers - 1) + 1
       spawn:
         x: 0.5
-        y: 70.0
+        y: 85.0
         z: 0.5
         yaw: 0.0
         pitch: 0.0
@@ -69,17 +70,33 @@ minigame:
         maxX: 40
         maxY: 140
         maxZ: 40
-    timeout-seconds: 90
-    fall-y: 60.0
+    # Round snow layers baked into the template by /partyadmin spleef generate.
+    # Centered on the arena spawn X/Z; material is the first floor-materials entry.
+    platform:
+      radius: 16
+      bottom-y: 64
+      layer-gap: 10
+      layers: 3
+    timeout-seconds: 120
+    fall-y: 58.0
     spawn-radius: 7.0
     floor-materials:
-      - TNT
+      - SNOW_BLOCK
+    # Launch strength from creeper and TNT blasts (players take no damage).
+    knockback: 1.4
     powerup:
-      # Spawn a Multishot power-up above a remaining TNT block.
-      spawn-interval-seconds: 10
-      multishot-duration-seconds: 10
-      # Item model id under the mcparty namespace.
-      item-model: tnt_multishot
+      # Mystery box on a random layer: TNT, wind charge, snowballs, sugar rush or creeper surprise.
+      spawn-interval-seconds: 8
+      max-active: 2
+    creeper:
+      # Charged creepers spawn on random layers and blast holes in the snow.
+      spawn-interval-seconds: 6
+      max-alive: 4
+      # Charged creepers double this explosion radius.
+      explosion-radius: 2
+      fuse-ticks: 30
+      # Idle creepers ignite on their own after this long.
+      auto-ignite-seconds: 10
 
   elytra_race:
     # Course definitions are stored in plugins/McParty/elytra-courses.yml.

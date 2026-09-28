@@ -1,6 +1,8 @@
 package dev.epicc.config;
 
 import dev.epicc.minigame.MinigameArenaSpec;
+import dev.epicc.minigame.SpleefPlatform;
+import dev.epicc.minigame.SpleefSettings;
 import dev.epicc.lobby.parkour.LobbyParkourDefinition;
 import dev.epicc.lobby.parkour.LobbyParkourPoint;
 import org.bukkit.Location;
@@ -42,14 +44,7 @@ public final class PluginConfig {
     private int hotPotatoMaxCycles;
     private MinigameArenaSpec hotPotatoArena;
 
-    private int spleefTimeoutSeconds;
-    private double spleefFallY;
-    private double spleefSpawnRadius;
-    private List<Material> spleefFloorMaterials;
-    private MinigameArenaSpec spleefArena;
-    private int spleefPowerupSpawnSeconds;
-    private int spleefMultishotSeconds;
-    private String spleefPowerupItemModel;
+    private SpleefSettings spleef;
 
     private String elytraCourseId;
     private int elytraTimeoutSeconds;
@@ -165,32 +160,21 @@ public final class PluginConfig {
                 c.getInt("minigame.hot_potato.arena.boundary.maxZ", Integer.MIN_VALUE)
         );
 
-        spleefTimeoutSeconds = c.getInt("minigame.spleef.timeout-seconds", 90);
-        spleefFallY = c.getDouble("minigame.spleef.fall-y", 60.0);
-        spleefSpawnRadius = c.getDouble("minigame.spleef.spawn-radius", 7.0);
-        spleefPowerupSpawnSeconds = c.getInt("minigame.spleef.powerup.spawn-interval-seconds", 10);
-        spleefMultishotSeconds = c.getInt("minigame.spleef.powerup.multishot-duration-seconds", 10);
-        spleefPowerupItemModel = nullToEmpty(
-                c.getString("minigame.spleef.powerup.item-model", "tnt_multishot")
-        );
-        if (spleefPowerupItemModel.isBlank()) {
-            spleefPowerupItemModel = "tnt_multishot";
-        }
-        List<Material> configuredFloorMaterials = new ArrayList<>();
+        List<Material> spleefFloorMaterials = new ArrayList<>();
         for (String name : c.getStringList("minigame.spleef.floor-materials")) {
             Material material = Material.matchMaterial(name.trim().toUpperCase(Locale.ROOT));
-            if (material == null) {
+            if (material == null || !material.isBlock()) {
                 plugin.getLogger().warning("Unknown Spleef floor material: " + name);
                 continue;
             }
-            if (!configuredFloorMaterials.contains(material)) {
-                configuredFloorMaterials.add(material);
+            if (!spleefFloorMaterials.contains(material)) {
+                spleefFloorMaterials.add(material);
             }
         }
-        spleefFloorMaterials = configuredFloorMaterials.isEmpty()
-                ? List.of(Material.TNT)
-                : List.copyOf(configuredFloorMaterials);
-        spleefArena = new MinigameArenaSpec(
+        if (spleefFloorMaterials.isEmpty()) {
+            spleefFloorMaterials.add(Material.SNOW_BLOCK);
+        }
+        MinigameArenaSpec spleefArena = new MinigameArenaSpec(
                 c.getString("minigame.spleef.arena.template", "spleef_arena"),
                 c.getDouble("minigame.spleef.arena.spawn.x", Double.NaN),
                 c.getDouble("minigame.spleef.arena.spawn.y", Double.NaN),
@@ -203,6 +187,31 @@ public final class PluginConfig {
                 c.getInt("minigame.spleef.arena.boundary.maxX", Integer.MIN_VALUE),
                 c.getInt("minigame.spleef.arena.boundary.maxY", Integer.MIN_VALUE),
                 c.getInt("minigame.spleef.arena.boundary.maxZ", Integer.MIN_VALUE)
+        );
+        SpleefPlatform spleefPlatform = new SpleefPlatform(
+                (int) Math.floor(spleefArena.spawnX()),
+                (int) Math.floor(spleefArena.spawnZ()),
+                c.getInt("minigame.spleef.platform.radius", 16),
+                c.getInt("minigame.spleef.platform.bottom-y", 64),
+                c.getInt("minigame.spleef.platform.layer-gap", 10),
+                c.getInt("minigame.spleef.platform.layers", 3),
+                spleefFloorMaterials.getFirst()
+        );
+        spleef = new SpleefSettings(
+                Math.max(1, c.getInt("minigame.spleef.timeout-seconds", 120)),
+                c.getDouble("minigame.spleef.fall-y", 58.0),
+                Math.max(0.0, c.getDouble("minigame.spleef.spawn-radius", 7.0)),
+                spleefArena,
+                List.copyOf(spleefFloorMaterials),
+                spleefPlatform,
+                Math.max(0.0, c.getDouble("minigame.spleef.knockback", 1.4)),
+                Math.max(1, c.getInt("minigame.spleef.powerup.spawn-interval-seconds", 8)),
+                Math.max(1, c.getInt("minigame.spleef.powerup.max-active", 2)),
+                Math.max(1, c.getInt("minigame.spleef.creeper.spawn-interval-seconds", 6)),
+                Math.max(0, c.getInt("minigame.spleef.creeper.max-alive", 4)),
+                Math.max(1, c.getInt("minigame.spleef.creeper.explosion-radius", 2)),
+                Math.max(1, c.getInt("minigame.spleef.creeper.fuse-ticks", 30)),
+                Math.max(1, c.getInt("minigame.spleef.creeper.auto-ignite-seconds", 10))
         );
 
         elytraCourseId = nullToEmpty(c.getString("minigame.elytra_race.course", "default"));
@@ -331,14 +340,7 @@ public final class PluginConfig {
     public int hotPotatoMaxCycles() { return hotPotatoMaxCycles; }
     public MinigameArenaSpec hotPotatoArena() { return hotPotatoArena; }
 
-    public int spleefTimeoutSeconds() { return spleefTimeoutSeconds; }
-    public double spleefFallY() { return spleefFallY; }
-    public double spleefSpawnRadius() { return spleefSpawnRadius; }
-    public List<Material> spleefFloorMaterials() { return spleefFloorMaterials; }
-    public MinigameArenaSpec spleefArena() { return spleefArena; }
-    public int spleefPowerupSpawnSeconds() { return spleefPowerupSpawnSeconds; }
-    public int spleefMultishotSeconds() { return spleefMultishotSeconds; }
-    public String spleefPowerupItemModel() { return spleefPowerupItemModel; }
+    public SpleefSettings spleef() { return spleef; }
 
     public String elytraCourseId() { return elytraCourseId; }
     public int elytraTimeoutSeconds() { return elytraTimeoutSeconds; }

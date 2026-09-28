@@ -29,6 +29,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.logging.Level;
 import java.util.regex.Pattern;
 
@@ -347,6 +348,57 @@ public final class SlimeWorldService {
         for (UUID id : instanceWorlds.keySet().toArray(UUID[]::new)) {
             unloadForInstance(id);
         }
+    }
+
+    /**
+     * Main thread: create an empty template world, let {@code painter} build it, then save it to
+     * {@code <template>.slime} off-thread and unload it. The future completes on the main thread.
+     * Clones already running keep their own in-memory copy.
+     */
+    public CompletableFuture<Void> generateTemplate(String templateName, Consumer<World> painter) {
+        if (!isReady()) {
+            return CompletableFuture.failedFuture(new IllegalStateException("ASP is not ready"));
+        }
+        if (!Bukkit.isPrimaryThread()) {
+            throw new IllegalStateException("generateTemplate must run on the main thread");
+        }
+        if (Bukkit.getWorld(templateName) != null) {
+            return CompletableFuture.failedFuture(
+                    new IllegalStateException("World '" + templateName + "' is already loaded"));
+        }
+
+        SlimeWorldInstance live;
+        try {
+            live = asp.loadWorld(asp.createEmptyWorld(templateName, false, defaultProperties(), loader), false);
+            painter.accept(live.getBukkitWorld());
+        } catch (RuntimeException e) {
+            plugin.getLogger().log(Level.SEVERE, "Failed to build slime template '" + templateName + "'", e);
+            unloadWorld(templateName);
+            return CompletableFuture.failedFuture(e);
+        }
+
+        CompletableFuture<Void> result = new CompletableFuture<>();
+        // saveWorld hops to the main thread for a loaded world and blocks until done, so call it async
+        plugin.getServer().getScheduler().runTaskAsynchronously(plugin, () -> {
+            Exception failure = null;
+            try {
+                asp.saveWorld(live);
+            } catch (IOException | RuntimeException e) {
+                failure = e;
+                plugin.getLogger().log(Level.SEVERE, "Failed to save slime template '" + templateName + "'", e);
+            }
+            Exception error = failure;
+            plugin.getServer().getScheduler().runTask(plugin, () -> {
+                unloadWorld(templateName);
+                if (error == null) {
+                    plugin.getLogger().info("Generated slime template '" + templateName + ".slime'");
+                    result.complete(null);
+                } else {
+                    result.completeExceptionally(error);
+                }
+            });
+        });
+        return result;
     }
 
     /** Removes stale McParty clone worlds left behind by an earlier plugin lifecycle. */

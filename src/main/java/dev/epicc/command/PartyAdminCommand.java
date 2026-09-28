@@ -11,6 +11,8 @@ import dev.epicc.minigame.ElytraCourse;
 import dev.epicc.minigame.ElytraCourseStore;
 import dev.epicc.minigame.Minigame;
 import dev.epicc.minigame.MinigameManager;
+import dev.epicc.minigame.SpleefPlatform;
+import dev.epicc.minigame.SpleefSettings;
 import dev.epicc.slime.SlimeWorldService;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
@@ -94,6 +96,10 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             handleMinigame(sender, args);
             return true;
         }
+        if (group.equals("spleef")) {
+            handleSpleef(sender, args);
+            return true;
+        }
         if (!(sender instanceof Player player)) {
             messages.send(sender, "general.players-only-except-reload");
             return true;
@@ -140,6 +146,40 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         messages.send(sender, "admin.minigame-testing", "name", mg.displayName(), "player", target.getName());
         minigames.runSpecific(mg, List.of(target), result -> {
             messages.send(sender, "admin.minigame-test-done", "player", target.getName());
+        });
+    }
+
+    /** Bakes the configured snow layers into the Spleef arena template once; clones inherit them. */
+    private void handleSpleef(CommandSender sender, String[] args) {
+        if (args.length < 2 || !args[1].equalsIgnoreCase("generate")) {
+            messages.send(sender, "admin.spleef-usage");
+            return;
+        }
+        if (!slime.isReady()) {
+            messages.send(sender, "admin.spleef-slime-disabled");
+            return;
+        }
+        SpleefSettings spleef = config.spleef();
+        SpleefPlatform platform = spleef.platform();
+        if (!spleef.arena().isValid() || !platform.fits(spleef.arena())) {
+            messages.send(sender, "admin.spleef-platform-invalid");
+            return;
+        }
+        String template = spleef.arena().template();
+        boolean overwrite = args.length >= 3 && args[2].equalsIgnoreCase("overwrite");
+        if (!overwrite && slime.listTemplates().contains(template)) {
+            messages.send(sender, "admin.spleef-template-exists", "template", template);
+            return;
+        }
+
+        messages.send(sender, "admin.spleef-generating", "template", template);
+        slime.generateTemplate(template, platform::paint).whenComplete((ignored, error) -> {
+            if (error == null) {
+                messages.send(sender, "admin.spleef-generated",
+                        "template", template, "layers", Integer.toString(platform.layers()));
+            } else {
+                messages.send(sender, "admin.spleef-generate-failed", "template", template);
+            }
         });
     }
 
@@ -475,6 +515,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
         messages.send(sender, "admin.help-path");
         messages.send(sender, "admin.help-slot");
         messages.send(sender, "admin.help-minigame");
+        messages.send(sender, "admin.help-spleef");
         messages.send(sender, "admin.help-setlobby");
         messages.send(sender, "admin.help-parkour");
         messages.send(sender, "admin.help-elytra");
@@ -484,7 +525,7 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
     @Override
     public @Nullable List<String> onTabComplete(@NotNull CommandSender sender, @NotNull Command command, @NotNull String alias, @NotNull String[] args) {
         if (args.length == 1) {
-            return filter(List.of("slot", "path", "setlobby", "parkour", "elytra", "minigame", "reload"), args[0]);
+            return filter(List.of("slot", "path", "setlobby", "parkour", "elytra", "minigame", "spleef", "reload"), args[0]);
         }
         if (args.length == 2) {
             String g = args[0].toLowerCase(Locale.ROOT);
@@ -504,6 +545,9 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
             if (g.equals("minigame") || g.equals("mg")) {
                 return filter(minigames.registry().ids(), args[1]);
             }
+            if (g.equals("spleef")) {
+                return filter(List.of("generate"), args[1]);
+            }
             return List.of();
         }
         if (args.length == 3) {
@@ -513,6 +557,9 @@ public final class PartyAdminCommand implements CommandExecutor, TabCompleter {
                     || (g.equals("path") && (s.equals("remove") || s.equals("slime")))) {
                 List<String> ids = slots.all().stream().map(BoardSlot::id).sorted().collect(Collectors.toCollection(ArrayList::new));
                 return filter(ids, args[2]);
+            }
+            if (g.equals("spleef") && s.equals("generate")) {
+                return filter(List.of("overwrite"), args[2]);
             }
             if (g.equals("minigame") || g.equals("mg")) {
                 List<String> names = Bukkit.getOnlinePlayers().stream().map(Player::getName).toList();
