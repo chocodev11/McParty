@@ -1,8 +1,11 @@
 package dev.epicc.minigame;
 
+import org.bukkit.GameMode;
+import org.bukkit.Location;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Projectile;
+import org.bukkit.event.Cancellable;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.block.BlockBreakEvent;
@@ -11,6 +14,7 @@ import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.FoodLevelChangeEvent;
 import org.bukkit.event.entity.ProjectileHitEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -61,9 +65,22 @@ public final class MinigameEventBus implements Listener {
         return player == null ? null : byPlayer.get(player.getUniqueId());
     }
 
+    /** The player's scope while gameplay is live; a frozen scope (INTRO, END) swallows the input. */
+    private MatchScope liveScopeOf(Player player, Cancellable event) {
+        MatchScope scope = scopeOf(player);
+        if (scope == null) {
+            return null;
+        }
+        if (scope.frozen()) {
+            event.setCancelled(true);
+            return null;
+        }
+        return scope;
+    }
+
     @EventHandler(priority = EventPriority.HIGH)
     public void onInteract(PlayerInteractEvent event) {
-        MatchScope scope = scopeOf(event.getPlayer());
+        MatchScope scope = liveScopeOf(event.getPlayer(), event);
         if (scope != null) {
             scope.listener().onInteract(event);
         }
@@ -71,7 +88,7 @@ public final class MinigameEventBus implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onDropItem(PlayerDropItemEvent event) {
-        MatchScope scope = scopeOf(event.getPlayer());
+        MatchScope scope = liveScopeOf(event.getPlayer(), event);
         if (scope != null) {
             scope.listener().onDropItem(event);
         }
@@ -79,7 +96,7 @@ public final class MinigameEventBus implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onBlockBreak(BlockBreakEvent event) {
-        MatchScope scope = scopeOf(event.getPlayer());
+        MatchScope scope = liveScopeOf(event.getPlayer(), event);
         if (scope != null) {
             scope.listener().onBlockBreak(event);
         }
@@ -90,7 +107,7 @@ public final class MinigameEventBus implements Listener {
         if (!(event.getEntity() instanceof Player player)) {
             return;
         }
-        MatchScope scope = scopeOf(player);
+        MatchScope scope = liveScopeOf(player, event);
         if (scope != null) {
             scope.listener().onPickupItem(player, event);
         }
@@ -103,7 +120,7 @@ public final class MinigameEventBus implements Listener {
             return;
         }
         MatchScope scope = scopeOf(shooter);
-        if (scope != null) {
+        if (scope != null && !scope.frozen()) {
             scope.listener().onProjectileHit(shooter, event);
         }
     }
@@ -114,7 +131,7 @@ public final class MinigameEventBus implements Listener {
             return;
         }
         MatchScope scope = scopeOf(victim);
-        if (scope != null && scope.damageProtected()) {
+        if (scope != null && (scope.damageProtected() || scope.frozen())) {
             event.setCancelled(true);
         }
     }
@@ -124,7 +141,7 @@ public final class MinigameEventBus implements Listener {
         if (!(event.getDamager() instanceof Player attacker)) {
             return;
         }
-        MatchScope scope = scopeOf(attacker);
+        MatchScope scope = liveScopeOf(attacker, event);
         if (scope != null) {
             scope.listener().onDamageByEntity(attacker, event);
             if (scope.damageProtected()) {
@@ -133,13 +150,38 @@ public final class MinigameEventBus implements Listener {
         }
     }
 
+    @EventHandler(ignoreCancelled = true)
+    public void onFoodLevelChange(FoodLevelChangeEvent event) {
+        if (event.getEntity() instanceof Player player && scopeOf(player) != null) {
+            event.setCancelled(true);
+        }
+    }
+
+    /** Frozen players keep their X/Z but may still look around and fall. Teleports are separate events. */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onFrozenMove(PlayerMoveEvent event) {
+        Location from = event.getFrom();
+        Location to = event.getTo();
+        if (from.getX() == to.getX() && from.getZ() == to.getZ()) {
+            return;
+        }
+        MatchScope scope = scopeOf(event.getPlayer());
+        if (scope == null || !scope.frozen() || event.getPlayer().getGameMode() == GameMode.SPECTATOR) {
+            return;
+        }
+        Location held = to.clone();
+        held.setX(from.getX());
+        held.setZ(from.getZ());
+        event.setTo(held);
+    }
+
     @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
     public void onMove(PlayerMoveEvent event) {
         if (!event.hasChangedPosition()) {
             return;
         }
         MatchScope scope = scopeOf(event.getPlayer());
-        if (scope != null) {
+        if (scope != null && !scope.frozen()) {
             scope.listener().onMove(event);
         }
     }
@@ -147,9 +189,15 @@ public final class MinigameEventBus implements Listener {
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent event) {
         MatchScope scope = byEntity.remove(event.getEntity().getUniqueId());
-        if (scope != null) {
-            scope.listener().onEntityExplode(event);
+        if (scope == null) {
+            return;
         }
+        if (scope.frozen()) {
+            // No session filter runs while frozen, so an unhandled blast would eat the scenery
+            event.setCancelled(true);
+            return;
+        }
+        scope.listener().onEntityExplode(event);
     }
 
     @EventHandler

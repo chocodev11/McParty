@@ -69,15 +69,15 @@ public final class FontImageService {
                 continue;
             }
 
-            String texture = image.getString("texture", "");
+            String texture = string(image, "texture", "");
             if (!isSafeTexturePath(texture)) {
                 warn("Ignoring font image '" + id + "': texture path must be relative and cannot contain '..'");
                 continue;
             }
 
-            int scale = image.getInt("scale", 8);
-            int yPosition = image.getInt("y-position", scale);
-            int xOffset = image.getInt("x-offset", 0);
+            int scale = integer(image, "scale", 8);
+            int yPosition = integer(image, "y-position", scale);
+            int xOffset = integer(image, "x-offset", 0);
             if (scale < 1 || scale > MAX_SCALE) {
                 warn("Ignoring font image '" + id + "': scale must be between 1 and " + MAX_SCALE);
                 continue;
@@ -123,10 +123,10 @@ public final class FontImageService {
             if (rawCodepoint != null && !rawCodepoint.isBlank()) {
                 continue;
             }
-            String texture = image.getString("texture", "");
-            int scale = image.getInt("scale", 8);
-            int yPosition = image.getInt("y-position", scale);
-            int xOffset = image.getInt("x-offset", 0);
+            String texture = string(image, "texture", "");
+            int scale = integer(image, "scale", 8);
+            int yPosition = integer(image, "y-position", scale);
+            int xOffset = integer(image, "x-offset", 0);
             if (!isSafeTexturePath(texture) || scale < 1 || scale > MAX_SCALE
                     || yPosition < -MAX_SCALE || yPosition > MAX_SCALE || yPosition > scale
                     || xOffset < -MAX_SCALE || xOffset > MAX_SCALE) {
@@ -171,6 +171,10 @@ public final class FontImageService {
             return raw;
         }
         return replaceKnownAliases(raw, PLACEHOLDER_ALIAS);
+    }
+
+    public boolean has(String id) {
+        return id != null && images.containsKey(id.toLowerCase(Locale.ROOT));
     }
 
     /** Render a configured image directly for dynamic values such as a dice face. */
@@ -258,6 +262,17 @@ public final class FontImageService {
         }
         yaml.options().copyDefaults(true);
         return yaml;
+    }
+
+    // An id that exists only in the bundled defaults comes back as an empty section; reads with
+    // an explicit default would skip the bundled values, so these read through the defaults.
+    private static String string(ConfigurationSection section, String key, String fallback) {
+        String value = section.getString(key);
+        return value == null ? fallback : value;
+    }
+
+    private static int integer(ConfigurationSection section, String key, int fallback) {
+        return section.contains(key) ? section.getInt(key) : fallback;
     }
 
     private String replaceKnownAliases(String raw, Pattern pattern) {

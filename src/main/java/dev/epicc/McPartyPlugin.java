@@ -5,6 +5,7 @@ import dev.epicc.board.PathHopMover;
 import dev.epicc.board.dice.DiceClickListener;
 import dev.epicc.board.dice.DiceHatService;
 import dev.epicc.board.dice.DicePresenter;
+import dev.epicc.board.economy.PrepListener;
 import dev.epicc.board.setup.PathSetupListener;
 import dev.epicc.board.setup.PathSetupService;
 import dev.epicc.command.PartyAdminCommand;
@@ -173,7 +174,9 @@ public final class McPartyPlugin extends JavaPlugin {
                 messages,
                 minigameRegistry,
                 slimeWorldService,
-                minigameEvents
+                minigameEvents,
+                config.minigameIntroSeconds(),
+                config.minigameEndSeconds()
         );
 
 
@@ -212,6 +215,9 @@ public final class McPartyPlugin extends JavaPlugin {
         holograms.registerPlaceholder("mcparty.coins", context -> partyManager.instanceOf(context.player().getUniqueId())
                 .flatMap(instance -> instance.player(context.player().getUniqueId()))
                 .map(player -> Component.text(player.coins())).orElse(Component.empty()));
+        holograms.registerPlaceholder("mcparty.space", context -> partyManager.instanceOf(context.player().getUniqueId())
+                .flatMap(instance -> instance.player(context.player().getUniqueId()))
+                .map(player -> Component.text(player.boardIndex())).orElse(Component.empty()));
         holograms.start();
         lobbyParkour = new LobbyParkourService(this, config, messages, parkourLeaderboard);
         partyManager.setLobbyParkour(lobbyParkour);
@@ -227,6 +233,7 @@ public final class McPartyPlugin extends JavaPlugin {
         getServer().getPluginManager().registerEvents(packetBarriers, this);
         getServer().getPluginManager().registerEvents(new BoundaryListener(partyManager, pathHopMover), this);
         getServer().getPluginManager().registerEvents(new DiceClickListener(dicePresenter), this);
+        getServer().getPluginManager().registerEvents(new PrepListener(this, partyManager), this);
         getServer().getPluginManager().registerEvents(pathHopMover, this);
         getServer().getPluginManager().registerEvents(new SlimeFallDamageListener(slimeWorldService), this);
         getServer().getPluginManager().registerEvents(new ResourcePackListener(resourcePackService), this);
@@ -322,6 +329,7 @@ public final class McPartyPlugin extends JavaPlugin {
         for (DummyMinigame dummy : dummyMinigames) {
             dummy.reconfigure(config.dummyDurationSeconds(), config.dummyCoinRewards());
         }
+        minigames.reconfigure(config.minigameIntroSeconds(), config.minigameEndSeconds());
         minigames.registry().unregister("hot_potato");
         if (config.hotPotatoArena().isValid()) {
             minigames.registry().register(new HotPotatoMinigame(

@@ -1,6 +1,5 @@
 package dev.epicc.board.dice;
 
-import dev.epicc.board.Dice;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Particle;
@@ -9,6 +8,7 @@ import org.bukkit.entity.Display;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.ItemDisplay;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 import org.bukkit.util.Transformation;
@@ -17,16 +17,19 @@ import org.joml.AxisAngle4f;
 import org.joml.Quaternionf;
 import org.joml.Vector3f;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ThreadLocalRandom;
-import java.util.function.IntConsumer;
+import java.util.function.Consumer;
 
 /**
- * Rolling die rides the player as a passenger (no freestanding teleport while spinning).
+ * Rolling dice ride the player as passengers (no freestanding teleport while spinning).
  * Entity yaw/pitch stay 0; "in front" is world-space transformation translation on the eye look-ray
  * (updated each tick; passenger attach is player height, so Y is relative to the top of the head).
+ * Several dice sit side by side across the view and share one click and one timeout.
  * Visible only to the roller. On settle: detach onto the current eye ray, face the roller once,
  * hold 1s, callback.
  */
@@ -38,6 +41,10 @@ public final class DicePresenter {
     /** Steady per-tick tumble (radians) — 60° yaw and 45° pitch every four ticks. */
     private static final float SPIN_YAW_PER_TICK = (float) (Math.PI / 12.0);
     private static final float SPIN_PITCH_PER_TICK = (float) (Math.PI / 16.0);
+    /** Distance between neighbouring dice, as a multiple of the die scale. */
+    private static final float DIE_SPACING = 1.2f;
+    /** Tumble offset between neighbours so several dice do not spin in lockstep. */
+    private static final float DIE_PHASE = 0.9f;
 
     private final JavaPlugin plugin;
     private final DiceHatService hats;
@@ -80,83 +87,82 @@ public final class DicePresenter {
     }
 
     /**
-     * Start visual roll. {@code onSettled} receives the final face (main thread) after the hold.
-     * Returns false if player already has a session.
+     * Start a visual roll of {@code specs}. {@code onSettled} receives the final faces in spec order
+     * (main thread) after the hold. Returns false if the player already has a session or a die
+     * could not be mounted.
      */
-    public boolean start(Player player, Dice dice, IntConsumer onSettled) {
-        if (byPlayer.containsKey(player.getUniqueId())) {
+    public boolean start(Player player, List<DieSpec> specs, Consumer<List<Integer>> onSettled) {
+        if (specs.isEmpty() || byPlayer.containsKey(player.getUniqueId())) {
             return false;
         }
 
-        int result = dice.roll();
-        Session session = new Session(player.getUniqueId(), result, onSettled);
+        Session session = new Session(player.getUniqueId(), onSettled);
 
         Location spawnAt = player.getLocation().clone();
         spawnAt.setYaw(0f);
         spawnAt.setPitch(0f);
+        Vector3f eyeOffset = frontOffset(player, 0.0);
 
-        ItemDisplay display = player.getWorld().spawn(spawnAt, ItemDisplay.class, d -> {
-            d.setVisibleByDefault(false);
-            d.setItemStack(DiceItems.face(spinFace(dice)));
-            d.setBillboard(Display.Billboard.FIXED);
-            // NONE so only our transformation scale controls size (FIXED adds item-frame shrink)
-            d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
-            d.setInterpolationDuration(0);
-            d.setTeleportDuration(0);
-            // Start at the player's eyes; the next tick moves it smoothly along the look ray.
-            d.setTransformation(tumble(frontOffset(player, 0.0), 0f, 0f));
-            d.setPersistent(false);
-            d.setShadowRadius(0f);
-            d.setViewRange(48f);
-        });
-        display.setRotation(0f, 0f);
+        for (int i = 0; i < specs.size(); i++) {
+            DieSpec spec = specs.get(i);
+            Die die = new Die(spec, spec.dice().roll(), lateral(i, specs.size()), i * DIE_PHASE);
+            die.display = player.getWorld().spawn(spawnAt, ItemDisplay.class, d -> {
+                d.setVisibleByDefault(false);
+                d.setItemStack(spinFace(spec));
+                d.setBillboard(Display.Billboard.FIXED);
+                // NONE so only our transformation scale controls size (FIXED adds item-frame shrink)
+                d.setItemDisplayTransform(ItemDisplay.ItemDisplayTransform.NONE);
+                d.setInterpolationDuration(0);
+                d.setTeleportDuration(0);
+                // Start at the player's eyes; the next tick moves it smoothly along the look ray.
+                d.setTransformation(tumble(sideways(eyeOffset, die.lateral), die.phase, die.phase));
+                d.setPersistent(false);
+                d.setShadowRadius(0f);
+                d.setViewRange(48f);
+            });
+            die.display.setRotation(0f, 0f);
+            session.dice.add(die);
 
-        // Only the roller sees their die (re-show after mount — needed after world change)
-        player.showEntity(plugin, display);
-
-        if (!player.addPassenger(display)) {
-            display.remove();
-            return false;
+            // Only the roller sees their dice (re-show after mount — needed after world change)
+            player.showEntity(plugin, die.display);
+            if (!player.addPassenger(die.display)) {
+                cleanupEntities(session);
+                return false;
+            }
+            player.showEntity(plugin, die.display);
         }
-        player.showEntity(plugin, display);
-
-        session.display = display;
         byPlayer.put(player.getUniqueId(), session);
 
         session.entryTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             session.entryTask = null;
-            if (session.settled || session.display == null || !session.display.isValid()) {
+            if (session.settled) {
                 return;
             }
             Player rolling = plugin.getServer().getPlayer(session.playerId);
             if (rolling == null || !rolling.isOnline()) {
                 return;
             }
-            session.display.setInterpolationDelay(0);
-            session.display.setInterpolationDuration(ENTRY_ANIMATION_TICKS);
             session.followOffset = frontOffset(rolling);
-            session.display.setTransformation(tumble(session.followOffset, 0f, 0f));
+            for (Die die : session.dice) {
+                if (die.display == null || !die.display.isValid()) {
+                    continue;
+                }
+                die.display.setInterpolationDelay(0);
+                die.display.setInterpolationDuration(ENTRY_ANIMATION_TICKS);
+                die.display.setTransformation(tumble(sideways(session.followOffset, die.lateral), die.phase, die.phase));
+            }
         }, 1L);
 
         // Update every tick after the entrance so the client can interpolate a continuous, fixed-rate tumble.
         session.faceTask = plugin.getServer().getScheduler().runTaskTimer(plugin, () -> {
-            if (session.settled || session.display == null || !session.display.isValid()) {
+            if (session.settled) {
                 return;
             }
             Player rolling = plugin.getServer().getPlayer(session.playerId);
             if (rolling == null || !rolling.isOnline()) {
                 return;
             }
-            if (session.display.getVehicle() == null) {
-                rolling.addPassenger(session.display);
-            }
-            // Keep private visibility after chunk/vehicle track updates
-            rolling.showEntity(plugin, session.display);
-            session.display.setRotation(0f, 0f);
-            session.display.setInterpolationDelay(0);
-            if (session.spinTicks == 0) {
-                session.display.setInterpolationDuration(1);
-            }
+            boolean firstSpinTick = session.spinTicks == 0;
             Vector3f targetOffset = frontOffset(rolling);
             if (session.followOffset == null) {
                 session.followOffset = targetOffset;
@@ -166,11 +172,31 @@ public final class DicePresenter {
             session.spinYaw += SPIN_YAW_PER_TICK;
             session.spinPitch += SPIN_PITCH_PER_TICK;
             session.spinTicks++;
-            session.display.setTransformation(
-                    tumble(session.followOffset, session.spinYaw, session.spinPitch)
-            );
-            if (session.spinTicks % (spinIntervalTicks * 2) == 0) {
-                session.display.setItemStack(DiceItems.face(spinFace(dice)));
+            boolean swapFace = session.spinTicks % (spinIntervalTicks * 2) == 0;
+
+            for (Die die : session.dice) {
+                ItemDisplay display = die.display;
+                if (display == null || !display.isValid()) {
+                    continue;
+                }
+                if (display.getVehicle() == null) {
+                    rolling.addPassenger(display);
+                }
+                // Keep private visibility after chunk/vehicle track updates
+                rolling.showEntity(plugin, display);
+                display.setRotation(0f, 0f);
+                display.setInterpolationDelay(0);
+                if (firstSpinTick) {
+                    display.setInterpolationDuration(1);
+                }
+                display.setTransformation(tumble(
+                        sideways(session.followOffset, die.lateral),
+                        session.spinYaw + die.phase,
+                        session.spinPitch + die.phase
+                ));
+                if (swapFace) {
+                    display.setItemStack(spinFace(die.spec));
+                }
             }
         }, ENTRY_ANIMATION_TICKS + 1L, 1L);
 
@@ -217,59 +243,57 @@ public final class DicePresenter {
         cancelSpinAndTimeout(session);
 
         Player player = plugin.getServer().getPlayer(session.playerId);
-        Location particleAt = null;
+        boolean online = player != null && player.isOnline();
+        int landAnimTicks = Math.max(1, spinIntervalTicks);
+        List<ItemStack> faces = new ArrayList<>(session.dice.size());
 
-        if (session.display != null && session.display.isValid()) {
-            session.display.setItemStack(DiceItems.face(session.result));
+        for (Die die : session.dice) {
+            ItemStack face = DiceItems.face(die.spec.skin(), die.result);
+            faces.add(face);
+            ItemDisplay display = die.display;
+            if (display == null || !display.isValid()) {
+                continue;
+            }
+            display.setItemStack(face);
 
-            Entity vehicle = session.display.getVehicle();
+            Entity vehicle = display.getVehicle();
             if (vehicle != null) {
-                vehicle.removePassenger(session.display);
+                vehicle.removePassenger(display);
             }
 
-            Location settledAt = player != null && player.isOnline()
-                    ? floatingInFront(player)
-                    : session.display.getLocation().clone();
-            float settledYaw = player != null && player.isOnline()
-                    ? player.getLocation().getYaw() + 180f
-                    : session.display.getYaw();
+            Location settledAt = online ? floatingInFront(player, die.lateral) : display.getLocation().clone();
+            float settledYaw = online ? player.getLocation().getYaw() + 180f : display.getYaw();
             settledAt.setYaw(settledYaw);
             settledAt.setPitch(0f);
-            int landAnimTicks = Math.max(1, spinIntervalTicks);
-            session.display.setTeleportDuration(landAnimTicks);
-            session.display.teleport(settledAt);
-            session.display.setInterpolationDelay(0);
-            session.display.setInterpolationDuration(landAnimTicks);
-            session.display.setBillboard(Display.Billboard.FIXED);
-            session.display.setTransformation(floatingPose());
-            particleAt = settledAt.clone().add(0, 0.05, 0);
+            display.setTeleportDuration(landAnimTicks);
+            display.teleport(settledAt);
+            display.setInterpolationDelay(0);
+            display.setInterpolationDuration(landAnimTicks);
+            display.setBillboard(Display.Billboard.FIXED);
+            display.setTransformation(floatingPose());
 
             // Private display can drop tracking after dismount — keep roller viewer
-            if (player != null && player.isOnline()) {
-                player.showEntity(plugin, session.display);
+            if (online) {
+                player.showEntity(plugin, display);
             }
         }
 
-        if (player != null && player.isOnline()) {
-            hats.setHat(player, session.result);
-            if (particleAt == null) {
-                particleAt = player.getEyeLocation();
-            }
-        }
-        if (particleAt != null) {
-            spawnPastelSmoke(particleAt);
+        if (online) {
+            hats.setHat(player, faces);
+            spawnPastelSmoke(floatingInFront(player, 0f).add(0, 0.05, 0));
         }
 
         // Finish the short detach motion, then hold the floating result for one second.
-        int landAnimTicks = Math.max(1, spinIntervalTicks);
         session.settleTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
             if (session.aborted) {
                 session.settleTask = null;
                 return;
             }
-            if (session.display != null && session.display.isValid()) {
-                session.display.setTeleportDuration(0);
-                session.display.setInterpolationDuration(0);
+            for (Die die : session.dice) {
+                if (die.display != null && die.display.isValid()) {
+                    die.display.setTeleportDuration(0);
+                    die.display.setInterpolationDuration(0);
+                }
             }
             session.settleTask = plugin.getServer().getScheduler().runTaskLater(plugin, () -> {
                 session.settleTask = null;
@@ -278,9 +302,9 @@ public final class DicePresenter {
                 }
                 cleanupEntities(session);
                 unregister(session);
-                IntConsumer cb = session.onSettled;
+                Consumer<List<Integer>> cb = session.onSettled;
                 if (cb != null) {
-                    cb.accept(session.result);
+                    cb.accept(session.results());
                 }
             }, SETTLE_HOLD_TICKS);
         }, landAnimTicks);
@@ -313,6 +337,24 @@ public final class DicePresenter {
         return new Vector3f(fx, fy, fz);
     }
 
+    /** Sideways position of die {@code index} of {@code count}, centred on the look ray. */
+    private float lateral(int index, int count) {
+        return (index - (count - 1) / 2f) * spinScale * DIE_SPACING;
+    }
+
+    /** Shift {@code front} to the right of its horizontal direction (negative = left). */
+    private static Vector3f sideways(Vector3f front, float lateral) {
+        Vector3f shifted = new Vector3f(front);
+        if (lateral == 0f) {
+            return shifted;
+        }
+        float length = (float) Math.sqrt(front.x * front.x + front.z * front.z);
+        if (length < 1.0e-4f) {
+            return shifted.add(lateral, 0f, 0f);
+        }
+        return shifted.add(-front.z / length * lateral, 0f, front.x / length * lateral);
+    }
+
     private Transformation tumble(Vector3f front, float yaw, float pitch) {
         return new Transformation(
                 new Vector3f(front),
@@ -328,7 +370,7 @@ public final class DicePresenter {
         current.z += (target.z - current.z) * alpha;
     }
 
-    private Location floatingInFront(Player player) {
+    private Location floatingInFront(Player player, float lateral) {
         Location at = player.getEyeLocation();
         Vector direction = at.getDirection();
         if (direction.lengthSquared() < 1.0e-6) {
@@ -336,7 +378,15 @@ public final class DicePresenter {
         } else {
             direction.normalize();
         }
-        at.add(direction.multiply(spawnDistance));
+        at.add(direction.clone().multiply(spawnDistance));
+        if (lateral != 0f) {
+            double length = Math.sqrt(direction.getX() * direction.getX() + direction.getZ() * direction.getZ());
+            if (length < 1.0e-4) {
+                at.add(lateral, 0, 0);
+            } else {
+                at.add(-direction.getZ() / length * lateral, 0, direction.getX() / length * lateral);
+            }
+        }
         return at;
     }
 
@@ -385,14 +435,17 @@ public final class DicePresenter {
             session.settleTask.cancel();
             session.settleTask = null;
         }
-        if (session.display != null && session.display.isValid()) {
-            Entity vehicle = session.display.getVehicle();
-            if (vehicle != null) {
-                vehicle.removePassenger(session.display);
+        for (Die die : session.dice) {
+            ItemDisplay display = die.display;
+            if (display != null && display.isValid()) {
+                Entity vehicle = display.getVehicle();
+                if (vehicle != null) {
+                    vehicle.removePassenger(display);
+                }
+                display.remove();
             }
-            session.display.remove();
+            die.display = null;
         }
-        session.display = null;
     }
 
     private void cancelSpinAndTimeout(Session session) {
@@ -414,15 +467,14 @@ public final class DicePresenter {
         byPlayer.remove(session.playerId, session);
     }
 
-    private static int spinFace(Dice dice) {
-        return dice.roll();
+    private static ItemStack spinFace(DieSpec spec) {
+        return DiceItems.face(spec.skin(), spec.dice().roll());
     }
 
     private static final class Session {
         final UUID playerId;
-        final int result;
-        final IntConsumer onSettled;
-        ItemDisplay display;
+        final Consumer<List<Integer>> onSettled;
+        final List<Die> dice = new ArrayList<>();
         BukkitTask entryTask;
         BukkitTask faceTask;
         BukkitTask timeoutTask;
@@ -434,10 +486,33 @@ public final class DicePresenter {
         boolean settled;
         boolean aborted;
 
-        Session(UUID playerId, int result, IntConsumer onSettled) {
+        Session(UUID playerId, Consumer<List<Integer>> onSettled) {
             this.playerId = playerId;
-            this.result = result;
             this.onSettled = onSettled;
+        }
+
+        List<Integer> results() {
+            List<Integer> results = new ArrayList<>(dice.size());
+            for (Die die : dice) {
+                results.add(die.result);
+            }
+            return results;
+        }
+    }
+
+    private static final class Die {
+        final DieSpec spec;
+        /** Decided at start; clicking only reveals it. */
+        final int result;
+        final float lateral;
+        final float phase;
+        ItemDisplay display;
+
+        Die(DieSpec spec, int result, float lateral, float phase) {
+            this.spec = spec;
+            this.result = result;
+            this.lateral = lateral;
+            this.phase = phase;
         }
     }
 }

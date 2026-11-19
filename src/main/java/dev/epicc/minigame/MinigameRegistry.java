@@ -49,11 +49,20 @@ public final class MinigameRegistry {
         return names;
     }
 
+    /** Real games only; dummies stay roulette names and are picked just when nothing else exists. */
     public Minigame pickRandom() {
-        if (byId.isEmpty()) {
+        List<Minigame> pool = new ArrayList<>(byId.size());
+        for (Minigame minigame : byId.values()) {
+            if (!(minigame instanceof DummyMinigame)) {
+                pool.add(minigame);
+            }
+        }
+        if (pool.isEmpty()) {
+            pool.addAll(byId.values());
+        }
+        if (pool.isEmpty()) {
             return fallback;
         }
-        List<Minigame> list = new ArrayList<>(byId.values());
-        return list.get(ThreadLocalRandom.current().nextInt(list.size()));
+        return pool.get(ThreadLocalRandom.current().nextInt(pool.size()));
     }
 }

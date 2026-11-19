@@ -243,9 +243,15 @@ final class MinigameRevealAnimator {
     }
 
     private void showFinal(List<Player> players, Minigame picked) {
+        Component name = Component.text(picked.displayName(), YELLOW);
+        String icon = "mg_" + picked.id();
+        // Icon stays uncoloured so the bitmap glyph is not tinted yellow
+        Component subtitle = messages.hasImage(icon)
+                ? Component.textOfChildren(messages.image(icon), Component.text(" "), name)
+                : name;
         Title title = Title.title(
                 messages.get("minigame.reveal-ready-title"),
-                Component.text(picked.displayName(), YELLOW),
+                subtitle,
                 HOLD
         );
         for (Player player : players) {

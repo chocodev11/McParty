@@ -45,6 +45,7 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Match
 
     private MessageService messages;
     private MatchScope scope;
+    private MatchHud hud;
     private EliminationTracker elimination;
     private NamespacedKey potatoKey;
 
@@ -101,9 +102,13 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Match
         }
 
         scope.protectFromDamage();
-        givePotatoTo(elimination.randomAlive());
-        scope.broadcast("minigame.hot-potato-started");
+        hud = MatchHud.attach(scope, displayName(), true);
+        hud.rows(elimination);
+        IntroSequence.run(scope, displayName(), this::go, "minigame.hot-potato-started");
+    }
 
+    private void go() {
+        givePotatoTo(elimination.randomAlive());
         bombTimerTicks = defaultBombSeconds * 20;
         scope.repeating(1L, 1L, this::tickBomb);
     }
@@ -124,6 +129,7 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Match
         }
 
         bombTimerTicks--;
+        hud.timer(bombTimerTicks, defaultBombSeconds * 20);
 
         // Projectile died without a hit event (despawn / world unload) — give the potato back
         if (potatoInFlight && (activeThrownPotato == null || !activeThrownPotato.isValid())) {
@@ -159,6 +165,7 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Match
         }
 
         elimination.eliminate(explodedId);
+        hud.rows(elimination);
         scope.spectate(explodedId);
         // A snowball still in the air would hand the potato out after the bomb already went off
         clearThrownPotato();
@@ -310,6 +317,7 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Match
         if (elimination.eliminate(id) && Objects.equals(currentHolder, id)) {
             selectRandomHolder();
         }
+        hud.rows(elimination);
         if (elimination.aliveCount() <= 1) {
             finish();
         }
@@ -347,6 +355,6 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Match
 
     private void finish() {
         clearThrownPotato();
-        scope.finish(elimination.result());
+        scope.conclude(elimination.result());
     }
 }

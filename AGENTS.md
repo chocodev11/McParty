@@ -15,7 +15,7 @@ Instructions for AI coding agents working in this repository. Read this before p
 | Artifact | `McParty-<version>.jar` |
 | Design notes (product vision) | `mcparty.md` (Vietnamese; scale, Redis, multi-server — not all implemented yet) |
 
-**Goal (current phase):** party rooms → load a board world → turn-based dice on a path → dummy minigame between rounds → podium → cleanup/unload.
+**Goal (current phase):** party rooms → load a board world → board race (everyone rolls at once, coin shop in a prep phase, placement bonus dice) → minigame between rounds → podium → cleanup/unload.
 
 **Long-term vision** (see `mcparty.md`): 400+ players, Velocity proxy, lobby + game servers, MySQL stats, Redis matchmaking, 10–12 minigames. Do not implement that full stack unless the user asks; keep changes scoped.
 
@@ -97,6 +97,8 @@ Output: `build/libs/McParty-1.0.0-SNAPSHOT.jar` (version may change).
 src/main/java/dev/epicc/
   McPartyPlugin.java          # Bootstrap: wire services, register commands/listeners
   board/                      # Board slots, path, turns, dice
+    dice/                     # Dice presenter (multi-die), hats, skins (standard/bronze/silver/gold/chaos)
+    economy/                  # Coin payouts, placement bonus dice, prep phase + coin shop
     setup/                    # Path stick (blaze rod) builder (gold/yellow 3x3 pads)
   command/                    # /party, /partyadmin, /hologram
   config/PluginConfig.java    # Typed config from config.yml
@@ -145,7 +147,7 @@ Persistent data at runtime:
 7. `ResourcePackService` (local HTTP or external URL; optional)
 8. `MinigameEventBus` (one shared listener for every session) + `MinigameManager` (registry/config) + per-controller `MinigameRunner`
 9. `PartyManager`
-10. `MinigameEventBus`, `BoundaryListener`, resource-pack listener, commands
+10. `MinigameEventBus`, `BoundaryListener`, `DiceClickListener`, `PrepListener`, resource-pack listener, commands
 
 After constructing `PartyManager`, startup removes stale ASP-managed clones matching the configured
 McParty clone prefix. Any occupants are moved to `slime.fallback`; permanent Bukkit worlds and
@@ -165,13 +167,15 @@ PartyManager
   └── MinigameManager
 
 PartyInstance
-  ├── PartySettings (min/max players, turns, dice, coins)
+  ├── PartySettings (min/max players, starting coins, dice range, max rounds)
   ├── PartyState
   ├── Map of PartyPlayer
   ├── BoardSlot (runtime; may be remapped to slime clone world)
   └── endRequestHandler → PartyManager.endInternal
 
 BoardTurnController
+  ├── BoardEconomy (payouts, placement bonus dice, shop accounts; snapshot EconomySettings)
+  ├── PrepPhase (one round's shop/item phase, hotbar + ShopMenu)
   └── MinigameRunner (one mutable active minigame session per party)
 ```
 
@@ -213,13 +217,14 @@ WAITING → STARTING → PLAYING → ENDING → CLEANUP
 
 **Board turns** (`BoardTurnController` + `board/dice/*`)
 
-1. **Everyone rolls at once** each round: each player gets a private visual die (`DicePresenter` ItemDisplay passenger; `setVisibleByDefault(false)` + `showEntity` only for the roller). Result is rolled up front.
-2. Spin until **that player clicks** (or `/party roll`) or **timeout** (`board.dice-interact-seconds`, default 5s). No settle from being hit by others.
-3. On settle: land upright, set **public** dice hat (`DiceHatService`), hold **1 second**, then callback. When **all** rollers have settled → hop phase.
-4. Hops in party order: `PathHopMover` upward velocity → at apex (`vy ≤ 0`) TP to target XZ at that Y → fall (fall damage cancelled).
-5. After hops → controller-local `MinigameRunner` reveals the definition, loads any isolated arena clone, then starts a fresh session → coin rewards → next round.
-6. After `maxTurns` rounds → `instance.requestEnd` → podium → cleanup.
-7. Custom look: resource pack `resourcepack/` models `mcparty:dice_1`…`dice_6` (`DiceItems`), prompted by `ResourcePackService`.
+1. **Prep phase** (`board/economy/PrepPhase`, `board.prep-seconds`): skipped when nobody can buy or use anything. Hotbar: Ready (slot 1), Shop chest menu (slot 2), held items (slots 4–9). One purchase and one item use per round; a bought item is usable from the next round and its price rises per purchase. Items: Double Coins, Chaos Die (−3…6), Warp Pipe (to a random opponent's space), bronze/silver/gold die. `BoardEconomy` holds all state; hotbar items are PDC-tagged views removed when the phase ends (`PrepListener` blocks moving them). The roll starts one tick after the phase ends so the last Ready click cannot settle a new die.
+2. **Everyone rolls at once**: each player gets private visual dice (`DicePresenter` ItemDisplay passengers; `setVisibleByDefault(false)` + `showEntity` only for the roller) — the standard die plus a placement bonus die and a used die item, side by side. Results are rolled up front; the total is the sum.
+3. Spin until **that player clicks** (or `/party roll`) or **timeout** (`board.dice-interact-seconds`). One click settles every die. No settle from being hit by others.
+4. On settle: land upright, set **public** dice hats (`DiceHatService`, one per die), hold **1 second**, then callback. When **all** rollers have settled → hop phase.
+5. Hops in party order: `PathHopMover` upward velocity → at apex (`vy ≤ 0`) TP to target XZ at that Y → fall (fall damage cancelled). Negative totals move back; the index is clamped to the path; a total of 0 stays put.
+6. After hops → controller-local `MinigameRunner` reveals the definition, loads any isolated arena clone, then starts a fresh session → `BoardEconomy` pays coins (×2 for Double Coins) and gives 1st/2nd/3rd a gold/silver/bronze die for the next roll → next round.
+7. The game ends when a player lands on the last space, or after `party.max-rounds` minigames (0 = off) → podium (space, then coins) → cleanup.
+8. Custom look: resource pack `resourcepack/` models `mcparty:dice_1`…`dice_6` plus skins `dice_<bronze|silver|gold|chaos>_<face>` (`DiceSkin`, `DiceItems`; chaos negatives as `m3`…`m1`), prompted by `ResourcePackService`.
 
 **Resource pack** (`resourcepack/ResourcePackService`)
 
@@ -272,7 +277,8 @@ public interface MinigameSession {
 }
 ```
 
-- `MinigameRegistry` holds immutable game definitions; `pickRandom()` selects one.
+- `MinigameRegistry` holds immutable game definitions; `pickRandom()` selects a real game. `DummyMinigame`
+  entries only feed the reveal roulette names and are picked when no real game is registered.
 - Arena-dependent games expose `MinigameArenaSpec` (template, spawn, mandatory AABB). The runner
   loads the arena clone while `PartyManager` owns permit-protected board↔arena transitions; sessions
   receive an optional runtime `MinigameArena` and never manage worlds themselves.
@@ -282,8 +288,10 @@ public interface MinigameSession {
 
 | Type | Owns |
 |------|------|
-| `MatchScope` | Player roster, `PlayerStateSnapshot` capture/restore, scheduled tasks, damage protection, spectator switch, `track(entity)` for match-spawned mobs/TNT (routed + removed on close), **one-shot** completion |
-| `EliminationTracker` | Alive set, elimination order → placements + coins (last alive = 1st) |
+| `MatchScope` | Player roster, `PlayerStateSnapshot` capture/restore, scheduled tasks, damage protection, spectator switch, `track(entity)` for match-spawned mobs/TNT (routed + removed on close), `freeze()`/`unfreeze()`, the END phase (`conclude`), **one-shot** completion |
+| `IntroSequence` | INTRO phase: rules box in chat, frozen title countdown (`minigame.intro-seconds`), then the game's `onGo` |
+| `MatchHud` | Per-player sidebar (minigame, time, ranking rows with the viewer highlighted), shared boss-bar timer, optional no-collision team; restored on detach/close |
+| `EliminationTracker` | Alive set, elimination order → placements + coins (last alive = 1st); tied survivors rank by the game's comparator, else randomly — never roster order |
 | `MinigameEventBus` | **The only** Bukkit listener for minigames; routes events by player (and `EntityExplodeEvent` by tracked entity) to the owning scope |
 | `MatchListener` | Per-session gameplay hooks the bus dispatches to (`MatchListener.NONE` when a game needs none) |
 | `PowerUpBox` | Shared pickup: spinning box + billboard `?` displays, AABB touch callback, optional respawn; dies with the scope (`scope.onClose`) |
@@ -295,8 +303,15 @@ Rules:
   Need an event the bus does not route yet? Add a hook to `MatchListener` **and** a handler to
   `MinigameEventBus` — do not register separately.
 - Party leave and disconnect detach the player from `MatchScope` immediately: restore the snapshot, remove event ownership, then notify the session through `onQuit`. Delayed reveals recheck party membership.
-- `scope.finish(result)` closes and reports exactly once; `scope.close()` closes without reporting
-  (that is what `MinigameSession.cancel()` should call). Both restore every player.
+- Every real game runs the same shell: `MatchHud.attach` → `IntroSequence.run(..., this::go, rulesKey)`
+  → LIVE → `scope.conclude(result)`. Start timers and repeating tasks in `go()`, not in `start()`.
+- While a scope is frozen (INTRO, END) the bus holds players on their X/Z, cancels interact, drop,
+  block break, pickup, melee and tracked explosions, and dispatches no gameplay hook; `onQuit` still fires.
+- `scope.conclude(result)` ends a match: it cancels the scope's tasks, freezes input, shows the
+  placement title + top 3 for `minigame.end-seconds`, then finishes. Later calls are ignored.
+- `scope.finish(result)` closes and reports exactly once with no end screen (empty/invalid runs);
+  `scope.close()` closes without reporting (that is what `MinigameSession.cancel()` should call).
+  All three restore every player.
 - Schedule through `scope.repeating(...)` / `scope.later(...)` so tasks die with the match.
 - Block-modifying games (Floor is Lava, Color Chaos) still need a `BlockChangeJournal`
   (pos → old `BlockData`, batched restore, `setBlockData(..., false)`). Spleef uses a disposable
@@ -381,13 +396,14 @@ per party.
 
 ## 7. Configuration
 
-`PluginConfig` loads once in `onEnable` (no live reload API yet). After changing `config.yml` defaults in resources, remember existing servers keep their own file until deleted or manually merged.
+`PluginConfig` loads in `onEnable` and again on `/partyadmin reload`. `party.*`, the dice range and the board economy are snapshotted per party (`PartySettings`, `EconomySettings`), so a reload only affects new games. After changing `config.yml` defaults in resources, remember existing servers keep their own file until deleted or manually merged.
 
 Important groups:
 
-- `party.*` — sizes, max instances, countdown, turns, starting coins  
-- `board.dice-min/max`  
-- `minigame.dummy-*`, `minigame.reveal-duration-ticks`, `minigame.reveal-interval-ticks`  
+- `party.*` — sizes, max instances, countdown, starting coins, `max-rounds` (0 = off)  
+- `board.*` — dice range and visuals, hops, `placement-bonus-dice`, `prep-seconds`, `shop.*` (prices, price increase, per-round limits)  
+- `minigame.dummy-*` — `dummy-coin-rewards` is the shared placement coin table for every minigame  
+- `minigame.intro-seconds` / `minigame.end-seconds` — frozen countdown before and placement screen after every real minigame (0 = skip)  
 - `seamless-world-change.enabled` — cancel RESPAWN on McParty same-env world teleports (needs PacketEvents)  
 - `resource-pack.*` — local HTTP or external URL, send-on join/party, required/kick-on-decline (prompt/kick text in `messages.yml`)  
 - `database.sqlite-file` — persistent SQLite file path relative to the plugin data folder  
@@ -431,7 +447,7 @@ Match existing style; do not reformat unrelated code.
 | Dependencies | Avoid new libraries unless necessary; check Guava/Gson conflicts with Paper 26 |
 | Scope | Minimal diffs; no drive-by refactors; no unsolicited markdown docs unless asked |
 | `plugin.yml` | Update when adding commands, permissions, or depend/softdepend |
-| Tests | None yet; do not add a full test framework unless requested |
+| Tests | JUnit 5 in `src/test` for pure logic only (no server); keep new rules testable without Bukkit |
 
 ### Do not
 
@@ -451,10 +467,11 @@ Match existing style; do not reformat unrelated code.
    optional `arenaSpec()`, `createSession()`) plus `MinigameSession` and, if it needs events,
    `MatchListener`. `createSession()` must return a **fresh** instance — never `this`.
 2. In `start(context, done)`: open a `MatchScope`, build an `EliminationTracker` (or a score map),
-   then schedule through the scope. Do not capture snapshots or register listeners by hand.
+   place players and kits, attach a `MatchHud`, then hand over to `IntroSequence`. Schedule the
+   game loop from `go()` through the scope. Do not capture snapshots or register listeners by hand.
 3. `registry.register(...)` in `McPartyPlugin` bootstrap **and** in `reloadPluginConfig()` if the
    game reads config (unregister the old id first, as `hot_potato` does).
-4. `cancel()` → `scope.close()`. End of match → `scope.finish(tracker.result())`.
+4. `cancel()` → `scope.close()`. End of match → `scope.conclude(tracker.result())`.
 5. Arena-backed games declare `MinigameArenaSpec`; the runner loads/unloads the clone.
 
 Skeleton — `HotPotatoMinigame` is the reference implementation:
@@ -462,6 +479,7 @@ Skeleton — `HotPotatoMinigame` is the reference implementation:
 ```java
 public final class ExampleMinigame implements Minigame, MinigameSession, MatchListener {
     private MatchScope scope;
+    private MatchHud hud;
     private EliminationTracker elimination;
 
     @Override public MinigameSession createSession() { return new ExampleMinigame(/* config */); }
@@ -470,12 +488,19 @@ public final class ExampleMinigame implements Minigame, MinigameSession, MatchLi
         this.scope = MatchScope.open(context, this, done);
         this.elimination = new EliminationTracker(scope.playerIds(), coinRewards);
         scope.protectFromDamage();
-        scope.repeating(1L, 1L, this::tick);
+        this.hud = MatchHud.attach(scope, displayName(), true);
+        hud.rows(elimination);
+        IntroSequence.run(scope, displayName(), this::go, "minigame.example-started");
+    }
+
+    private void go() {
+        scope.repeating(1L, 1L, this::tick);   // tick calls hud.timer(ticksLeft, totalTicks)
     }
 
     @Override public void onQuit(Player player) {
         elimination.eliminate(player.getUniqueId());
-        if (elimination.aliveCount() <= 1) scope.finish(elimination.result());
+        hud.rows(elimination);
+        if (elimination.aliveCount() <= 1) scope.conclude(elimination.result());
     }
 
     @Override public void cancel() { if (scope != null) scope.close(); }
@@ -510,7 +535,9 @@ Design doc also allows load on create — if changing, keep one clear owner (`Pa
 | ASP template clone load/unload | Done |
 | In-memory instance store | Done |
 | Redis / MySQL / Velocity multi-server | **Not implemented** |
-| Multiple real minigames / shop / stars | **Not implemented** |
+| Placement bonus dice + prep phase coin shop + items + `max-rounds` cap | Done |
+| Real minigames | 3 shipped (`hot_potato`, `spleef`, `elytra_race`); plan in `minigamesv2.md` |
+| Stars | **Not implemented** |
 | Matchmaking dynamic countdown by queue size | **Not implemented** |
 | Lobby vs game server split | **Not implemented** |
 
@@ -539,6 +566,9 @@ Prefer incremental features that fit the current single-process, in-memory desig
 | `PartyInstance` / `PartyPlayer` / `PartyState` | Match state |
 | `BoardSlotRegistry` / `BoardSlot` / `BoardPath` | Board geometry |
 | `BoardTurnController` / `Dice` | Turn loop |
+| `DicePresenter` / `DiceHatService` / `DiceSkin` / `DieSpec` | Private multi-die rolls, public hats, die skins and face assets |
+| `BoardEconomy` / `EconomySettings` / `ShopItem` | Payouts, placement bonus dice, shop rules (Bukkit-free, unit-tested) |
+| `PrepPhase` / `ShopMenu` / `PrepItems` / `PrepListener` | Per-round shop/item phase: hotbar, chest menu, tagged items, input routing |
 | `PathSetupService` / `PathSetupListener` | Path Stick break-block path builder |
 | `PathSetupWand` | Blaze rod stick (name + custom_data PDC) |
 | `SlimeWorldService` | ASP worlds |
@@ -546,6 +576,7 @@ Prefer incremental features that fit the current single-process, in-memory desig
 | `PlayerSessionService` | Membership index |
 | `Minigame` / `MinigameManager` | Minigame SPI |
 | `MatchScope` / `EliminationTracker` | Shared match lifetime + survival ranking |
+| `IntroSequence` / `MatchHud` | Shared INTRO countdown, sidebar + boss-bar HUD |
 | `MinigameEventBus` / `MatchListener` | Single routed listener for all sessions |
 | `PluginConfig` | Typed settings |
 | `MessageService` | `messages.yml` MiniMessage lookup + placeholders |

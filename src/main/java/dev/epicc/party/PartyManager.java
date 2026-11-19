@@ -7,6 +7,8 @@ import dev.epicc.board.Dice;
 import dev.epicc.board.PathHopMover;
 import dev.epicc.board.dice.DiceHatService;
 import dev.epicc.board.dice.DicePresenter;
+import dev.epicc.board.economy.PrepItems;
+import dev.epicc.board.economy.ShopMenu;
 import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.containment.PacketBarrierService;
@@ -162,7 +164,8 @@ public final class PartyManager {
                 config.maxPlayers(),
                 config.startingCoins(),
                 config.diceMin(),
-                config.diceMax()
+                config.diceMax(),
+                config.maxRounds()
         );
         PartyInstance instance = new PartyInstance(UUID.randomUUID(), hostId, settings);
         instance.setEndRequestHandler(this::endInternal);
@@ -260,6 +263,12 @@ public final class PartyManager {
         sessions.unbind(playerId);
         instance.removePlayer(playerId);
         minigames.detach(player);
+        // After detach: restoring a minigame snapshot must not bring prep items back
+        BoardTurnController controller = controllers.get(instance.id());
+        if (controller != null) {
+            controller.onPlayerLeft(player);
+        }
+        PrepItems.strip(plugin, player);
         tabListRefresh.run();
 
         if (!silent) {
@@ -425,6 +434,28 @@ public final class PartyManager {
         return Optional.empty();
     }
 
+    /** A prep hotbar item was used; stale items outside a running board game are removed. */
+    public Optional<Component> prepAction(Player player, String action) {
+        BoardTurnController controller = instanceOf(player.getUniqueId())
+                .map(instance -> controllers.get(instance.id()))
+                .orElse(null);
+        if (controller == null) {
+            PrepItems.strip(plugin, player);
+            return Optional.of(messages.get("shop.closed"));
+        }
+        return controller.prepAction(player, action);
+    }
+
+    public void shopClick(Player player, ShopMenu menu, int slot) {
+        boolean member = instanceOf(player.getUniqueId())
+                .map(instance -> instance.id().equals(menu.partyId()))
+                .orElse(false);
+        BoardTurnController controller = controllers.get(menu.partyId());
+        if (member && controller != null) {
+            controller.shopClick(player, menu, slot);
+        }
+    }
+
     public void shutdown() {
         for (UUID id : new ArrayList<>(store.all().stream().map(PartyInstance::id).toList())) {
             store.get(id).ifPresent(instance -> cleanup(instance, false));
@@ -491,12 +522,18 @@ public final class PartyManager {
                 new Dice(instance.settings().diceMin(), instance.settings().diceMax()),
                 dicePresenter,
                 diceHats,
-                pathHopMover
+                pathHopMover,
+                config.economy()
         );
+        // The controller has already paid coins and bonus dice for this result
         controller.attach(instance, result -> {
             if (instance.state() != PartyState.PLAYING) return;
-            result.coinRewards().forEach((uuid, coins) -> instance.player(uuid).ifPresent(pp -> pp.addCoins(coins)));
             instance.incrementRound();
+            if (instance.settings().roundLimitReached(instance.round())) {
+                instance.broadcast(messages.get("party.max-rounds-reached", "rounds", Integer.toString(instance.round())));
+                instance.requestEnd("Round limit reached");
+                return;
+            }
             Optional.ofNullable(controllers.get(instance.id())).ifPresent(BoardTurnController::beginRound);
         }, new ArenaTransitions(
                 arena -> enterArena(instance, arena),
@@ -585,6 +622,7 @@ public final class PartyManager {
                 if (lobbyParkour != null) {
                     lobbyParkour.stopSilently(player);
                 }
+                PrepItems.strip(plugin, player);
                 Location fallback = fallbackLocation();
                 if (animateTransitions && isBoardWorld(instance, player)) {
                     transitions.teleportSeamlessly(player, fallback);

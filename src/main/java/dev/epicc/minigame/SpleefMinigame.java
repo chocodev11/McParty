@@ -32,7 +32,10 @@ import org.bukkit.potion.PotionEffectType;
 import org.bukkit.util.Vector;
 
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
@@ -56,6 +59,8 @@ public final class SpleefMinigame implements Minigame, MinigameSession, MatchLis
     private static final double SNOWBALL_PUSH = 0.6;
     private static final int SUGAR_RUSH_TICKS = 8 * 20;
     private static final NamespacedKey SUGAR_RUSH_MODEL = new NamespacedKey("mcparty", "sugar_rush");
+    private static final NamespacedKey SHOVEL_MODEL = new NamespacedKey("mcparty", "snow_shovel");
+    private static final NamespacedKey TNT_MODEL = new NamespacedKey("mcparty", "throwing_tnt");
 
     private enum PowerUp {
         TNT(3), WIND_CHARGE(3), SNOWBALLS(3), SUGAR_RUSH(2), CREEPER_SURPRISE(2);
@@ -84,8 +89,10 @@ public final class SpleefMinigame implements Minigame, MinigameSession, MatchLis
 
     private final List<Creeper> creepers = new ArrayList<>();
     private final List<PowerUpBox> powerUps = new ArrayList<>();
+    private final Map<UUID, Integer> blocksBroken = new HashMap<>();
     private MessageService messages;
     private MatchScope scope;
+    private MatchHud hud;
     private EliminationTracker elimination;
     private SlotBoundary boundary;
     private World world;
@@ -141,8 +148,12 @@ public final class SpleefMinigame implements Minigame, MinigameSession, MatchLis
             player.getInventory().setItem(0, shovel.clone());
             player.getInventory().setHeldItemSlot(0);
         }
-        scope.broadcast("minigame.spleef-started");
+        hud = MatchHud.attach(scope, displayName(), true);
+        hud.rows(elimination);
+        IntroSequence.run(scope, displayName(), this::go, "minigame.spleef-started");
+    }
 
+    private void go() {
         timeoutTicks = settings.timeoutSeconds() * 20;
         powerupSpawnTicks = settings.powerupSpawnSeconds() * 20;
         creeperSpawnTicks = settings.creeperSpawnSeconds() * 20;
@@ -166,7 +177,9 @@ public final class SpleefMinigame implements Minigame, MinigameSession, MatchLis
             meta.displayName(itemName("minigame.spleef-item-shovel"));
             // Efficiency V on diamond breaks snow instantly
             meta.addEnchant(Enchantment.EFFICIENCY, 5, true);
+            meta.setEnchantmentGlintOverride(false);
             meta.setUnbreakable(true);
+            meta.setItemModel(SHOVEL_MODEL);
         });
         return shovel;
     }
@@ -176,12 +189,13 @@ public final class SpleefMinigame implements Minigame, MinigameSession, MatchLis
             Player player = Bukkit.getPlayer(playerId);
             if (player == null || !player.isOnline()) {
                 elimination.eliminate(playerId);
+                hud.rows(elimination);
             } else if (player.getWorld() != world || player.getY() <= settings.fallY()) {
                 eliminate(player);
             }
         }
         if (elimination.aliveCount() <= 1) {
-            scope.finish(elimination.result());
+            conclude();
             return;
         }
 
@@ -189,17 +203,26 @@ public final class SpleefMinigame implements Minigame, MinigameSession, MatchLis
         tickPowerUps();
 
         timeoutTicks--;
-        if (timeoutTicks % 20 == 0) {
-            String secondsLeft = Integer.toString(Math.max(0, timeoutTicks / 20));
-            for (Player player : scope.onlinePlayers()) {
-                if (elimination.isAlive(player.getUniqueId())) {
-                    player.sendActionBar(messages.get("minigame.spleef-time-left", "seconds", secondsLeft));
-                }
-            }
-        }
+        hud.timer(timeoutTicks, settings.timeoutSeconds() * 20);
         if (timeoutTicks <= 0) {
-            scope.finish(elimination.result());
+            conclude();
         }
+    }
+
+    private void conclude() {
+        scope.conclude(elimination.result(Comparator.<UUID>comparingInt(this::layerOf)
+                .thenComparingInt(id -> blocksBroken.getOrDefault(id, 0))
+                .reversed()));
+    }
+
+    /** Timeout tie-break: survivors on a higher floor rank first, then whoever dug more. */
+    private int layerOf(UUID playerId) {
+        Player player = Bukkit.getPlayer(playerId);
+        if (player == null) {
+            return Integer.MIN_VALUE;
+        }
+        SpleefPlatform platform = settings.platform();
+        return Math.floorDiv(player.getLocation().getBlockY() - platform.bottomY(), platform.layerGap());
     }
 
     private void tickCreepers() {
@@ -312,7 +335,10 @@ public final class SpleefMinigame implements Minigame, MinigameSession, MatchLis
         switch (PowerUp.random()) {
             case TNT -> {
                 ItemStack tnt = new ItemStack(Material.TNT, TNT_AMOUNT);
-                tnt.editMeta(meta -> meta.displayName(itemName("minigame.spleef-item-tnt")));
+                tnt.editMeta(meta -> {
+                    meta.displayName(itemName("minigame.spleef-item-tnt"));
+                    meta.setItemModel(TNT_MODEL);
+                });
                 player.getInventory().addItem(tnt);
                 broadcastPowerUp("minigame.spleef-powerup-tnt", player);
             }
@@ -465,6 +491,7 @@ public final class SpleefMinigame implements Minigame, MinigameSession, MatchLis
         }
         event.setDropItems(false);
         event.setExpToDrop(0);
+        blocksBroken.merge(event.getPlayer().getUniqueId(), 1, Integer::sum);
     }
 
     @Override
@@ -507,8 +534,9 @@ public final class SpleefMinigame implements Minigame, MinigameSession, MatchLis
     @Override
     public void onQuit(Player player) {
         elimination.eliminate(player.getUniqueId());
+        hud.rows(elimination);
         if (elimination.aliveCount() <= 1) {
-            scope.finish(elimination.result());
+            conclude();
         }
     }
 
@@ -516,6 +544,7 @@ public final class SpleefMinigame implements Minigame, MinigameSession, MatchLis
         if (!elimination.eliminate(player.getUniqueId())) {
             return;
         }
+        hud.rows(elimination);
         scope.spectate(player.getUniqueId());
         scope.broadcast("minigame.spleef-eliminated", MessageService.ph("player", player.getName()));
     }

@@ -53,6 +53,7 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
 
     private MessageService messages;
     private MatchScope scope;
+    private MatchHud hud;
     private SlotBoundary boundary;
     private int timeoutTicks;
     private boolean launched;
@@ -129,9 +130,15 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
 
         spawnRingDisplays(boundary.world());
         scope.protectFromDamage();
-        scope.broadcast("minigame.elytra-started",
+        hud = MatchHud.attach(scope, displayName(), false);
+        refreshHud();
+        IntroSequence.run(scope, displayName(), this::go, "minigame.elytra-started",
                 MessageService.ph("rings", Integer.toString(course.rings().size())));
+    }
+
+    private void go() {
         timeoutTicks = timeoutSeconds * 20;
+        // With the intro disabled this still runs in the tick of the arena teleport
         scope.later(2L, this::launchPlayers);
         scope.repeating(1L, 1L, this::tick);
     }
@@ -206,16 +213,7 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
             finish();
             return;
         }
-        if (timeoutTicks % 20 == 0) {
-            for (Player player : scope.onlinePlayers()) {
-                if (active.contains(player.getUniqueId())) {
-                    player.sendActionBar(messages.get(
-                            "minigame.elytra-time-left",
-                            MessageService.ph("seconds", Integer.toString(timeoutTicks / 20))
-                    ));
-                }
-            }
-        }
+        hud.timer(timeoutTicks, timeoutSeconds * 20);
     }
 
     @Override
@@ -268,6 +266,7 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
             messages.send(player, "minigame.elytra-ring",
                     MessageService.ph("ring", Integer.toString(next + 1)),
                     MessageService.ph("total", Integer.toString(course.rings().size())));
+            refreshHud();
             if (next + 1 == course.rings().size()) {
                 finishPlayer(id, player);
                 return;
@@ -340,6 +339,7 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
             return;
         }
         finishOrder.add(id);
+        refreshHud();
         if (player != null && player.isOnline()) {
             messages.send(player, "minigame.elytra-finished",
                     MessageService.ph("place", Integer.toString(finishOrder.size())));
@@ -351,18 +351,15 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
         if (!active.remove(id)) {
             return;
         }
+        refreshHud();
         if (player != null && player.isOnline()) {
             messages.send(player, "minigame.elytra-fell");
             scope.spectate(id);
         }
     }
 
-    private void finish() {
-        if (finished) {
-            return;
-        }
-        finished = true;
-
+    /** Finishers in finish order, then everyone else by rings passed, bonus coins and party order. */
+    private List<UUID> ranking() {
         List<UUID> ranked = new ArrayList<>(finishOrder);
         Comparator<UUID> progressComparator = Comparator
                 .comparingInt((UUID id) -> progress.getOrDefault(id, 0)).reversed()
@@ -375,6 +372,28 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
                 .sorted(progressComparator)
                 .toList();
         ranked.addAll(unfinished);
+        return ranked;
+    }
+
+    private void refreshHud() {
+        List<UUID> ranked = ranking();
+        String total = Integer.toString(course.rings().size());
+        List<MatchHud.Row> rows = new ArrayList<>(ranked.size());
+        for (int i = 0; i < ranked.size(); i++) {
+            UUID id = ranked.get(i);
+            boolean out = !active.contains(id) && !finishOrder.contains(id);
+            rows.add(new MatchHud.Row(id, progress.getOrDefault(id, 0) + "/" + total, i + 1, out));
+        }
+        hud.rows(rows);
+    }
+
+    private void finish() {
+        if (finished) {
+            return;
+        }
+        finished = true;
+
+        List<UUID> ranked = ranking();
 
         MinigameResult result = new MinigameResult();
         for (int i = 0; i < ranked.size(); i++) {
@@ -384,12 +403,13 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
             result.setCoins(id, placementCoins + bonusCoins.getOrDefault(id, 0));
         }
         cleanupRingDisplays();
-        scope.finish(result);
+        scope.conclude(result);
     }
 
     @Override
     public void onQuit(Player player) {
         active.remove(player.getUniqueId());
+        refreshHud();
         if (active.isEmpty()) {
             finish();
         }

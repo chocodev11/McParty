@@ -93,6 +93,10 @@ public final class MessageService {
         return fontImages.image(id);
     }
 
+    public boolean hasImage(String id) {
+        return fontImages.has(id);
+    }
+
     public Component get(String path, String k1, String v1, String k2, String v2) {
         return get(path, ph(k1, v1), ph(k2, v2));
     }
@@ -179,5 +183,9 @@ public final class MessageService {
 
     public static TagResolver ph(String key, int value) {
         return Placeholder.unparsed(key, Integer.toString(value));
+    }
+
+    public static TagResolver ph(String key, Component value) {
+        return Placeholder.component(key, value);
     }
 }

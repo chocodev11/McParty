@@ -28,6 +28,15 @@ public final class PartyPlayer {
         coins = Math.max(0, coins + amount);
     }
 
+    /** @return false, with nothing spent, when the player cannot afford {@code amount}. */
+    public boolean spendCoins(int amount) {
+        if (amount < 0 || coins < amount) {
+            return false;
+        }
+        coins -= amount;
+        return true;
+    }
+
     public void setBoardIndex(int index) {
         boardIndex = Math.max(0, index);
     }

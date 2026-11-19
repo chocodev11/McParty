@@ -16,6 +16,8 @@ public final class MinigameContext {
     private final PartyInstance instance;
     private final List<Player> onlinePlayers;
     private final MinigameArena arena;
+    private final int introSeconds;
+    private final int endSeconds;
 
     public MinigameContext(
             JavaPlugin plugin,
@@ -23,7 +25,9 @@ public final class MinigameContext {
             MinigameEventBus events,
             PartyInstance instance,
             List<Player> onlinePlayers,
-            MinigameArena arena
+            MinigameArena arena,
+            int introSeconds,
+            int endSeconds
     ) {
         this.plugin = plugin;
         this.messages = messages;
@@ -31,6 +35,8 @@ public final class MinigameContext {
         this.instance = instance;
         this.onlinePlayers = List.copyOf(onlinePlayers);
         this.arena = arena;
+        this.introSeconds = introSeconds;
+        this.endSeconds = endSeconds;
     }
 
     public JavaPlugin plugin() { return plugin; }
@@ -39,4 +45,6 @@ public final class MinigameContext {
     public PartyInstance instance() { return instance; }
     public List<Player> onlinePlayers() { return onlinePlayers; }
     public Optional<MinigameArena> arena() { return Optional.ofNullable(arena); }
+    public int introSeconds() { return introSeconds; }
+    public int endSeconds() { return endSeconds; }
 }

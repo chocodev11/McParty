@@ -2,12 +2,15 @@ package dev.epicc.minigame;
 
 import dev.epicc.config.MessageService;
 import net.kyori.adventure.text.minimessage.tag.resolver.TagResolver;
+import net.kyori.adventure.title.Title;
 import org.bukkit.GameMode;
+import org.bukkit.Sound;
 import org.bukkit.entity.Entity;
 import org.bukkit.entity.Player;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitTask;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -19,6 +22,9 @@ import java.util.function.Consumer;
  * Lifetime of one minigame run: the player set, their captured state, every scheduled task,
  * and a one-shot completion. Closing a scope cancels its tasks, restores every player and
  * detaches from {@link MinigameEventBus}, so a session cannot leak state or complete twice.
+ * <p>
+ * Phases: {@link IntroSequence} freezes the scope until GO, the session runs LIVE, and
+ * {@link #conclude} shows the END screen before reporting.
  */
 public final class MatchScope {
 
@@ -30,10 +36,17 @@ public final class MatchScope {
     /** Party order — placements and survivor ranking stay deterministic. */
     private final List<UUID> playerIds = new ArrayList<>();
     private final Map<UUID, PlayerStateSnapshot> snapshots = new HashMap<>();
+    /** Names captured at open, so rankings can still name players who went offline. */
+    private final Map<UUID, String> names = new HashMap<>();
     private final List<BukkitTask> tasks = new ArrayList<>();
     private final List<Runnable> closeActions = new ArrayList<>();
+    private final List<Consumer<Player>> detachActions = new ArrayList<>();
+    private final int introSeconds;
+    private final int endSeconds;
 
     private boolean damageProtected;
+    private boolean frozen;
+    private boolean concluding;
     private boolean closed;
 
     private MatchScope(
@@ -46,6 +59,8 @@ public final class MatchScope {
         this.events = context.events();
         this.listener = listener;
         this.done = done;
+        this.introSeconds = context.introSeconds();
+        this.endSeconds = context.endSeconds();
     }
 
     /**
@@ -59,6 +74,7 @@ public final class MatchScope {
         MatchScope scope = new MatchScope(context, listener, done);
         for (Player player : context.onlinePlayers()) {
             scope.playerIds.add(player.getUniqueId());
+            scope.names.put(player.getUniqueId(), player.getName());
             scope.snapshots.put(player.getUniqueId(), PlayerStateSnapshot.capture(player));
             PlayerStateSnapshot.preparePhase(player);
         }
@@ -77,6 +93,35 @@ public final class MatchScope {
     /** Cancel all damage — including melee between players — for the rest of the match. */
     public void protectFromDamage() {
         damageProtected = true;
+    }
+
+    boolean frozen() {
+        return frozen;
+    }
+
+    /**
+     * Hold players in place (they can still look around) and swallow gameplay input until
+     * {@link #unfreeze()}. Used by INTRO and END; teleports are not affected.
+     */
+    public void freeze() {
+        frozen = true;
+    }
+
+    public void unfreeze() {
+        frozen = false;
+    }
+
+    MessageService messages() {
+        return messages;
+    }
+
+    int introSeconds() {
+        return introSeconds;
+    }
+
+    /** Name at match start; also resolves players who have since gone offline. */
+    public String name(UUID playerId) {
+        return names.getOrDefault(playerId, "?");
     }
 
     /** Match roster in party order, including players who have since gone offline. */
@@ -115,6 +160,11 @@ public final class MatchScope {
     /** Runs when the scope closes, before players are restored — for match-owned entities. */
     public void onClose(Runnable action) {
         closeActions.add(action);
+    }
+
+    /** Runs for a player who leaves mid-match, after their state is restored — for per-player UI. */
+    public void onDetach(Consumer<Player> action) {
+        detachActions.add(action);
     }
 
     /** Route the entity's events to this match; it is removed when the scope closes. */
@@ -157,7 +207,63 @@ public final class MatchScope {
         events.unregister(player, this);
         PlayerStateSnapshot.preparePhase(player);
         snapshot.restore(player);
+        for (Consumer<Player> action : detachActions) {
+            action.accept(player);
+        }
         listener.onQuit(player);
+    }
+
+    /**
+     * END phase: stop gameplay, show everyone their placement, then report the result. Later calls
+     * are ignored, so a quit during the end screen cannot change a ranking already shown.
+     */
+    public void conclude(MinigameResult result) {
+        if (closed || concluding) {
+            return;
+        }
+        concluding = true;
+        for (BukkitTask task : tasks) {
+            task.cancel();
+        }
+        tasks.clear();
+        if (endSeconds <= 0) {
+            finish(result);
+            return;
+        }
+        frozen = true;
+        showPlacements(result);
+        later(endSeconds * 20L, () -> finish(result));
+    }
+
+    private void showPlacements(MinigameResult result) {
+        List<Map.Entry<UUID, Integer>> podium = result.placements().entrySet().stream()
+                .sorted(Map.Entry.comparingByValue())
+                .limit(3)
+                .toList();
+        Title.Times times = Title.Times.times(
+                Duration.ofMillis(200), Duration.ofSeconds(endSeconds), Duration.ofMillis(400)
+        );
+        for (Player player : onlinePlayers()) {
+            Integer place = result.placements().get(player.getUniqueId());
+            if (place == null) {
+                continue;
+            }
+            String placeText = Integer.toString(place);
+            String coins = Integer.toString(result.coinRewards().getOrDefault(player.getUniqueId(), 0));
+            player.showTitle(Title.title(
+                    messages.get("minigame.end-title", "place", placeText),
+                    messages.get("minigame.end-subtitle", "coins", coins),
+                    times
+            ));
+            messages.send(player, "minigame.end-header");
+            for (Map.Entry<UUID, Integer> entry : podium) {
+                messages.send(player, "minigame.end-line",
+                        "place", Integer.toString(entry.getValue()),
+                        "player", name(entry.getKey()));
+            }
+            messages.send(player, "minigame.end-self", "place", placeText, "coins", coins);
+            player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_LEVELUP, 1.0f, 1.0f);
+        }
     }
 
     /** Close the scope and report the result. Later calls are ignored. */

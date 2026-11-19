@@ -4,6 +4,8 @@ import dev.epicc.config.MessageService;
 import dev.epicc.config.PluginConfig;
 import dev.epicc.party.PartyInstance;
 import dev.epicc.party.PartyManager;
+import dev.epicc.party.PartyPlayer;
+import dev.epicc.party.PartyState;
 import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.entity.Player;
@@ -127,9 +129,13 @@ public final class TabListService implements Listener {
             return Component.empty();
         }
         Optional<PartyInstance> party = parties.instanceOf(viewer.getUniqueId());
-        int coins = party.flatMap(instance -> instance.player(viewer.getUniqueId()))
-                .map(player -> player.coins())
-                .orElse(0);
+        Optional<PartyPlayer> member = party.flatMap(instance -> instance.player(viewer.getUniqueId()));
+        int coins = member.map(PartyPlayer::coins).orElse(0);
+        int space = member.map(PartyPlayer::boardIndex).orElse(0);
+        // Coins and board space only mean something once the board game runs
+        Component board = party.filter(instance -> instance.state() == PartyState.PLAYING).isPresent()
+                ? messages.get("board.tab-status", MessageService.ph("coins", coins), MessageService.ph("space", space))
+                : Component.empty();
         return messages.render(
                 raw,
                 MessageService.ph("player", viewer.getName()),
@@ -137,7 +143,9 @@ public final class TabListService implements Listener {
                 MessageService.ph("world", viewer.getWorld().getName()),
                 MessageService.ph("online", Bukkit.getOnlinePlayers().size()),
                 MessageService.ph("party", party.map(PartyInstance::shortId).orElse("")),
-                MessageService.ph("coins", coins)
+                MessageService.ph("coins", coins),
+                MessageService.ph("space", space),
+                MessageService.ph("board", board)
         );
     }
 

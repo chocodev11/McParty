@@ -3,7 +3,10 @@ party:
   max-players: 8
   max-instances: 12
   start-countdown-seconds: 5
-  starting-coins: 3
+  starting-coins: 10
+  # End the game after this many minigames (0 = off; first to the last space still wins).
+  # Ranking stays board space, then coins.
+  max-rounds: 0
 
 board:
   dice-min: 1
@@ -23,14 +26,42 @@ board:
   hop-up-velocity: 1.70
   hop-rise-max-seconds: 3
   hop-fall-max-seconds: 6
+  # 1st/2nd/3rd of each minigame roll an extra gold (4-6) / silver (2-5) / bronze (1-3) die
+  # next round (needs at least 2 placed players).
+  placement-bonus-dice: true
+  # Shop and item phase before the dice. Ends early once everyone is ready and is skipped
+  # when nobody can buy or use anything.
+  prep-seconds: 10
+  shop:
+    enabled: true
+    # Each purchase raises that player's price for the item by this share of the base price.
+    price-increase-percent: 50
+    max-purchases-per-round: 1
+    max-uses-per-round: 1
+    # Base prices. A bought item is usable from the next round; 0 removes it from the shop.
+    prices:
+      double-coins: 30
+      chaos-die: 40
+      warp-pipe: 100
+      bronze-die: 20
+      silver-die: 35
+      gold-die: 50
 
 minigame:
+  # Frozen countdown before every real minigame, and the placement screen after it (0 = skip).
+  intro-seconds: 5
+  end-seconds: 3
   dummy-duration-seconds: 5
+  # Placement coins for every minigame (1st, 2nd, ...); ranks beyond the list get 1 coin.
   dummy-coin-rewards:
+    - 20
+    - 16
+    - 14
+    - 12
     - 10
+    - 9
+    - 8
     - 7
-    - 5
-    - 3
   hot_potato:
     slime-template: hot_potato_arena
     bomb-seconds: 20
@@ -141,7 +172,8 @@ resource-pack:
 
 # Component-based tab-list rendering. Header and footer items are rendered as
 # separate lines. Values use MiniMessage and support the same placeholders as
-# messages.yml, including <player>, <party>, and <coins>.
+# messages.yml, including <player>, <party>, <coins> and <space> (board space).
+# <board> shows coins and space while the board game runs (messages.yml board.tab-status).
 tablist:
   enabled: true
   # Only list players who belong to the viewer's current party.
@@ -152,9 +184,9 @@ tablist:
     - ""
     - "<white>Chào mừng đến <#fcca32><bold>McParty</bold></#fcca32>!</white>"
     - ""
-  player-name: "<gray>MEMBER</gray> <gray>|</gray> <dark_gray><player></dark_gray>"
+  player-name: "<gray>MEMBER</gray> <gray>|</gray> <dark_gray><player></dark_gray><board>"
   # Leave blank to use player-name for party hosts too.
-  host-player-name: "<aqua><bold>HOST</bold></aqua> <gray>|</gray> <aqua><player></aqua>"
+  host-player-name: "<aqua><bold>HOST</bold></aqua> <gray>|</gray> <aqua><player></aqua><board>"
   # Change these addresses to the public addresses of this server.
   footer:
     - ""

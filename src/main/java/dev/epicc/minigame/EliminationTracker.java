@@ -1,6 +1,8 @@
 package dev.epicc.minigame;
 
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -14,7 +16,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public final class EliminationTracker {
 
     private final List<Integer> coinRewards;
-    /** Insertion-ordered so survivors keep party order in the final ranking. */
+    /** Insertion-ordered so the live standing keeps a stable roster order. */
     private final Set<UUID> alive = new LinkedHashSet<>();
     private final List<UUID> eliminated = new ArrayList<>();
 
@@ -52,9 +54,28 @@ public final class EliminationTracker {
         return pool.get(ThreadLocalRandom.current().nextInt(pool.size()));
     }
 
-    /** Survivors first, then reverse elimination order; coins by placement. */
+    /** Alive players in roster order, then reverse elimination order. */
+    public List<UUID> standing() {
+        List<UUID> standing = new ArrayList<>(alive);
+        for (int i = eliminated.size() - 1; i >= 0; i--) {
+            standing.add(eliminated.get(i));
+        }
+        return standing;
+    }
+
+    /** Survivors first (tied, so in random order), then reverse elimination order; coins by placement. */
     public MinigameResult result() {
+        return result((first, second) -> 0);
+    }
+
+    /**
+     * Same ranking, with survivors ordered by the game's own tie-break (best first). Survivors the
+     * tie-break cannot separate land in random order — never roster order, which favours the host.
+     */
+    public MinigameResult result(Comparator<UUID> survivorOrder) {
         List<UUID> ranked = new ArrayList<>(alive);
+        Collections.shuffle(ranked, ThreadLocalRandom.current());
+        ranked.sort(survivorOrder);
         for (int i = eliminated.size() - 1; i >= 0; i--) {
             ranked.add(eliminated.get(i));
         }

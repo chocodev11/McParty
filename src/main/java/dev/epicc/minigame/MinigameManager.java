@@ -19,19 +19,30 @@ public final class MinigameManager {
     private final MinigameRegistry registry;
     private final SlimeWorldService slime;
     private final MinigameEventBus events;
+    private int introSeconds;
+    private int endSeconds;
 
     public MinigameManager(
             JavaPlugin plugin,
             MessageService messages,
             MinigameRegistry registry,
             SlimeWorldService slime,
-            MinigameEventBus events
+            MinigameEventBus events,
+            int introSeconds,
+            int endSeconds
     ) {
         this.plugin = plugin;
         this.messages = messages;
         this.registry = registry;
         this.slime = slime;
         this.events = events;
+        reconfigure(introSeconds, endSeconds);
+    }
+
+    /** INTRO and END lengths for sessions started from now on. */
+    public void reconfigure(int introSeconds, int endSeconds) {
+        this.introSeconds = introSeconds;
+        this.endSeconds = endSeconds;
     }
 
     public void detach(Player player) {
@@ -65,6 +76,14 @@ public final class MinigameManager {
 
     SlimeWorldService slime() {
         return slime;
+    }
+
+    int introSeconds() {
+        return introSeconds;
+    }
+
+    int endSeconds() {
+        return endSeconds;
     }
 
 }

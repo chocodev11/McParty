@@ -52,3 +52,165 @@ images:
     # Compensate for transparent left padding counted by bitmap-font glyph width.
     x-offset: -18
     codepoint: E008
+  # Minigame icons shown next to the name on the final reveal title (mg_<minigame id>).
+  mg_hot_potato:
+    texture: minigame/hot_potato.png
+    scale: 16
+    y-position: 12
+    codepoint: E009
+  mg_speed_race:
+    texture: minigame/speed_race.png
+    scale: 16
+    y-position: 12
+    codepoint: E00A
+  mg_spleef:
+    texture: minigame/spleef.png
+    scale: 16
+    y-position: 12
+    codepoint: E00B
+  mg_elytra_race:
+    texture: minigame/elytra_race.png
+    scale: 16
+    y-position: 12
+    codepoint: E00C
+  mg_shooting_range:
+    texture: minigame/shooting_range.png
+    scale: 16
+    y-position: 12
+    codepoint: E00D
+  mg_color_chaos:
+    texture: minigame/color_chaos.png
+    scale: 16
+    y-position: 12
+    codepoint: E00E
+  mg_laser_tag:
+    texture: minigame/laser_tag.png
+    scale: 16
+    y-position: 12
+    codepoint: E00F
+  mg_king_of_the_hill:
+    texture: minigame/king_of_the_hill.png
+    scale: 16
+    y-position: 12
+    codepoint: E010
+  mg_hopper:
+    texture: minigame/hopper.png
+    scale: 16
+    y-position: 12
+    codepoint: E011
+  mg_mini_skywars:
+    texture: minigame/mini_skywars.png
+    scale: 16
+    y-position: 12
+    codepoint: E012
+  mg_warden_escape:
+    texture: minigame/warden_escape.png
+    scale: 16
+    y-position: 12
+    codepoint: E013
+  mg_antwar:
+    texture: minigame/antwar.png
+    scale: 16
+    y-position: 12
+    codepoint: E014
+  # Dice skins (board/dice/DiceSkin): placement and shop dice, chaos faces -3..6 (m = minus).
+  dice_bronze_1:
+    texture: item/dice_bronze_1.png
+    scale: 16
+    y-position: 12
+    codepoint: E015
+  dice_bronze_2:
+    texture: item/dice_bronze_2.png
+    scale: 16
+    y-position: 12
+    codepoint: E016
+  dice_bronze_3:
+    texture: item/dice_bronze_3.png
+    scale: 16
+    y-position: 12
+    codepoint: E017
+  dice_silver_2:
+    texture: item/dice_silver_2.png
+    scale: 16
+    y-position: 12
+    codepoint: E018
+  dice_silver_3:
+    texture: item/dice_silver_3.png
+    scale: 16
+    y-position: 12
+    codepoint: E019
+  dice_silver_4:
+    texture: item/dice_silver_4.png
+    scale: 16
+    y-position: 12
+    codepoint: E01A
+  dice_silver_5:
+    texture: item/dice_silver_5.png
+    scale: 16
+    y-position: 12
+    codepoint: E01B
+  dice_gold_4:
+    texture: item/dice_gold_4.png
+    scale: 16
+    y-position: 12
+    codepoint: E01C
+  dice_gold_5:
+    texture: item/dice_gold_5.png
+    scale: 16
+    y-position: 12
+    codepoint: E01D
+  dice_gold_6:
+    texture: item/dice_gold_6.png
+    scale: 16
+    y-position: 12
+    codepoint: E01E
+  dice_chaos_m3:
+    texture: item/dice_chaos_m3.png
+    scale: 16
+    y-position: 12
+    codepoint: E01F
+  dice_chaos_m2:
+    texture: item/dice_chaos_m2.png
+    scale: 16
+    y-position: 12
+    codepoint: E020
+  dice_chaos_m1:
+    texture: item/dice_chaos_m1.png
+    scale: 16
+    y-position: 12
+    codepoint: E021
+  dice_chaos_0:
+    texture: item/dice_chaos_0.png
+    scale: 16
+    y-position: 12
+    codepoint: E022
+  dice_chaos_1:
+    texture: item/dice_chaos_1.png
+    scale: 16
+    y-position: 12
+    codepoint: E023
+  dice_chaos_2:
+    texture: item/dice_chaos_2.png
+    scale: 16
+    y-position: 12
+    codepoint: E024
+  dice_chaos_3:
+    texture: item/dice_chaos_3.png
+    scale: 16
+    y-position: 12
+    codepoint: E025
+  dice_chaos_4:
+    texture: item/dice_chaos_4.png
+    scale: 16
+    y-position: 12
+    codepoint: E026
+  dice_chaos_5:
+    texture: item/dice_chaos_5.png
+    scale: 16
+    y-position: 12
+    codepoint: E027
+  dice_chaos_6:
+    texture: item/dice_chaos_6.png
+    scale: 16
+    y-position: 12
+    codepoint: E028

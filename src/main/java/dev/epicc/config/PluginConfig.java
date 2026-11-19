@@ -1,5 +1,7 @@
 package dev.epicc.config;
 
+import dev.epicc.board.economy.EconomySettings;
+import dev.epicc.board.economy.ShopItem;
 import dev.epicc.minigame.MinigameArenaSpec;
 import dev.epicc.minigame.SpleefPlatform;
 import dev.epicc.minigame.SpleefSettings;
@@ -11,6 +13,7 @@ import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.plugin.java.JavaPlugin;
 
 import java.util.ArrayList;
+import java.util.EnumMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -25,6 +28,7 @@ public final class PluginConfig {
     private int maxInstances;
     private int startCountdownSeconds;
     private int startingCoins;
+    private int maxRounds;
     private int diceMin;
     private int diceMax;
     private int diceInteractSeconds;
@@ -35,8 +39,11 @@ public final class PluginConfig {
     private double hopUpVelocity;
     private double hopRiseMaxSeconds;
     private double hopFallMaxSeconds;
+    private EconomySettings economy;
     private int dummyDurationSeconds;
     private List<Integer> dummyCoinRewards;
+    private int minigameIntroSeconds;
+    private int minigameEndSeconds;
 
     private String hotPotatoSlimeTemplate;
     private int hotPotatoBombSeconds;
@@ -126,6 +133,7 @@ public final class PluginConfig {
         maxInstances = c.getInt("party.max-instances", 12);
         startCountdownSeconds = c.getInt("party.start-countdown-seconds", 5);
         startingCoins = c.getInt("party.starting-coins", 10);
+        maxRounds = Math.max(0, c.getInt("party.max-rounds", 0));
         diceMin = c.getInt("board.dice-min", 1);
         diceMax = c.getInt("board.dice-max", 6);
         diceInteractSeconds = c.getInt("board.dice-interact-seconds", 5);
@@ -136,10 +144,25 @@ public final class PluginConfig {
         hopUpVelocity = c.getDouble("board.hop-up-velocity", 1.70);
         hopRiseMaxSeconds = c.getDouble("board.hop-rise-max-seconds", 3.0);
         hopFallMaxSeconds = c.getDouble("board.hop-fall-max-seconds", 6.0);
+        Map<ShopItem, Integer> shopPrices = new EnumMap<>(ShopItem.class);
+        for (ShopItem item : ShopItem.values()) {
+            shopPrices.put(item, Math.max(0, c.getInt("board.shop.prices." + item.id(), item.defaultPrice())));
+        }
+        economy = new EconomySettings(
+                c.getBoolean("board.placement-bonus-dice", true),
+                c.getBoolean("board.shop.enabled", true),
+                Math.clamp(c.getInt("board.prep-seconds", 10), 3, 60),
+                Math.max(0, c.getInt("board.shop.price-increase-percent", 50)),
+                Math.max(0, c.getInt("board.shop.max-purchases-per-round", 1)),
+                Math.max(0, c.getInt("board.shop.max-uses-per-round", 1)),
+                shopPrices
+        );
 
         dummyDurationSeconds = c.getInt("minigame.dummy-duration-seconds", 5);
         List<Integer> rewards = c.getIntegerList("minigame.dummy-coin-rewards");
-        dummyCoinRewards = rewards.isEmpty() ? List.of(10, 7, 5, 3) : new ArrayList<>(rewards);
+        dummyCoinRewards = rewards.isEmpty() ? List.of(20, 16, 14, 12, 10, 9, 8, 7) : new ArrayList<>(rewards);
+        minigameIntroSeconds = Math.clamp(c.getInt("minigame.intro-seconds", 5), 0, 30);
+        minigameEndSeconds = Math.clamp(c.getInt("minigame.end-seconds", 3), 0, 15);
 
         hotPotatoSlimeTemplate = c.getString("minigame.hot_potato.slime-template", "hot_potato_arena");
         hotPotatoBombSeconds = c.getInt("minigame.hot_potato.bomb-seconds", 20);
@@ -244,11 +267,11 @@ public final class PluginConfig {
         tabListFooter = tabListLines(c, "tablist.footer");
         tabListPlayerName = nullToEmpty(c.getString(
                 "tablist.player-name",
-                "<gray>STONE</gray> <dark_gray>|</dark_gray> <white><player></white>"
+                "<gray>STONE</gray> <dark_gray>|</dark_gray> <white><player></white><board>"
         ));
         tabListHostPlayerName = nullToEmpty(c.getString(
                 "tablist.host-player-name",
-                "<aqua><bold>DIAMOND</bold></aqua> <dark_gray>|</dark_gray> <white><player></white>"
+                "<aqua><bold>DIAMOND</bold></aqua> <dark_gray>|</dark_gray> <white><player></white><board>"
         ));
 
         databaseSqliteFile = nullToEmpty(c.getString("database.sqlite-file", "parkour.db"));
@@ -321,6 +344,7 @@ public final class PluginConfig {
     public int maxInstances() { return maxInstances; }
     public int startCountdownSeconds() { return startCountdownSeconds; }
     public int startingCoins() { return startingCoins; }
+    public int maxRounds() { return maxRounds; }
     public int diceMin() { return diceMin; }
     public int diceMax() { return diceMax; }
     public int diceInteractSeconds() { return diceInteractSeconds; }
@@ -331,8 +355,11 @@ public final class PluginConfig {
     public double hopUpVelocity() { return hopUpVelocity; }
     public double hopRiseMaxSeconds() { return hopRiseMaxSeconds; }
     public double hopFallMaxSeconds() { return hopFallMaxSeconds; }
+    public EconomySettings economy() { return economy; }
     public int dummyDurationSeconds() { return dummyDurationSeconds; }
     public List<Integer> dummyCoinRewards() { return dummyCoinRewards; }
+    public int minigameIntroSeconds() { return minigameIntroSeconds; }
+    public int minigameEndSeconds() { return minigameEndSeconds; }
 
     public String hotPotatoSlimeTemplate() { return hotPotatoSlimeTemplate; }
     public int hotPotatoBombSeconds() { return hotPotatoBombSeconds; }

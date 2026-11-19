@@ -126,7 +126,8 @@ public final class MinigameRunner {
         MinigameSession session = definition.createSession();
         active = session;
         MinigameContext context = new MinigameContext(
-                manager.plugin(), manager.messages(), manager.events(), instance, stillOnline, arena
+                manager.plugin(), manager.messages(), manager.events(), instance, stillOnline, arena,
+                manager.introSeconds(), manager.endSeconds()
         );
         session.start(context, result -> {
             if (!isCurrent(runGeneration) || active != session) return;

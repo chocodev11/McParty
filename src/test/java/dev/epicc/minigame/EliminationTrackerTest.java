@@ -2,6 +2,7 @@ package dev.epicc.minigame;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -38,7 +39,7 @@ final class EliminationTrackerTest {
     }
 
     @Test
-    void multipleSurvivorsKeepPartyOrder() {
+    void survivorsRankAboveTheEliminatedAndFollowTheTieBreak() {
         UUID a = UUID.randomUUID();
         UUID b = UUID.randomUUID();
         UUID c = UUID.randomUUID();
@@ -46,10 +47,14 @@ final class EliminationTrackerTest {
 
         tracker.eliminate(b);
 
-        Map<UUID, Integer> places = tracker.result().placements();
-        assertEquals(1, places.get(a));
-        assertEquals(2, places.get(c));
+        // c beats a in the tie-break even though a comes first in the roster
+        Map<UUID, Integer> places = tracker.result(Comparator.comparing((UUID id) -> !id.equals(c))).placements();
+        assertEquals(1, places.get(c));
+        assertEquals(2, places.get(a));
         assertEquals(3, places.get(b));
+
+        assertEquals(3, tracker.result().placements().get(b), "untied survivors still outrank the eliminated");
+        assertEquals(List.of(a, c, b), tracker.standing());
     }
 
     @Test

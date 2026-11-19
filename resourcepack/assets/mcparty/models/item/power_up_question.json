@@ -2,9 +2,10 @@
   "credit": "McParty power-up question mark",
   "ambientocclusion": false,
   "gui_light": "front",
+  "texture_size": [64, 32],
   "textures": {
-    "mark": "mcparty:item/power_up_question",
-    "particle": "mcparty:item/power_up_question"
+    "box": "mcparty:item/power_up_box",
+    "particle": "mcparty:item/power_up_box"
   },
   "elements": [
     {
@@ -12,8 +13,8 @@
       "from": [0, 0, 8],
       "to": [16, 16, 8],
       "faces": {
-        "north": {"uv": [16, 0, 0, 16], "texture": "#mark"},
-        "south": {"uv": [0, 0, 16, 16], "texture": "#mark"}
+        "north": {"uv": [16, 8, 12, 16], "texture": "#box"},
+        "south": {"uv": [12, 8, 16, 16], "texture": "#box"}
       }
     }
   ]

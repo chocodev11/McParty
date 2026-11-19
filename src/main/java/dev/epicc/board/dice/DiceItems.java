@@ -7,7 +7,7 @@ import org.bukkit.inventory.ItemStack;
 
 /**
  * ItemStacks for dice faces. Clients need the {@code mcparty} resource pack
- * ({@code item_model} {@code mcparty:dice_1} … {@code dice_6}).
+ * ({@code item_model} {@code mcparty:dice_1} … {@code dice_6} and the skin variants).
  */
 public final class DiceItems {
 
@@ -17,13 +17,15 @@ public final class DiceItems {
     }
 
     public static ItemStack face(int face) {
-        int f = Math.max(1, face);
+        return face(DiceSkin.STANDARD, face);
+    }
+
+    /** Faces without a shipped model stay plain paper. */
+    public static ItemStack face(DiceSkin skin, int face) {
         ItemStack stack = new ItemStack(Material.PAPER);
         stack.editMeta(meta -> {
-            meta.itemName(Component.text("Dice " + f));
-            if (f <= 6) {
-                meta.setItemModel(new NamespacedKey(NAMESPACE, "dice_" + f));
-            }
+            meta.itemName(Component.text("Dice " + face));
+            skin.assetId(face).ifPresent(id -> meta.setItemModel(new NamespacedKey(NAMESPACE, id)));
         });
         return stack;
     }
