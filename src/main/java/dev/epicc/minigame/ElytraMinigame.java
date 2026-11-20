@@ -23,6 +23,7 @@ import org.joml.Vector3f;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -38,6 +39,9 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
     private static final double MOVEMENT_ORDER_EPSILON = 1.0e-6;
     private static final float RING_MODEL_OPENING_RADIUS = 18.0f / 16.0f;
     private static final NamespacedKey RING_ITEM_MODEL = new NamespacedKey("mcparty", "elytra_ring");
+    private static final int STUCK_TICKS = 20;
+    /** Further than a full-speed dive covers in one tick. */
+    private static final double EDGE_MARGIN = 5.0;
 
     private final ElytraCourse course;
     private final int timeoutSeconds;
@@ -49,7 +53,13 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
     private final Map<UUID, Integer> progress = new HashMap<>();
     private final Map<UUID, Integer> bonusCoins = new HashMap<>();
     private final Map<UUID, Integer> partyOrder = new HashMap<>();
+    /** Quit before finishing: still ranked, below everyone who stayed. */
+    private final Set<UUID> left = new HashSet<>();
+    private final Map<UUID, Location> lastPosition = new HashMap<>();
+    private final Map<UUID, Integer> stuckTicks = new HashMap<>();
     private final List<ItemDisplay> ringDisplays = new ArrayList<>();
+    /** Everyone who started; the scope's own roster shrinks when a player quits. */
+    private List<UUID> roster = List.of();
 
     private MessageService messages;
     private MatchScope scope;
@@ -120,6 +130,7 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
             scope.finish(new MinigameResult());
             return;
         }
+        roster = playerIds;
         for (int i = 0; i < playerIds.size(); i++) {
             UUID id = playerIds.get(i);
             active.add(id);
@@ -132,6 +143,11 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
         scope.protectFromDamage();
         hud = MatchHud.attach(scope, displayName(), false);
         refreshHud();
+        // The spawn can be a launch point in mid-air: hover through the intro instead of falling
+        for (Player player : scope.onlinePlayers()) {
+            player.setAllowFlight(true);
+            player.setFlying(true);
+        }
         IntroSequence.run(scope, displayName(), this::go, "minigame.elytra-started",
                 MessageService.ph("rings", Integer.toString(course.rings().size())));
     }
@@ -167,6 +183,8 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
             }
             double offset = (index - (playerCount - 1) / 2.0) * 1.5;
             Location playerSpawn = spawn.clone().add(side.clone().multiply(offset));
+            player.setFlying(false);
+            player.setAllowFlight(false);
             player.teleport(playerSpawn);
             giveElytra(player);
             player.setGliding(true);
@@ -203,9 +221,8 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
                 markOut(id, player);
                 continue;
             }
-            if (!player.isGliding()) {
+            if (!player.isGliding() || stuckOnEdge(id, player.getLocation())) {
                 markOut(id, player);
-                continue;
             }
         }
 
@@ -214,6 +231,26 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
             return;
         }
         hud.timer(timeoutTicks, timeoutSeconds * 20);
+    }
+
+    /**
+     * BoundaryListener pins anyone who tries to leave the arena box, so a glider never crosses it:
+     * they hang on its edge, still gliding, until the timeout. Not moving next to the edge means
+     * exactly that; the margin keeps a lag spike in open air from counting.
+     */
+    private boolean stuckOnEdge(UUID id, Location now) {
+        Location last = lastPosition.put(id, now);
+        if (last == null || last.distanceSquared(now) > 1.0e-4 || !nearEdge(now)) {
+            stuckTicks.remove(id);
+            return false;
+        }
+        return stuckTicks.merge(id, 1, Integer::sum) >= STUCK_TICKS;
+    }
+
+    private boolean nearEdge(Location at) {
+        return at.getX() - boundary.minX() < EDGE_MARGIN || boundary.maxX() + 1 - at.getX() < EDGE_MARGIN
+                || at.getY() - boundary.minY() < EDGE_MARGIN || boundary.maxY() + 1 - at.getY() < EDGE_MARGIN
+                || at.getZ() - boundary.minZ() < EDGE_MARGIN || boundary.maxZ() + 1 - at.getZ() < EDGE_MARGIN;
     }
 
     @Override
@@ -358,16 +395,22 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
         }
     }
 
-    /** Finishers in finish order, then everyone else by rings passed, bonus coins and party order. */
+    /**
+     * Finishers in finish order, then everyone else by rings passed, bonus coins and party order,
+     * with players who quit mid-race last.
+     */
     private List<UUID> ranking() {
         List<UUID> ranked = new ArrayList<>(finishOrder);
         Comparator<UUID> progressComparator = Comparator
-                .comparingInt((UUID id) -> progress.getOrDefault(id, 0)).reversed()
+                .comparing((UUID id) -> left.contains(id))
+                .thenComparing(Comparator.comparingInt(
+                        (UUID id) -> progress.getOrDefault(id, 0)
+                ).reversed())
                 .thenComparing(Comparator.comparingInt(
                         (UUID id) -> bonusCoins.getOrDefault(id, 0)
                 ).reversed())
                 .thenComparingInt(id -> partyOrder.getOrDefault(id, Integer.MAX_VALUE));
-        List<UUID> unfinished = scope.playerIds().stream()
+        List<UUID> unfinished = roster.stream()
                 .filter(id -> !finishOrder.contains(id))
                 .sorted(progressComparator)
                 .toList();
@@ -403,12 +446,20 @@ public final class ElytraMinigame implements Minigame, MinigameSession, MatchLis
             result.setCoins(id, placementCoins + bonusCoins.getOrDefault(id, 0));
         }
         cleanupRingDisplays();
+        // Anyone still gliding at the timeout would drop straight down once the end screen freezes them
+        for (UUID id : active) {
+            scope.spectate(id);
+        }
         scope.conclude(result);
     }
 
     @Override
     public void onQuit(Player player) {
-        active.remove(player.getUniqueId());
+        UUID id = player.getUniqueId();
+        active.remove(id);
+        if (!finishOrder.contains(id)) {
+            left.add(id);
+        }
         refreshHud();
         if (active.isEmpty()) {
             finish();

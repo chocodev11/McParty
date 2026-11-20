@@ -315,6 +315,8 @@ public final class HotPotatoMinigame implements Minigame, MinigameSession, Match
     public void onQuit(Player player) {
         UUID id = player.getUniqueId();
         if (elimination.eliminate(id) && Objects.equals(currentHolder, id)) {
+            // Their potato in the air is no longer routed here and would block the next throw
+            clearThrownPotato();
             selectRandomHolder();
         }
         hud.rows(elimination);

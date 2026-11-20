@@ -226,13 +226,13 @@ public final class MatchScope {
             task.cancel();
         }
         tasks.clear();
-        if (endSeconds <= 0) {
-            finish(result);
-            return;
-        }
         frozen = true;
-        showPlacements(result);
-        later(endSeconds * 20L, () -> finish(result));
+        if (endSeconds > 0) {
+            showPlacements(result);
+        }
+        // Never report from inside the caller's event: a quitter is still in the arena world
+        // during PlayerQuitEvent, and the runner unloads that world on completion
+        later(Math.max(1L, endSeconds * 20L), () -> finish(result));
     }
 
     private void showPlacements(MinigameResult result) {
